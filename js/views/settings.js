@@ -11,7 +11,7 @@ import { showOnboarding } from '../onboarding.js';
 import { ensureCategory } from '../forms.js';
 import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '../reminders.js';
 import { setWorkoutHabit } from '../actions.js';
-import { pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved, WINDOW_DAYS } from '../push.js';
+import { pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
 
@@ -192,7 +192,7 @@ function pushRows() {
     })));
     rows.push(h(`p.set-desc.pad.push-status.${ps.kind}`, { role: 'status', 'aria-live': 'polite' }, ps.text));
     if (on) {
-      rows.push(row('Hide reminder text', 'Notifications say “You have a reminder” – no task or habit names are sent to your server or shown on the lock screen.',
+      rows.push(row('Hide reminder text', 'Notifications say “You have a reminder – tap to open” – no task or habit names are sent to your server or shown on the lock screen.',
         toggle(hideTextOn(), 'Hide reminder text', (v) => { setHideText(v); ctx.rerender(); })));
     }
   }
@@ -213,7 +213,7 @@ function pushRows() {
   };
   rows.push(h('details.push-advanced', { open: ctx.ui.pushAdvancedOpen || null, ontoggle: (e) => { ctx.ui.pushAdvancedOpen = e.target.open; } },
     h('summary', 'Advanced: push server'),
-    h('p.set-desc', `Optional. With your own free server (see server/README.md in the app’s code), reminders arrive even when the app is closed. Reminders are planned ${WINDOW_DAYS} days ahead.`),
+    h('p.set-desc', 'Optional. With your own free server (see server/README.md in the app’s code), reminders arrive even when the app is closed.'),
     h('label.field-label', 'Server URL'), url,
     h('label.field-label', 'VAPID public key'), key, err,
     h('div.set-actions',

@@ -65,7 +65,14 @@ async function register(name, ip = '1.1.1.1') {
   assert.equal(res.status, 201);
   return res.json();
 }
-const item = (id, at, extra = {}) => ({ id, at, title: 'Title ' + id, body: 'Body', url: './#today/2026-11-20', tag: id, ...extra });
+const TZ = 'UTC';
+const pad = (n) => String(n).padStart(2, '0');
+const keyOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+const hmOf = (ms) => new Date(ms).toISOString().slice(11, 16);
+/** A one-off rule firing at the minute of `at` (UTC). */
+const once = (id, at, extra = {}) => ({ id, kind: 'task', title: 'Title ' + id, body: 'Body', url: `./#open/task/p/${id}/{date}`, tag: `p:t:${id}:{date}`, time: hmOf(at), recur: { type: 'none' }, date: keyOf(at), ...extra });
+const daily = (id, at, extra = {}) => ({ ...once(id, at), recur: { type: 'daily', start: keyOf(at) }, date: undefined, ...extra });
+const minute = (ms) => Math.floor(ms / 60000) * 60000;
 
 test('health, CORS and origin checks', async () => {
   const h = await call('GET', '/api/health', { origin: null });
@@ -85,7 +92,7 @@ test('register validates the subscription and returns id + token (only a hash is
   assert.equal((await call('POST', '/api/register', { body: { subscription: { endpoint: 'http://insecure/x', keys: {} } } })).status, 400);
   assert.equal((await call('POST', '/api/register', { body: '{bad json' })).status, 400);
   assert.equal((await call('POST', '/api/register', { body: { subscription: subscription('big'), pad: 'x'.repeat(9000) } })).status, 413);
-  const { deviceId, token } = await register('a');
+  const { deviceId, token } = await register('a', '2.2.2.2');
   assert.match(deviceId, /^[A-Za-z0-9_-]{22}$/); // 128 bits
   assert.ok(token.length >= 40);
   const db = await mf.getD1Database('DB');
@@ -96,79 +103,96 @@ test('register validates the subscription and returns id + token (only a hash is
 
 test('schedule: auth, strict validation, replace semantics', async () => {
   const { deviceId, token } = await register('b');
-  const now = Date.now();
-  assert.equal((await call('PUT', '/api/schedule', { body: { items: [] } })).status, 401);
-  assert.equal((await call('PUT', '/api/schedule', { body: { items: [] }, token: 'x'.repeat(43), device: deviceId })).status, 401);
-  const bad = async (items, why) => assert.equal((await call('PUT', '/api/schedule', { body: { items }, token, device: deviceId })).status, 400, why);
-  await bad([item('a', now - 3600000)], 'past');
-  await bad([item('a', now + 61 * 86400000)], 'too far ahead');
-  await bad([item('a', now + 1000, { url: 'https://evil.example/' })], 'absolute url');
-  await bad([item('a', now + 1000, { url: '//evil.example/' })], 'protocol-relative url');
-  await bad([item('a', now + 1000, { url: 'javascript:alert(1)' })], 'javascript url');
-  await bad([item('a', now + 1000, { title: '' })], 'empty title');
-  await bad([item('a', now + 1000, { title: 'x'.repeat(121) })], 'long title');
-  await bad([item('a b', now + 1000)], 'bad id');
-  await bad([item('a', now + 1000), item('a', now + 2000)], 'duplicate id');
-  await bad([item('a', 1.5)], 'non-integer at');
-  await bad(Array.from({ length: 501 }, (_, i) => item('i' + i, now + 60000)), 'too many');
-  let res = await call('PUT', '/api/schedule', { body: { items: [item('one', now + 60000), item('two', now + 120000)] }, token, device: deviceId });
+  const now = minute(Date.now()) + 5 * 60000;
+  const put = (body) => call('PUT', '/api/schedule', { body, token, device: deviceId });
+  assert.equal((await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [] } })).status, 401);
+  assert.equal((await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [] }, token: 'x'.repeat(43), device: deviceId })).status, 401);
+  const bad = async (rules, why, tz = TZ) => assert.equal((await put({ tz, rules })).status, 400, why);
+  await bad([], 'bad tz', 'Mars/Olympus');
+  await bad([once('a', now, { url: 'https://evil.example/' })], 'absolute url');
+  await bad([once('a', now, { url: '//evil.example/' })], 'protocol-relative url');
+  await bad([once('a', now, { url: 'javascript:alert(1)' })], 'javascript url');
+  await bad([once('a', now, { title: '' })], 'empty title');
+  await bad([once('a', now, { title: 'x'.repeat(121) })], 'long title');
+  await bad([once('a b', now)], 'bad id');
+  await bad([once('a', now), once('a', now)], 'duplicate id');
+  await bad([once('a', now, { time: '24:00' })], 'bad time');
+  await bad([once('a', now, { date: '2026-02-30' })], 'impossible date');
+  await bad([once('a', now, { kind: 'alarm' })], 'bad kind');
+  await bad([daily('a', now, { recur: { type: 'yearly', start: keyOf(now) } })], 'bad recur type');
+  await bad([daily('a', now, { recur: { type: 'interval', start: keyOf(now), interval: 0 } })], 'bad interval');
+  await bad([daily('a', now, { recur: { type: 'weekly', start: keyOf(now), days: [7] } })], 'bad weekday');
+  await bad([daily('a', now, { exceptions: ['nope'] })], 'bad exceptions');
+  await bad([daily('a', now, { skipDates: Array.from({ length: 401 }, () => '2026-01-01') })], 'too many skipDates');
+  await bad([once('a', now, { offsetDays: 1 })], 'bad offsetDays');
+  await bad(Array.from({ length: 501 }, (_, i) => once('i' + i, now)), 'too many');
+  let res = await put({ tz: TZ, rules: [once('one', now), daily('two', now)] });
   assert.equal(res.status, 200);
   assert.equal(res.headers.get('Access-Control-Allow-Origin'), ORIGIN);
-  res = await call('PUT', '/api/schedule', { body: { items: [item('two', now + 180000)] }, token, device: deviceId });
+  res = await put({ tz: 'Europe/London', rules: [daily('two', now)] });
   assert.equal((await res.json()).count, 1);
   const db = await mf.getD1Database('DB');
-  const rows = (await db.prepare('SELECT item_id, at FROM items WHERE device_id = ?').bind(deviceId).all()).results;
-  assert.deepEqual(rows.map((r) => [r.item_id, r.at]), [['two', now + 180000]], 'whole schedule replaced');
-  res = await call('PUT', '/api/schedule', { body: { items: Array.from({ length: 500 }, (_, i) => item('i' + i, now + 60000 + i)) }, token, device: deviceId });
-  assert.equal(res.status, 200, '500 items accepted');
+  const rows = (await db.prepare('SELECT rule_id, next_at FROM rules WHERE device_id = ?').bind(deviceId).all()).results;
+  assert.deepEqual(rows.map((r) => r.rule_id), ['two'], 'whole rule set replaced');
+  assert.equal((await db.prepare('SELECT tz FROM devices WHERE id = ?').bind(deviceId).first()).tz, 'Europe/London');
+  res = await put({ tz: TZ, rules: Array.from({ length: 500 }, (_, i) => daily('i' + i, now)) });
+  assert.equal(res.status, 200, '500 rules accepted');
 });
 
-test('cron sends due items once, skips late ones, and drops dead devices', async () => {
+test('cron: sends due occurrences once, fills {date}, catches up within 15 min, never late', async () => {
   const db = await mf.getD1Database('DB');
-  await db.prepare('DELETE FROM items').run();
+  await db.prepare('DELETE FROM rules').run();
   const a = await register('c1');
   const b = await register('c2');
-  const now = Date.now();
-  const put = (d, items) => call('PUT', '/api/schedule', { body: { items }, token: d.token, device: d.deviceId });
-  await put(a, [item('due', now + 60000), item('later', now + 3600000), item('soon', now + 30000)]);
-  await put(b, [item('due-b', now + 60000)]);
+  const t0 = minute(Date.now()) + 2 * 60000;            // a minute boundary just ahead
+  const put = (d, rules, tz = TZ) => call('PUT', '/api/schedule', { body: { tz, rules }, token: d.token, device: d.deviceId });
+  await put(a, [daily('every', t0), once('single', t0 + 60000), once('later', t0 + 3600000)]);
+  await put(b, [daily('b-daily', t0)]);
   pushed.length = 0;
-  await cron(now + 61000);
-  assert.deepEqual(pushed.map((p) => p.payload.title).sort(), ['Title due', 'Title due-b', 'Title soon']);
-  const p = pushed.find((x) => x.payload.title === 'Title due');
-  assert.deepEqual(p.payload, { title: 'Title due', body: 'Body', url: './#today/2026-11-20', tag: 'due' });
+  await cron(t0);
+  assert.deepEqual(pushed.map((p) => p.payload.title).sort(), ['Title b-daily', 'Title every']);
+  const p = pushed.find((x) => x.payload.title === 'Title every');
+  assert.deepEqual(p.payload, { title: 'Title every', body: 'Body', url: `./#open/task/p/every/${keyOf(t0)}`, tag: `p:t:every:${keyOf(t0)}` });
   assert.equal(p.headers['content-encoding'], 'aes128gcm');
   assert.match(p.headers.authorization, /^vapid t=.+, k=/);
   pushed.length = 0;
-  await cron(now + 62000);
-  assert.equal(pushed.length, 0, 'not sent twice');
-  // Re-syncing a schedule that still contains a sent item does not re-send it.
-  await put(a, [item('due', now + 60000), item('later', now + 3600000)]);
-  await cron(now + 63000);
-  assert.equal(pushed.length, 0, 're-sync does not resurrect sent items');
-  // Late items (cron missed for > 15 minutes) are dropped, not sent hours later.
-  await cron(now + 3600000 + 16 * 60000);
-  assert.equal(pushed.length, 0, 'late item not sent');
-  assert.equal((await db.prepare("SELECT COUNT(*) n FROM items WHERE item_id = 'later'").first()).n, 0, 'late item removed');
-  // 410 from the push service removes the device and its items.
-  await put(b, [item('x', now + 120000)]);
+  await cron(t0 + 30000);
+  assert.equal(pushed.length, 0, 'consecutive crons: no double fire');
+  // Re-PUT the same rules right after: already-sent occurrences don't come back.
+  await put(a, [daily('every', t0), once('single', t0 + 60000), once('later', t0 + 3600000)]);
+  await cron(t0 + 40000);
+  assert.equal(pushed.length, 0, 're-sync does not re-send');
+  // Missed cron: the next run 10 minutes late still sends "single".
+  await cron(t0 + 11 * 60000);
+  assert.deepEqual(pushed.map((x) => x.payload.title), ['Title single'], 'missed cron within 15 min still fires');
+  // A cron gap longer than 15 min: "later" is skipped (not sent late), and the rule is done.
+  pushed.length = 0;
+  await cron(t0 + 3600000 + 20 * 60000);
+  assert.ok(!pushed.some((x) => x.payload.title === 'Title later'), 'late occurrence not sent');
+  assert.equal((await db.prepare("SELECT next_at FROM rules WHERE rule_id = 'later'").first()).next_at, null);
+  // Daily rule keeps firing weeks later with no new PUT (simulated time).
+  pushed.length = 0;
+  for (let day = 1; day <= 35; day++) await cron(t0 + day * 86400000);
+  assert.equal(pushed.filter((x) => x.payload.title === 'Title every').length, 35, 'fires every day for 35 days without a new PUT');
+  assert.equal(pushed.at(-1).payload.url, `./#open/task/p/every/${keyOf(t0 + 35 * 86400000)}`);
+  // 410 from the push service removes the device and its rules.
   pushStatus = 410;
-  await cron(now + 121000);
+  await cron(t0 + 36 * 86400000);
   pushStatus = 201;
-  assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE id = ?').bind(b.deviceId).first()).n, 0);
-  assert.equal((await call('PUT', '/api/schedule', { body: { items: [] }, token: b.token, device: b.deviceId })).status, 401);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE id IN (?, ?)').bind(a.deviceId, b.deviceId).first()).n, 0);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM rules').first()).n, 0);
 });
 
 test('cron sends at most one batch per run', async () => {
   const db = await mf.getD1Database('DB');
-  await db.prepare('DELETE FROM items').run();
+  await db.prepare('DELETE FROM rules').run();
   const d = await register('batch', '9.9.9.9');
-  const now = Date.now();
-  await call('PUT', '/api/schedule', { body: { items: Array.from({ length: 250 }, (_, i) => item('b' + i, now + 60000)) }, token: d.token, device: d.deviceId });
+  const t0 = minute(Date.now()) + 2 * 60000;
+  await call('PUT', '/api/schedule', { body: { tz: TZ, rules: Array.from({ length: 250 }, (_, i) => once('b' + i, t0)) }, token: d.token, device: d.deviceId });
   pushed.length = 0;
-  await cron(now + 61000);
+  await cron(t0);
   assert.equal(pushed.length, 200);
-  await cron(now + 62000);
+  await cron(t0 + 60000);
   assert.equal(pushed.length, 250);
 });
 
@@ -178,22 +202,27 @@ test('subscription update and device delete', async () => {
   assert.equal((await call('POST', '/api/subscription', { body: { subscription: fresh }, token: d.token, device: d.deviceId })).status, 200);
   const db = await mf.getD1Database('DB');
   assert.equal((await db.prepare('SELECT endpoint FROM devices WHERE id = ?').bind(d.deviceId).first()).endpoint, fresh.endpoint);
-  await call('PUT', '/api/schedule', { body: { items: [item('z', Date.now() + 60000)] }, token: d.token, device: d.deviceId });
+  await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [daily('z', Date.now() + 120000)] }, token: d.token, device: d.deviceId });
   assert.equal((await call('DELETE', '/api/device', { token: d.token, device: d.deviceId })).status, 200);
-  assert.equal((await db.prepare('SELECT COUNT(*) n FROM items WHERE device_id = ?').bind(d.deviceId).first()).n, 0);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM rules WHERE device_id = ?').bind(d.deviceId).first()).n, 0);
   assert.equal((await call('DELETE', '/api/device', { token: d.token, device: d.deviceId })).status, 401);
 });
 
-test('daily purge removes old sent rows and stale devices', async () => {
+test('daily purge removes old send records and devices unseen for 180 days', async () => {
   const db = await mf.getD1Database('DB');
   const d = await register('old', '8.8.8.8');
+  const keep = await register('recent', '8.8.8.8');
   const now = Date.now();
-  await db.prepare("INSERT INTO items (device_id, item_id, at, title, body, url, tag, sent_at) VALUES (?, 'old', ?, 't', '', './', 'old', ?)").bind(d.deviceId, now - 5 * 86400000, now - 5 * 86400000).run();
-  await db.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').bind(now - 90 * 86400000, d.deviceId).run();
+  await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [daily('x', now + 120000)] }, token: d.token, device: d.deviceId });
+  await db.prepare("INSERT INTO fired (device_id, rule_id, date, at) VALUES (?, 'x', '2026-01-01', ?)").bind(keep.deviceId, now - 5 * 86400000).run();
+  await db.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').bind(now - 181 * 86400000, d.deviceId).run();
+  await db.prepare('UPDATE devices SET last_seen = ? WHERE id = ?').bind(now - 100 * 86400000, keep.deviceId).run();
   const at3 = new Date(now); at3.setUTCHours(3, 0, 0, 0);
   await cron(at3.getTime() + (at3.getTime() < now ? 86400000 : 0));
-  assert.equal((await db.prepare('SELECT COUNT(*) n FROM items WHERE device_id = ?').bind(d.deviceId).first()).n, 0);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM rules WHERE device_id = ?').bind(d.deviceId).first()).n, 0);
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE id = ?').bind(d.deviceId).first()).n, 0);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE id = ?').bind(keep.deviceId).first()).n, 1, 'inactive 100 days: kept (no expiry from inactivity)');
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM fired WHERE device_id = ?').bind(keep.deviceId).first()).n, 0);
 });
 
 test('rate limits: register per IP', async () => {

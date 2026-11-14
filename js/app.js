@@ -19,7 +19,8 @@ import { initPush, scheduleSync, onPushChange } from './push.js';
 import { renderWorkouts, renderExercise } from './views/workouts.js';
 import { openWorkoutForm } from './workoutForm.js';
 import { openProfileEditor } from './profiles.js';
-import { APP_VERSION as APP_VERSION_STR } from './store.js';
+import { APP_VERSION as APP_VERSION_STR, getProfiles, readProfileState, switchProfile } from './store.js';
+import { showMenu, taskMenu, habitMenu } from './itemMenu.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today' },
@@ -54,7 +55,47 @@ function buildNav() {
       h('span.nav-icon', icon(t.icon, { size: 22 })), h('span.nav-label', t.label))));
 }
 
+/**
+ * "#open/task|habit/<profileId>/<id>/<date>" (a tapped reminder): switch profile if needed, show
+ * Today on that date, highlight the item and open its action menu. The hash is replaced with
+ * "#today" first, so back/reload don't trigger it again.
+ */
+function openDeepLink() {
+  const m = /^#open\/(task|habit)\/([^/]+)\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
+  try { history.replaceState(null, '', '#today'); } catch { /* ignore */ }
+  closeAllSheets();
+  let kind, pid, id, date;
+  try { [, kind, pid, id, date] = m.map((x) => decodeURIComponent(x)); } catch { m && (m.length = 0); }
+  const profile = m && getProfiles().find((p) => p.id === pid);
+  const data = profile && readProfileState(pid);
+  const exists = data && (kind === 'task' ? data.tasks.some((t) => t.id === id) : data.habits.some((x) => x.id === id));
+  if (!exists) {
+    ctx.ui.date = todayKey();
+    render();
+    toast('That reminder’s item was deleted.', { force: true });
+    return;
+  }
+  if (getActiveProfile()?.id !== pid) {
+    switchProfile(pid); // re-renders with fresh view state
+    toast(`Switched to ${profile.name}`, { force: true });
+  }
+  ctx.ui.date = date;
+  render();
+  // Highlight the row (if it shows on that day) and open the item's menu.
+  const sel = kind === 'task' ? `.task[data-id="${CSS.escape(id)}"]` : `.habit-row[data-id="${CSS.escape(id)}"]`;
+  const row = document.querySelector(sel);
+  if (row) {
+    row.scrollIntoView({ block: 'center' });
+    row.classList.add('pulse');
+    setTimeout(() => row.classList.remove('pulse'), 2400);
+    (row.querySelector('.task-main, .habit-row-main') || row.querySelector('button'))?.focus({ preventScroll: true });
+  }
+  const menu = kind === 'task' ? taskMenu(id, date) : habitMenu(id, date);
+  if (menu) setTimeout(() => showMenu(menu.title, menu.items, { mode: 'touch' }), row ? 350 : 0);
+}
+
 function render() {
+  if (location.hash.startsWith('#open/')) { openDeepLink(); return; }
   let { name, arg } = parseRoute();
   // "#today/2026-11-20" (from a reminder notification) opens that day, then the URL tidies up.
   if (name === 'today' && arg && /^\d{4}-\d{2}-\d{2}$/.test(arg)) {

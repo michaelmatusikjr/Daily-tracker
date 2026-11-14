@@ -1190,3 +1190,7 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .push-advanced .input { width: 100%; margin-bottom: 10px; font-size: 14px; min-width: 0; }
 .push-advanced .field-label { display: block; margin: 6px 0 4px; }
 .push-advanced .set-desc { display: block; margin-bottom: 6px; }
+/* A reminder's item, opened from its notification. */
+@keyframes pulse-ring { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30%, 70% { box-shadow: 0 0 0 3px var(--accent); } }
+.task.pulse, .habit-row.pulse { animation: pulse-ring 1.2s ease-in-out 2; border-radius: 14px; }
+@media (prefers-reduced-motion: reduce) { .task.pulse, .habit-row.pulse { animation: none; box-shadow: 0 0 0 3px var(--accent); } }

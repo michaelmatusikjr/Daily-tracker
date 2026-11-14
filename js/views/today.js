@@ -148,7 +148,7 @@ export function renderToday() {
       if (hb.schedule.type === 'perWeek') sub.push(`${weekCount(st, hb, k)}/${hb.schedule.times} this week`);
       if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
       if (TOD_LABEL[hb.timeOfDay]) sub.push(TOD_LABEL[hb.timeOfDay]);
-      list.append(attachLi(h('li.habit-row', { style: { '--c': hb.color } },
+      list.append(attachLi(h('li.habit-row', { dataset: { id: hb.id }, style: { '--c': hb.color } },
         h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
           h('span.emoji-bubble', { 'aria-hidden': 'true' }, hb.emoji),
           h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || (hb.reminder && !canFire()) ? h('span.habit-sub', streakBadge(s), hb.reminder && !canFire() ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),

@@ -10,7 +10,7 @@
     "db:init:local": "wrangler d1 execute daily-tracker-push --local --file=schema.sql",
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.mjs"
   },
   "devDependencies": {
     "miniflare": "4.20260730.0",

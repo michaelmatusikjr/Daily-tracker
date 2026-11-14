@@ -93,6 +93,9 @@ js/profiles.js          Avatar, profile menu/editor, photo resizing
 js/workouts.js          Workout logic: units, time parsing, summaries, records, charts, habit link
 js/workoutForm.js       Workout log form
 js/itemMenu.js          Long-press / right-click / keyboard item menus
+js/push.js              Optional Web Push: subscription, rules sync, offline queue
+js/pushConfig.js        Push server URL + VAPID public key (empty = off)
+server/                 Optional Cloudflare Worker push server (see server/README.md)
 js/reminders.js         Reminder permission checks and help text
 js/views/*.js           Today, Habits, Habit detail, Workouts + exercise detail, Calendar, Stats, Settings
 icons/                  SVG + PNG icons (192, 512, maskable 512, apple-touch 180)
@@ -132,7 +135,34 @@ After the first load, the app works fully offline.
 
 When you set a reminder on a task or habit, the app makes sure it can actually appear: it asks for notification permission right then (and switches notifications on), or turns notifications on if you had switched them off. If notifications are blocked, the form explains how to allow them for your platform; on iPhone it explains that reminders need the app on the Home Screen. Reminders that can’t fire get a 🔕 badge, and Settings › Reminders summarises the situation. Turning notifications off while reminders exist asks for confirmation.
 
-There is no push server, so reminders are scheduled **while the app is open or was used recently**. They are shown as system notifications through the service worker. Browsers may suspend background pages, so a reminder is not guaranteed if the app was fully closed. For the same reason the app has no wake-up alarms: a web app can't ring while it's closed or the phone is locked.
+By default there is no server: reminders are scheduled **while the app is open or was used recently** and shown as system notifications through the service worker. Browsers may suspend background pages, so a reminder isn't guaranteed if the app was fully closed. For the same reason the app has no wake-up alarms: a web app can't ring while it's closed or the phone is locked.
+
+### Optional: reminders when the app is closed (Web Push)
+
+If you deploy the small free server in [`server/`](server/README.md) (a Cloudflare Worker with a D1 database), reminders arrive even when the app is closed.
+
+**Setting it up**
+- Put the server URL and public key in `js/pushConfig.js`, or in **Settings › Reminders › Advanced: push server**.
+- Then turn on **Settings › Reminders › Remind me even when the app is closed**.
+- One subscription per device covers every profile.
+- On iPhone and iPad this needs iOS 16.4 or later and the app added to the Home Screen.
+- While the config is empty, nothing push-related is shown and the app works as before.
+
+**How it behaves**
+- The app sends the server one **rule** per task or habit reminder: local time (minus the reminder lead), repeat pattern, skipped and completed days, and your time zone. It re-sends them about 2 s after any change, when the app opens, when it goes to the background, and twice a day.
+- The server repeats the rules itself, so **reminders keep coming even if you don't open the app for weeks**. Daylight-saving changes keep the local time.
+- Changes made while offline are queued and retried with backoff.
+- While the server has an up-to-date copy, the app's own timers stay off, so you don't get duplicates. The notification tags also match, so the system replaces any duplicate.
+- **Limit:** things you complete while the app isn't open here (say, on another device) can't reach the server until you open the app here. Until then, the reminder for that thing still fires.
+
+**Tapping a reminder** opens the exact task or habit. The app switches to its profile if needed (and says so), shows Today on that date, highlights the item and opens its action menu (Mark done, Edit…). If the item was deleted, you see Today and a note saying so. The link (`#open/…`) is then replaced, so going back or reloading doesn't trigger it again.
+
+**Privacy**
+- The server stores your device's push subscription, a hash of its token, your time zone and the reminder rules: titles, bodies, times, repeat patterns, and skipped dates for the next 60 days.
+- With **Hide reminder text** on, notifications just say "Daily Tracker – You have a reminder – tap to open". No task or habit names (or profile names) are sent to the server or shown on the lock screen.
+- Links only contain random ids and a date.
+- Turning the feature off, or resetting the data when no profile needs reminders any more, deletes the device and its rules from the server. Devices the push service reports as gone are deleted too, and so are devices not seen for 180 days.
+- Exports never include the device token.
 
 ## Your data
 

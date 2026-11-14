@@ -1,19 +1,22 @@
 // Reminders while the app is closed: Web Push via the optional server in server/.
-// One subscription per device covers every profile. The app sends the server the full list of
-// upcoming reminder occurrences (next 14 days) and replaces it after every change.
+// One subscription per device covers every profile. The app sends the server one RULE per task or
+// habit reminder (local time + recurrence + time zone) and replaces the set after every change;
+// the server works out each occurrence, so reminders keep coming even if the app isn't opened.
 // Device credentials live in their own localStorage key, so exports never include them.
 import { PUSH_SERVER_URL, VAPID_PUBLIC_KEY } from './pushConfig.js';
 import { getProfiles, readProfileState, getState, update } from './store.js';
-import { reminderOccurrences, reschedule } from './notify.js';
+import { reschedule } from './notify.js';
+import { todayKey, addDays, timeToMin, minToTime, startOfWeek, fmtTime } from './dates.js';
+import { activeHabits, habitDone, weekCount } from './logic.js';
 import { isIOS, isStandalone } from './pwa.js';
 
 const STATE_KEY = 'dailyTracker:push';
 const CONFIG_KEY = 'dailyTracker:pushConfig';
-export const WINDOW_DAYS = 14;
-const MAX_ITEMS = 500;
+const MAX_RULES = 500;
+const NEAR_DAYS = 60; // completions/exceptions sent for the near term only
 const DEBOUNCE_MS = 2000;
 const BACKOFF = [5000, 30000, 120000, 600000, 1800000];
-const RESYNC_AFTER = 12 * 3600000; // re-send at least twice a day so the 14-day window rolls forward
+const RESYNC_AFTER = 12 * 3600000; // re-send at least twice a day (near-term skip dates roll forward)
 
 // ---------- persisted state ----------
 function readJSON(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } }
@@ -49,7 +52,7 @@ export const pushEnabled = () => !!loadState().on && pushConfigured();
 /** True while the server holds an up-to-date schedule: local timers then stay off (no duplicates). */
 export function pushCoversReminders() {
   const s = loadState();
-  return !!(s.on && pushConfigured() && s.lastOk && !s.pending && !s.error && Date.now() - s.lastOk < 2 * RESYNC_AFTER);
+  return !!(s.on && pushConfigured() && s.lastOk && !s.pending && !s.error);
 }
 
 /** Human status for Settings. { kind: 'on'|'pending'|'offline'|'error'|'off'|'ios', text } */
@@ -57,28 +60,81 @@ export function pushStatus() {
   const s = loadState();
   if (isIOS() && !isStandalone()) return { kind: 'ios', text: 'On iPhone and iPad this needs Daily Tracker added to your Home Screen (Share › Add to Home Screen) and iOS 16.4 or later.' };
   if (!pushSupported()) return { kind: 'unsupported', text: 'This browser can’t receive push notifications.' };
-  if (!s.on) return { kind: 'off', text: `Reminders are sent from your server, so they arrive even when the app is closed. They’re planned ${WINDOW_DAYS} days ahead: open the app at least every two weeks to keep them coming.` };
+  if (!s.on) return { kind: 'off', text: 'Your server sends the reminders, so they arrive even when the app is closed. Things you complete on another device can’t reach the server until you open the app here.' };
   if (s.pending && !navigator.onLine) return { kind: 'offline', text: 'Waiting to sync (offline). Your latest changes will be sent when you’re back online.' };
   if (s.error) return { kind: 'error', text: `Couldn’t reach your server: ${s.error}. Retrying automatically.` };
   if (s.pending || !s.lastOk) return { kind: 'pending', text: 'Syncing reminders with your server…' };
-  return { kind: 'on', text: `On – reminders are sent from your server (next ${WINDOW_DAYS} days, last synced ${new Date(s.lastOk).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}).` };
+  return { kind: 'on', text: `On – reminders are sent from your server (last synced ${new Date(s.lastOk).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}).` };
 }
 export const hideTextOn = () => !!loadState().hideText;
 export function setHideText(on) { saveState({ hideText: !!on, hash: null }); changed(); scheduleSync(0); }
 
-// ---------- schedule ----------
-/** The full replacement schedule sent to the server. */
-export function buildSchedule(now = Date.now(), { hideText = hideTextOn() } = {}) {
-  return reminderOccurrences(now + 1000, now + WINDOW_DAYS * 86400000, { profiles: getProfiles() })
-    .slice(0, MAX_ITEMS)
-    .map((r) => ({
-      id: r.key.replace(/[^\w:.-]/g, '_').slice(0, 128),
-      at: r.at,
-      title: hideText ? 'Daily Tracker' : r.title.slice(0, 120),
-      body: hideText ? 'You have a reminder' : r.body.slice(0, 240),
-      url: r.url,
-      tag: r.key.slice(0, 128),
-    }));
+// ---------- rules ----------
+export const HIDDEN_TITLE = 'Daily Tracker';
+export const HIDDEN_BODY = 'You have a reminder – tap to open';
+const safeId = (x) => String(x).replace(/[^\w:.-]/g, '_');
+const RECUR = new Set(['daily', 'weekdays', 'weekly', 'monthly', 'interval']);
+const nearDates = (keys, from, to) => [...new Set(keys)].filter((k) => k >= from && k <= to).sort().slice(-400);
+
+/** Deep link to one occurrence; "{date}" is filled in per occurrence (server and local timers). */
+export const deepLink = (kind, profileId, id, date = '{date}') => `./#open/${kind}/${encodeURIComponent(profileId)}/${encodeURIComponent(id)}/${date}`;
+
+/**
+ * The full replacement schedule: { tz, rules }. One rule per task/habit reminder across every
+ * profile with notifications on. Times are local and already minus the reminder lead; a lead that
+ * crosses midnight sets offsetDays (fire on an earlier day than the occurrence).
+ */
+export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {}) {
+  const profiles = getProfiles();
+  const multi = profiles.length > 1;
+  const from = addDays(today, -1), to = addDays(today, NEAR_DAYS);
+  const rules = [];
+  for (const profile of profiles) {
+    const st = readProfileState(profile.id);
+    if (!st || !st.settings.notifications) continue;
+    const fmt = st.settings.timeFormat;
+    const prefix = multi ? `${profile.name}: ` : '';
+    const text = (title, body) => (hideText ? { title: HIDDEN_TITLE, body: HIDDEN_BODY } : { title: (prefix + title).slice(0, 120), body: body.slice(0, 240) });
+    for (const t of st.tasks) {
+      if (!t.time || t.reminder === null || t.reminder === undefined) continue;
+      const recur = RECUR.has(t.recur?.type) ? t.recur.type : 'none';
+      if (recur === 'none' && (t.done || t.date < from)) continue;
+      const mins = timeToMin(t.time) - (t.reminder || 0);
+      const r = {
+        id: safeId(`${profile.id}:t:${t.id}`).slice(0, 128), kind: 'task',
+        ...text(t.title, t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now'),
+        url: deepLink('task', profile.id, t.id), tag: `${profile.id}:t:${t.id}:{date}`.slice(0, 128),
+        time: minToTime(((mins % 1440) + 1440) % 1440), offsetDays: Math.floor(mins / 1440),
+        recur: recur === 'none' ? { type: 'none' } : { type: recur, start: t.date, ...(recur === 'weekly' ? { days: t.recur.days || [] } : {}), ...(recur === 'interval' ? { interval: Math.max(1, t.recur.interval || 1) } : {}) },
+        exceptions: nearDates(t.exceptions || [], from, '9999-12-31'),
+        skipDates: nearDates(Object.keys(t.doneDates || {}).filter((k) => t.doneDates[k]), from, to),
+      };
+      if (recur === 'none') r.date = t.date;
+      rules.push(r);
+    }
+    for (const hb of activeHabits(st)) {
+      if (!hb.reminder) continue;
+      const type = hb.schedule?.type;
+      const start = /^\d{4}-\d{2}-\d{2}$/.test(hb.createdAt || '') && hb.createdAt < today ? hb.createdAt : today;
+      const recur = type === 'days' ? { type: 'weekly', start, days: [...(hb.schedule.days || [])] } : { type: 'daily', start };
+      if (type === 'days' && !recur.days.length) continue;
+      const skip = [];
+      for (let k = from; k <= addDays(today, 1); k = addDays(k, 1)) if (habitDone(st, hb, k)) skip.push(k);
+      // X-per-week: once this week's target is met, skip the rest of the week (later weeks remind daily).
+      if (type === 'perWeek' && weekCount(st, hb, today) >= (hb.schedule.times || 1)) {
+        const ws = startOfWeek(today, st.settings.weekStart ?? 1);
+        for (let i = 0; i < 7; i++) { const k = addDays(ws, i); if (k >= today) skip.push(k); }
+      }
+      rules.push({
+        id: safeId(`${profile.id}:h:${hb.id}`).slice(0, 128), kind: 'habit',
+        ...text(`${hb.emoji} ${hb.name}`, 'Time for your habit'),
+        url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:h:${hb.id}:{date}`.slice(0, 128),
+        time: hb.reminder, offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
+      });
+    }
+  }
+  const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
+  return { tz, rules: rules.slice(0, MAX_RULES) };
 }
 
 // ---------- server calls ----------
@@ -205,8 +261,8 @@ export async function syncNow({ keepalive = false, force = false } = {}) {
   clearTimeout(debounceTimer);
   if (inflight) { await inflight.catch(() => {}); }
   inflight = (async () => {
-    const items = buildSchedule();
-    const hash = hashOf(items);
+    const schedule = buildRules();
+    const hash = hashOf(schedule);
     let s = loadState();
     // Nothing changed and the server copy is fresh: skip the network.
     if (!force && s.hash === hash && s.lastOk && !s.pending && !s.error && Date.now() - s.lastOk < RESYNC_AFTER) return true;
@@ -214,11 +270,11 @@ export async function syncNow({ keepalive = false, force = false } = {}) {
     if (!navigator.onLine) { saveState({ error: null }); changed(); reschedule(); return false; }
     try {
       try {
-        await api('PUT', '/api/schedule', { items }, { keepalive });
+        await api('PUT', '/api/schedule', schedule, { keepalive });
       } catch (e) {
         if (e.status !== 401) throw e;
         await reRegister(); // the server forgot this device (e.g. it was purged): register again
-        await api('PUT', '/api/schedule', { items }, { keepalive });
+        await api('PUT', '/api/schedule', schedule, { keepalive });
       }
       attempt = 0;
       clearTimeout(retryTimer);
@@ -269,6 +325,7 @@ export function initPush() {
   });
   setInterval(() => {
     const s = loadState();
+    // Daily: refresh near-term completions/skips (the rules themselves don't expire).
     if (pushEnabled() && (!s.lastOk || Date.now() - s.lastOk > RESYNC_AFTER)) syncNow({ force: true });
   }, 3600000);
   pushOnOpen();

@@ -4,7 +4,7 @@
 import { getProfiles, readProfileState } from './store.js';
 import { todayKey, addDays, dateAt, fmtTime } from './dates.js';
 import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone } from './logic.js';
-import { pushCoversReminders } from './push.js';
+import { pushCoversReminders, deepLink, hideTextOn, HIDDEN_TITLE, HIDDEN_BODY } from './push.js';
 
 const FIRED_KEY = 'dailyTracker:fired';
 let timers = [];
@@ -56,7 +56,7 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
     const prefix = multi ? `${profile.name}: ` : '';
     const add = (key, at, title, body, k, stillDue) => {
       if (at < from || at > until) return;
-      out.push({ key: `${profile.id}:${key}`, at, title: prefix + title, body, url: `./#today/${k}`, profileId: profile.id, stillDue });
+      out.push({ key: `${profile.id}:${key}`, at, title: prefix + title, body, url: deepLink(key[0] === 't' ? 'task' : 'habit', profile.id, key.split(':')[1], k), profileId: profile.id, stillDue });
     };
     for (const k of days) {
       for (const t of tasksOn(st, k)) {
@@ -91,7 +91,9 @@ export function reschedule() {
       const s2 = readProfileState(r.profileId);
       if (!s2 || !s2.settings.notifications || !r.stillDue(s2) || loadFired()[r.key]) return;
       markFired(r.key);
-      showNotification(r.title, r.body, r.key, r.url);
+      // Same tag and deep link as the pushed copy of this occurrence.
+      if (hideTextOn()) showNotification(HIDDEN_TITLE, HIDDEN_BODY, r.key, r.url);
+      else showNotification(r.title, r.body, r.key, r.url);
     }, Math.max(0, r.at - now)));
   }
 }
