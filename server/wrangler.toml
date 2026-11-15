@@ -14,10 +14,15 @@ database_name = "daily-tracker-push"
 database_id = "REPLACE_WITH_YOUR_DATABASE_ID"
 
 [vars]
-# Public key from `npm run gen-vapid` (also paste it into the app's settings).
+# Public key from `npm run setup-keys` (also paste it into the app's settings).
 VAPID_PUBLIC_KEY = ""
 # A contact address for push services. Replace with your own mailto: or https: URL.
 VAPID_SUBJECT = "mailto:you@example.com"
 # The app's origin(s), comma-separated, no trailing slash, e.g. "https://yourname.github.io"
 ALLOWED_ORIGINS = ""
-# VAPID_PRIVATE_KEY is a secret: `npx wrangler secret put VAPID_PRIVATE_KEY` (never put it here).
+# Most devices that may register (stops strangers filling your free quota). Default 20.
+MAX_DEVICES = "20"
+# Secrets (never put them here), set after the first deploy:
+#   npx wrangler secret put VAPID_PRIVATE_KEY
+#   npx wrangler secret put REGISTER_KEY
+

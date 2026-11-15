@@ -14,7 +14,10 @@ export const LIMITS = {
   scheduleBody: 256 * 1024,
   smallBody: 8 * 1024,
   sendBatch: 200,             // pushes per cron run (free-tier CPU friendly)
+  perDevice: 10,              // due rules per device per cron run (round-robin, so no device starves another)
   concurrency: 6,
+  maxDevicesDefault: 20,      // override with the MAX_DEVICES var
+  cronStaleMs: 5 * 60000,     // health: the timer counts as stopped after 5 min without a run
   rate: { register: 10, schedule: 120, subscription: 30 }, // per hour (register: per IP; others: per device)
 };
 
@@ -29,7 +32,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device, X-Register-Key',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
@@ -59,13 +62,24 @@ const randomId = (bytes) => b64urlEncode(crypto.getRandomValues(new Uint8Array(b
 // ---------- Validation ----------
 const isStr = (v, max, min = 0) => typeof v === 'string' && v.length >= min && v.length <= max;
 
+// Only real browser push services: the server must never be usable to call arbitrary hosts.
+const PUSH_HOSTS = ['fcm.googleapis.com', 'updates.push.services.mozilla.com'];
+const PUSH_SUFFIXES = ['.push.services.mozilla.com', '.push.apple.com', '.notify.windows.com'];
+export function isPushServiceUrl(u) {
+  if (typeof u === 'string') { try { u = new URL(u); } catch { return false; } }
+  if (u.protocol !== 'https:' || u.username || u.password || u.port) return false;
+  const host = u.hostname.toLowerCase();
+  if (/^[\d.]+$/.test(host) || host.includes(':') || host.startsWith('[')) return false; // no IP literals
+  return PUSH_HOSTS.includes(host) || PUSH_SUFFIXES.some((s) => host.endsWith(s) && host.length > s.length);
+}
+
 export function validateSubscription(sub) {
   if (!sub || typeof sub !== 'object') throw new HttpError(400, 'subscription is required');
   const { endpoint, keys } = sub;
   if (!isStr(endpoint, 1024, 10)) throw new HttpError(400, 'Invalid endpoint');
   let u;
   try { u = new URL(endpoint); } catch { throw new HttpError(400, 'Invalid endpoint'); }
-  if (u.protocol !== 'https:') throw new HttpError(400, 'Endpoint must be https');
+  if (!isPushServiceUrl(u)) throw new HttpError(400, 'Endpoint is not a known push service');
   if (!keys || !isStr(keys.p256dh, 200, 80) || !isStr(keys.auth, 50, 16)) throw new HttpError(400, 'Invalid subscription keys');
   try {
     const p = b64urlDecode(keys.p256dh), a = b64urlDecode(keys.auth);
@@ -164,12 +178,17 @@ async function route(request, env, now) {
   const path = url.pathname.replace(/\/+$/, '');
   const ip = request.headers.get('CF-Connecting-IP') || 'local';
 
-  if (path === '/api/health' && request.method === 'GET') {
-    return json({ ok: true, time: now, vapid: !!env.VAPID_PUBLIC_KEY });
-  }
+  if (path === '/api/health' && request.method === 'GET') return json(await health(env, now));
 
   if (path === '/api/register' && request.method === 'POST') {
+    // Only people who know the register key (set by the server's owner) can add devices.
+    if (!env.REGISTER_KEY) throw new HttpError(503, 'Server not set up: REGISTER_KEY is missing');
     await rateLimit(env, 'reg:' + ip, LIMITS.rate.register, now);
+    const given = request.headers.get('X-Register-Key') || '';
+    if (!timingSafeEqual(await sha256Hex(given), await sha256Hex(env.REGISTER_KEY))) throw new HttpError(403, 'Wrong register key');
+    const max = Number(env.MAX_DEVICES) > 0 ? Number(env.MAX_DEVICES) : LIMITS.maxDevicesDefault;
+    const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM devices').first();
+    if (n >= max) throw new HttpError(503, 'Device limit reached');
     const body = await readJson(request, LIMITS.smallBody);
     const sub = validateSubscription(body.subscription);
     const deviceId = randomId(16); // 128-bit
@@ -244,19 +263,65 @@ export async function handleFetch(request, env, now = Date.now()) {
   }
 }
 
+// ---------- Health ----------
+async function readMeta(env) {
+  const out = {};
+  for (const r of (await env.DB.prepare('SELECT key, value FROM meta').all()).results) out[r.key] = r.value;
+  return out;
+}
+/** Configuration and timer status, so the app can explain problems in plain words. */
+export async function health(env, now = Date.now()) {
+  const vapidPublic = typeof env.VAPID_PUBLIC_KEY === 'string' && /^[A-Za-z0-9_-]{86,88}$/.test(env.VAPID_PUBLIC_KEY);
+  let vapidPrivate = false;
+  if (vapidPublic && env.VAPID_PRIVATE_KEY) {
+    try { await importVapidKeys(env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY); vapidPrivate = true; } catch { /* invalid */ }
+  }
+  let db = true, meta = {};
+  try { meta = await readMeta(env); } catch { db = false; }
+  const lastCronAt = meta.lastCronAt ? Number(meta.lastCronAt) : null;
+  const cronOk = !!lastCronAt && now - lastCronAt < LIMITS.cronStaleMs && !meta.lastCronError;
+  return {
+    ok: vapidPublic && vapidPrivate && !!env.REGISTER_KEY && db && cronOk,
+    time: now, vapidPublic, vapidPublicKey: vapidPublic ? env.VAPID_PUBLIC_KEY : null, vapidPrivate,
+    registerKey: !!env.REGISTER_KEY, db, lastCronAt, lastCronError: meta.lastCronError || null,
+  };
+}
+
 // ---------- Cron ----------
 /**
  * Send every rule occurrence due in (now − 15 min, now] that hasn't been sent, then move each
  * rule's next_at forward. Occurrences missed by more than 15 minutes are skipped, never sent late.
  */
-export async function runCron(env, now = Date.now(), { fetchImpl = fetch } = {}) {
+export async function runCron(env, now = Date.now(), opts = {}) {
+  // Heartbeat for /api/health: when the timer last ran, and whether it failed.
+  const beat = (error) => env.DB.batch([
+    env.DB.prepare("INSERT INTO meta (key, value) VALUES ('lastCronAt', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1").bind(String(now)),
+    error ? env.DB.prepare("INSERT INTO meta (key, value) VALUES ('lastCronError', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1").bind(String(error).slice(0, 200))
+      : env.DB.prepare("DELETE FROM meta WHERE key = 'lastCronError'"),
+  ]);
+  try {
+    const stats = await cronRun(env, now, opts);
+    await beat(null);
+    return stats;
+  } catch (e) {
+    await beat(e?.message || 'error').catch(() => {});
+    throw e;
+  }
+}
+
+async function cronRun(env, now, { fetchImpl = fetch } = {}) {
   const stats = { sent: 0, failed: 0, gone: 0, skippedLate: 0, purged: false };
+  // Fair selection: each device's earliest due rules first, round-robin across devices
+  // (every device's 1st, then every device's 2nd, …), at most perDevice each, sendBatch in all.
   const { results } = await env.DB.prepare(
-    `SELECT r.device_id, r.rule_id, r.def, r.next_at, r.next_date, d.tz, d.endpoint, d.p256dh, d.auth
-       FROM rules r JOIN devices d ON d.id = r.device_id
-      WHERE r.next_at IS NOT NULL AND r.next_at <= ?1
-      ORDER BY r.next_at LIMIT ?2`,
-  ).bind(now, LIMITS.sendBatch).all();
+    `SELECT * FROM (
+       SELECT r.device_id, r.rule_id, r.def, r.next_at, r.next_date, d.tz, d.endpoint, d.p256dh, d.auth,
+              ROW_NUMBER() OVER (PARTITION BY r.device_id ORDER BY r.next_at, r.rule_id) AS rn
+         FROM rules r JOIN devices d ON d.id = r.device_id
+        WHERE r.next_at IS NOT NULL AND r.next_at <= ?1)
+      WHERE rn <= ?3
+      ORDER BY rn, next_at LIMIT ?2`,
+  ).bind(now, LIMITS.sendBatch, LIMITS.perDevice).all();
   if (results.length) {
     const toSend = results.filter((r) => r.next_at > now - LIMITS.lateWindowMs);
     stats.skippedLate = results.length - toSend.length;
@@ -317,5 +382,5 @@ export async function purge(env, now = Date.now()) {
 
 export default {
   fetch: (request, env) => handleFetch(request, env),
-  scheduled: (event, env, ctx) => { ctx.waitUntil(runCron(env, event.scheduledTime || Date.now())); },
+  scheduled: (event, env, ctx) => { ctx.waitUntil(runCron(env, event.scheduledTime || Date.now()).catch((e) => console.error('cron failed', e?.message))); },
 };

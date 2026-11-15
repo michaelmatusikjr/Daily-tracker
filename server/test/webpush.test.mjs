@@ -99,9 +99,9 @@ test('sendPush posts an encrypted body with the Web Push headers', async () => {
   assert.equal(gone.gone, true);
 });
 
-test('gen-vapid keys work with the reference library', async () => {
+test('setup-keys output works with the reference library', async () => {
   const { execFileSync } = await import('node:child_process');
-  const out = execFileSync(process.execPath, [new URL('../scripts/gen-vapid.mjs', import.meta.url).pathname]).toString();
+  const out = execFileSync(process.execPath, [new URL('../scripts/setup-keys.mjs', import.meta.url).pathname]).toString();
   const [pub, priv] = out.split('\n').filter((l) => /^[A-Za-z0-9_-]{40,}$/.test(l));
   assert.equal(b64urlDecode(pub).length, 65);
   assert.equal(b64urlDecode(priv).length, 32);

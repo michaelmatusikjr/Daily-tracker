@@ -33,3 +33,8 @@ CREATE TABLE IF NOT EXISTS rate (
   win   INTEGER NOT NULL,
   count INTEGER NOT NULL
 );
+-- Server status (cron heartbeat) for /api/health.
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

@@ -65,7 +65,7 @@ export async function vapidAuth(endpoint, { key, publicKey }, subject, nowSec = 
  * Send one push. Returns { status, ok, gone } where gone means the subscription is dead (404/410).
  * `vapid` = result of importVapidKeys; `authCache` (Map) reuses JWTs per push-service origin.
  */
-export async function sendPush(sub, payloadObj, { vapid, subject, ttl = 1800, urgency = 'high', authCache = null, fetchImpl = fetch }) {
+export async function sendPush(sub, payloadObj, { vapid, subject, ttl = 1800, urgency = 'high', authCache = null, fetchImpl = fetch, timeoutMs = 10000 }) {
   const body = await encryptPayload(utf8(JSON.stringify(payloadObj)), sub);
   const origin = new URL(sub.endpoint).origin;
   let authorization = authCache?.get(origin);
@@ -77,6 +77,7 @@ export async function sendPush(sub, payloadObj, { vapid, subject, ttl = 1800, ur
       'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream',
     },
     body,
+    signal: AbortSignal.timeout(timeoutMs), // a slow push service can't hold the cron run
   });
   return { status: res.status, ok: res.status >= 200 && res.status < 300, gone: res.status === 404 || res.status === 410 };
 }
