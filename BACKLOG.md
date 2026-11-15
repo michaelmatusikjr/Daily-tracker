@@ -10,6 +10,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - Marking missed only hides it from Today for that day. It is not required: anything not marked complete already counts as missed.
   - It doesn't count as done: streaks and completion stats treat it exactly like any other missed day.
   - Should be undoable (Undo toast, and "Unmark missed" from the menu or from a small "Missed (n)" section).
-- **Added:** 2026-11-14
+- **Added:** 2026-11-15
 
 ## Done
