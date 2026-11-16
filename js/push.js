@@ -166,7 +166,7 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
     for (const t of st.tasks) {
       if (!t.time || t.reminder === null || t.reminder === undefined) continue;
       const recur = RECUR.has(t.recur?.type) ? t.recur.type : 'none';
-      if (recur === 'none' && (t.done || t.date < from)) continue;
+      if (recur === 'none' && (t.done || t.date < from || t.missedDates?.[t.date])) continue;
       const mins = timeToMin(t.time) - (t.reminder || 0);
       const r = {
         id: safeId(`${profile.id}:t:${t.id}`).slice(0, 128), kind: 'task',
@@ -175,7 +175,8 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
         time: minToTime(((mins % 1440) + 1440) % 1440), offsetDays: Math.floor(mins / 1440),
         recur: recur === 'none' ? { type: 'none' } : { type: recur, start: t.date, ...(recur === 'weekly' ? { days: t.recur.days || [] } : {}), ...(recur === 'interval' ? { interval: Math.max(1, t.recur.interval || 1) } : {}) },
         exceptions: nearDates(t.exceptions || [], from, '9999-12-31'),
-        skipDates: nearDates(Object.keys(t.doneDates || {}).filter((k) => t.doneDates[k]), from, to),
+        // Done or marked missed: no reminder that day.
+        skipDates: nearDates([...Object.keys(t.doneDates || {}).filter((k) => t.doneDates[k]), ...Object.keys(t.missedDates || {})], from, to),
       };
       if (recur === 'none') r.date = t.date;
       rules.push(r);
@@ -188,6 +189,7 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
       if (type === 'days' && !recur.days.length) continue;
       const skip = [];
       for (let k = from; k <= addDays(today, 1); k = addDays(k, 1)) if (habitDone(st, hb, k)) skip.push(k);
+      skip.push(...Object.keys(hb.missed || {})); // marked missed: no reminder that day
       // X-per-week: once this week's target is met, skip the rest of the week (later weeks remind daily).
       if (type === 'perWeek' && weekCount(st, hb, today) >= (hb.schedule.times || 1)) {
         const ws = startOfWeek(today, st.settings.weekStart ?? 1);

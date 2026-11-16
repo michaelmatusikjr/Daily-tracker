@@ -207,9 +207,16 @@ function pushRows() {
       const was = pushEnabled();
       const next = clear ? { serverUrl: '', publicKey: '', registerKey: '' } : { serverUrl: url.value, publicKey: key.value, registerKey: rkey.value };
       const cur = pushConfig();
-      if (was && (next.serverUrl.trim().replace(/\/+$/, '') !== cur.serverUrl || next.publicKey.trim() !== cur.publicKey)) await disablePush();
       setPushConfig(next);
-      toast(clear ? 'Push server cleared' : (pushConfigured() ? (was ? 'Saved. Turn closed-app reminders on again to use the new server.' : 'Saved. You can now turn on closed-app reminders.') : 'Saved'), { force: true });
+      const now = pushConfig();
+      // Only a different server or key turns push off (the device is registered with the old one).
+      const turnedOff = was && (now.serverUrl !== cur.serverUrl || now.publicKey !== cur.publicKey);
+      if (turnedOff) await disablePush();
+      let msg = 'Saved';
+      if (turnedOff) msg = 'Saved. Turn closed-app reminders on again to use the new server.';
+      else if (!was && pushConfigured()) msg = 'Saved. You can now turn on closed-app reminders.';
+      if (clear && !turnedOff) msg = 'Push server settings cleared';
+      toast(msg, { force: true });
       ctx.rerender();
     } catch (e) { err.textContent = e.message; }
   };

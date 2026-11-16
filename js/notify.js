@@ -61,17 +61,17 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
     };
     for (const k of days) {
       for (const t of tasksOn(st, k)) {
-        if (!t.time || t.reminder === null || isTaskDone(t, k)) continue;
+        if (!t.time || t.reminder === null || isTaskDone(t, k) || t.missedDates?.[k]) continue;
         // Local fire time = task time minus the lead, as wall-clock time (same as the push server).
         const mins = timeToMin(t.time) - t.reminder;
         const at = dateAt(addDays(k, Math.floor(mins / 1440)), minToTime(((mins % 1440) + 1440) % 1440)).getTime();
         add(`t:${t.id}:${k}`, at, t.title, t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now', k,
-          (s2) => { const x = s2.tasks.find((y) => y.id === t.id); return x && !isTaskDone(x, k); });
+          (s2) => { const x = s2.tasks.find((y) => y.id === t.id); return x && !isTaskDone(x, k) && !x.missedDates?.[k]; });
       }
       for (const hb of activeHabits(st)) {
-        if (!hb.reminder || !isDueOn(st, hb, k) || habitDone(st, hb, k)) continue;
+        if (!hb.reminder || !isDueOn(st, hb, k) || habitDone(st, hb, k) || hb.missed?.[k]) continue;
         add(`h:${hb.id}:${k}`, dateAt(k, hb.reminder).getTime(), habitText(hb), 'Time for your habit', k,
-          (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && !habitDone(s2, x, k); });
+          (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && !habitDone(s2, x, k) && !x.missed?.[k]; });
       }
     }
   }

@@ -131,9 +131,10 @@ function monthCalendar(hb) {
     const v = habitVal(st, hb, k);
     const done = v >= target;
     const off = hb.schedule.type === 'days' && !isScheduled(hb, k);
-    grid.append(h(`button.mc-day${done ? '.done' : ''}${v && !done ? '.partial' : ''}${off ? '.off' : ''}${k === today ? '.today' : ''}`, {
+    const missed = !done && !!hb.missed?.[k];
+    grid.append(h(`button.mc-day${done ? '.done' : ''}${v && !done ? '.partial' : ''}${off ? '.off' : ''}${missed ? '.missed' : ''}${k === today ? '.today' : ''}`, {
       type: 'button', disabled: k > today, style: { '--c': hb.color },
-      'aria-pressed': String(done), 'aria-label': `${fmtDateShort(k)}: ${done ? 'done' : 'not done'}`,
+      'aria-pressed': String(done), 'aria-label': `${fmtDateShort(k)}: ${done ? 'done' : missed ? 'missed' : 'not done'}`,
       onclick: () => toggleHabitDay(hb.id, k),
     }, String(Number(k.slice(8)))));
   }

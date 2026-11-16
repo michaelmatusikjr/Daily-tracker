@@ -29,6 +29,8 @@ export function occursOn(t, k) {
 }
 
 export const isTaskDone = (t, k) => (isRecurring(t) ? !!t.doneDates?.[k] : !!t.done);
+/** Marked "missed" for day k (and not done: done always wins). Only hides it from Today's lists. */
+export const isTaskMissed = (t, k) => !!t.missedDates?.[k] && !isTaskDone(t, k);
 
 export const tasksOn = (state, k) => state.tasks.filter((t) => occursOn(t, k));
 
@@ -40,7 +42,7 @@ export function splitTasks(tasks) {
 
 export function overdueTasks(state, today = todayKey()) {
   return state.tasks
-    .filter((t) => !isRecurring(t) && !t.done && t.date < today)
+    .filter((t) => !isRecurring(t) && !t.done && t.date < today && !t.missedDates?.[t.date])
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
@@ -70,6 +72,7 @@ export const activeHabits = (state) => state.habits.filter((h) => !h.archived).s
 export const habitTarget = (h) => (h.goal?.type === 'count' ? Math.max(1, h.goal.target || 1) : 1);
 export const habitVal = (state, h, k) => state.logs[h.id]?.[k] || 0;
 export const habitDone = (state, h, k) => habitVal(state, h, k) >= habitTarget(h);
+export const isHabitMissed = (state, h, k) => !!h.missed?.[k] && !habitDone(state, h, k);
 
 /** Is the habit expected on that weekday (for day-based schedules)? perWeek: any day counts. */
 export function isScheduled(h, k) {

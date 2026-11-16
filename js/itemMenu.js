@@ -8,7 +8,7 @@ import { todayKey, addDays, fmtDateShort, fmtDateLong } from './dates.js';
 import {
   toggleTask, deleteTask, moveTask, duplicateTask, skipTaskDay,
   bumpHabit, toggleHabitDay, resetHabitDay, setArchived, deleteHabit,
-  deleteWorkout, setExerciseArchived,
+  deleteWorkout, setExerciseArchived, setMissed,
 } from './actions.js';
 import { openTaskForm, openHabitForm } from './forms.js';
 import { openWorkoutForm } from './workoutForm.js';
@@ -90,6 +90,10 @@ export function taskMenu(id, k) {
       rec ? { label: 'Skip this day', icon: 'skip', run: () => skipTaskDay(id, k) } : null,
       !rec && t.date !== tomorrow ? { label: 'Move to tomorrow', icon: 'arrowRight', run: () => moveTask(id, tomorrow) } : null,
       !rec ? { label: 'Move to…', icon: 'calendar', run: () => pickDate(t) } : null,
+      // Give up on it for this day: hidden from Today, still counts as not done.
+      k <= todayKey() && !done ? (t.missedDates?.[k]
+        ? { label: 'Unmark missed', icon: 'undo', run: () => setMissed('task', id, k, false) }
+        : { label: 'Mark as missed', icon: 'skip', run: () => setMissed('task', id, k, true) }) : null,
       { label: 'Duplicate', icon: 'copy', run: () => duplicateTask(id) },
       { label: rec ? 'Delete…' : 'Delete', icon: 'trash', danger: true, run: () => deleteTask(id, k) },
     ],
@@ -114,6 +118,9 @@ export function habitMenu(id, k = todayKey()) {
       can && count && v > 0 ? { label: 'Remove one', icon: 'minus', run: () => bumpHabit(id, k, -1) } : null,
       can ? { label: done ? `Mark not done ${dayWord}` : `Mark done ${dayWord}`, icon: done ? 'undo' : 'check', run: () => toggleHabitDay(id, k) } : null,
       can && count && v > 0 ? { label: `Reset ${dayWord}`, icon: 'undo', run: () => resetHabitDay(id, k) } : null,
+      can && !done ? (hb.missed?.[k]
+        ? { label: 'Unmark missed', icon: 'undo', run: () => setMissed('habit', id, k, false) }
+        : { label: 'Mark as missed', icon: 'skip', run: () => setMissed('habit', id, k, true) }) : null,
       { label: hb.archived ? 'Unarchive' : 'Archive', icon: 'archive', run: () => setArchived(id, !hb.archived) },
       {
         label: 'Delete', icon: 'trash', danger: true,

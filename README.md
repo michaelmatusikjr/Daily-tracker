@@ -62,6 +62,15 @@ A calm, offline-first **daily planner + habit tracker** that runs entirely in yo
 - **Exercise** (manage list and filter chips): Edit · View history · Archive · Delete (offers Archive instead when it has history).
 - **Calendar day:** Open day · Add task on this day · Log workout on this day (not for future days).
 
+**Mark as missed:** if you know you won't get to a habit or task today (say, morning prayer and the morning is gone), long-press it and choose **Mark as missed**.
+- It leaves Today's lists, and a missed one-off task also leaves the "Unfinished from earlier" list.
+- It gets no reminder that day.
+- It still counts as **not done** everywhere: streaks, the progress ring, completion %, Stats and the calendar.
+- You never have to mark misses: anything you don't complete is missed anyway. This only tidies the list.
+- A collapsed **Missed (n)** section at the bottom of Today lists them; tap one to **Unmark missed** or **Mark done**. Marking it done later clears "missed".
+- It's offered only for today or earlier, and not for items already done.
+- The habit page's month calendar shows missed days with a small "–".
+
 **Settings** (profile menu › Settings, the side nav on wide screens, or `#settings`): theme (auto/light/dark), 6 accent colours, week start (Mon/Sun), 12h/24h time, workout units and the optional habit link, task categories, notifications, install button (or iOS instructions), JSON export/import with validation, reset this profile (asks twice), the welcome tour again, and the app version.
 
 **Quality**

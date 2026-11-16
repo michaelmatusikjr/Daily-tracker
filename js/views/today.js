@@ -3,13 +3,13 @@ import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { avatarEl, openProfileMenu } from '../profiles.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, tasksOn, splitTasks, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, MOODS, weekCount } from '../logic.js';
+import { dayProgress, tasksOn, splitTasks, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, MOODS, weekCount, isTaskMissed, isHabitMissed } from '../logic.js';
 import { fmt as fmtDate, diffDays, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, greeting, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
 import { taskRow, habitControl, streakBadge, timeRange, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
 import { moveToToday, reorderTasks, setMood, setNote, bumpHabit } from '../actions.js';
 import { openQuickAdd } from '../forms.js';
-import { attachMenu, habitMenu } from '../itemMenu.js';
+import { attachMenu, habitMenu, taskMenu, showMenu } from '../itemMenu.js';
 import { habitIcon } from '../habitIcon.js';
 
 const TOD_ORDER = { morning: 0, afternoon: 1, evening: 2, anytime: 3 };
@@ -135,10 +135,13 @@ export function renderToday() {
   }
 
   // ---- Habits due ----
-  const habits = activeHabits(st)
+  const dueHabits = activeHabits(st)
     .filter((hb) => habitStart(st, hb) <= k || k >= hb.createdAt)
     .filter((hb) => isDueOn(st, hb, k))
     .sort((a, b) => TOD_ORDER[a.timeOfDay] - TOD_ORDER[b.timeOfDay] || a.order - b.order);
+  // "Mark as missed" only hides an item from these lists (it still counts as not done).
+  const habits = dueHabits.filter((hb) => !isHabitMissed(st, hb, k));
+  const missedHabits = dueHabits.filter((hb) => isHabitMissed(st, hb, k));
   if (habits.length) {
     const list = h('ul.habit-rows');
     for (const hb of habits) {
@@ -160,8 +163,10 @@ export function renderToday() {
   }
 
   // ---- Tasks ----
-  const { timed, anytime } = splitTasks(tasksOn(st, k));
-  if (!timed.length && !anytime.length) {
+  const dayTasks = tasksOn(st, k);
+  const missedTasks = dayTasks.filter((t) => isTaskMissed(t, k));
+  const { timed, anytime } = splitTasks(dayTasks.filter((t) => !isTaskMissed(t, k)));
+  if (!dayTasks.length) {
     root.append(h('section.card', emptyState(isToday ? '🌤️' : '🗓️', 'Nothing scheduled',
       'Tap + and type something like “Gym 6pm” or “Call mom tomorrow 14:30”.',
       h('button.btn.primary', { type: 'button', onclick: () => openQuickAdd() }, icon('plus', { size: 18 }), 'Add a task'))));
@@ -192,11 +197,43 @@ export function renderToday() {
 
   menuHint(habits.length + timed.length + anytime.length > 0);
 
+  // ---- Missed (collapsed) ----
+  if (missedHabits.length || missedTasks.length) root.append(missedSection(k, missedHabits, missedTasks));
+
   // ---- Journal ----
   root.append(journalCard(k));
 
   onSwipe(root, { left: () => ctx.setDate(addDays(k, 1)), right: () => ctx.setDate(addDays(k, -1)) });
   return root;
+}
+
+/** Collapsed "Missed (n)": items given up on for this day. Tap one for Unmark missed / Mark done. */
+function missedSection(k, habits, tasks) {
+  const n = habits.length + tasks.length;
+  const open = !!ctx.ui.missedOpen;
+  const head = h('button.collapse-btn', { type: 'button', 'aria-expanded': String(open), onclick: () => { ctx.ui.missedOpen = !open; ctx.rerender(); } },
+    icon('skip', { size: 16 }), `Missed (${n})`, h('span.chev', icon('chevronDown', { size: 16 })));
+  const sec = h('section.section.missed-section', head);
+  if (open) {
+    const rows = [
+      ...habits.map((hb) => {
+        const btn = h('button.missed-item', { type: 'button', style: { '--c': hb.color }, onclick: () => { const m = habitMenu(hb.id, k); if (m) showMenu(m.title, m.items, { mode: 'touch' }); } },
+          h('span.emoji-bubble.small', { 'aria-hidden': 'true' }, habitIcon(hb)), h('span.missed-name', hb.name), h('span.muted.small', 'Habit'));
+        const li = h('li', { dataset: { id: hb.id } }, btn);
+        attachMenu(li, () => habitMenu(hb.id, k), btn);
+        return li;
+      }),
+      ...tasks.map((t) => {
+        const btn = h('button.missed-item', { type: 'button', onclick: () => { const m = taskMenu(t.id, k); if (m) showMenu(m.title, m.items, { mode: 'touch' }); } },
+          h('span.missed-dash', { 'aria-hidden': 'true' }, '–'), h('span.missed-name', t.title), h('span.muted.small', t.time ? fmtTime(t.time, getState().settings.timeFormat) : 'Task'));
+        const li = h('li', { dataset: { id: t.id } }, btn);
+        attachMenu(li, () => taskMenu(t.id, k), btn);
+        return li;
+      }),
+    ];
+    sec.append(h('ul.missed-list', rows), h('p.hint-line', 'Missed items still count as not done. Tap one to bring it back or mark it done.'));
+  }
+  return sec;
 }
 
 function journalSubtitle(entry) {

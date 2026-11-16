@@ -28,7 +28,37 @@ export function setTaskDone(id, k, value) {
     } else {
       x.done = !!value;
     }
+    if (value) clearFlag(x, 'missedDates', isRecurring(x) ? k : null); // done wins over "missed"
     x.updatedAt = Date.now();
+  });
+}
+
+/** Remove date k (or every date when k is null) from a { date: true } map, dropping it when empty. */
+function clearFlag(obj, field, k) {
+  if (!obj?.[field]) return;
+  if (k === null) delete obj[field];
+  else { delete obj[field][k]; if (!Object.keys(obj[field]).length) delete obj[field]; }
+}
+
+// ---------- Missed ----------
+/** Mark a task or habit as missed (or not) for day k, with Undo. Hides it from Today; it still counts as not done. */
+export function setMissed(kind, id, k, on, { silent = false } = {}) {
+  if (k > todayKey()) return;
+  const field = kind === 'task' ? 'missedDates' : 'missed';
+  const list = kind === 'task' ? 'tasks' : 'habits';
+  const item = getState()[list].find((x) => x.id === id);
+  if (!item) return;
+  update((s) => {
+    const x = s[list].find((y) => y.id === id);
+    if (!x) return;
+    if (on) x[field] = { ...(x[field] || {}), [k]: true };
+    else clearFlag(x, field, k);
+    x.updatedAt = Date.now();
+  });
+  if (silent) return;
+  const name = kind === 'task' ? `“${item.title}”` : item.name;
+  toast(on ? `Marked ${name} as missed` : `${name} is back on the list`, {
+    action: 'Undo', onAction: () => setMissed(kind, id, k, !on, { silent: true }),
   });
 }
 
@@ -166,6 +196,7 @@ export function setHabitValue(id, k, v, { silentUndo = false } = {}) {
     if (value > 0) s.logs[id][k] = value; else delete s.logs[id][k];
     // A manual change takes over from the workout link for that day.
     if (s.autoHabit[id]) { delete s.autoHabit[id][k]; if (!Object.keys(s.autoHabit[id]).length) delete s.autoHabit[id]; }
+    if (value >= habitTarget(h)) clearFlag(s.habits.find((x) => x.id === id), 'missed', k); // done wins over "missed"
   });
   const nowDone = value >= habitTarget(h);
   if (nowDone && !wasDone) {

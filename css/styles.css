@@ -1214,3 +1214,16 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .habit-title { gap: .3em; }
 .wrap-seg .segmented { flex-wrap: wrap; }
 .wrap-seg .segmented button { flex: 1 0 auto; }
+
+/* ---------- 1.7.0: Mark as missed ---------- */
+.missed-section { margin-top: var(--s2); }
+.missed-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.missed-item {
+  width: 100%; min-width: 0; box-sizing: border-box; display: flex; align-items: center; gap: var(--s3); min-height: 48px; padding: 6px 12px;
+  border: 1px dashed var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer;
+}
+.missed-item .emoji-bubble { opacity: .6; }
+.missed-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 60%, transparent); }
+.missed-dash { width: 34px; text-align: center; color: var(--text-3); font-weight: 700; flex: none; }
+.mc-day.missed { position: relative; color: var(--text-3); }
+.mc-day.missed::after { content: '–'; position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 10px; line-height: 1; color: var(--text-3); }

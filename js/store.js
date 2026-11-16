@@ -2,7 +2,7 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.6.4';
+export const APP_VERSION = '1.7.0';
 export const SCHEMA_VERSION = 4;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
@@ -95,6 +95,8 @@ function normTask(t, i) {
     done: !!t.done,
     doneDates: isObj(t.doneDates) ? t.doneDates : {},
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.filter(isValidKey) : [],
+    // "Mark as missed": dates the user gave up on (hidden from Today; still counts as not done).
+    ...(dateFlags(t.missedDates) ? { missedDates: dateFlags(t.missedDates) } : {}),
     order: Number.isFinite(t.order) ? t.order : i,
     createdAt: Number.isFinite(t.createdAt) ? t.createdAt : Date.now(),
     ...(Number.isFinite(t.updatedAt) ? { updatedAt: t.updatedAt } : {}),
@@ -112,6 +114,7 @@ function normHabit(hb, i) {
     id: str(hb.id, 40) || uid(),
     name: str(hb.name, 100).trim(),
     emoji: str(hb.emoji, 16) || '✅',
+    ...(dateFlags(hb.missed) ? { missed: dateFlags(hb.missed) } : {}),
     // Optional image icon (e.g. a Genmoji): PNG/JPEG/WebP data URL up to 60 KB, else dropped.
     ...(imageIcon(hb.icon) ? { icon: imageIcon(hb.icon) } : {}),
     color: /^#[0-9a-f]{6}$/i.test(hb.color) ? hb.color : '#6366f1',
@@ -133,6 +136,14 @@ function normHabit(hb, i) {
     createdAt: isValidKey(hb.createdAt) ? hb.createdAt : todayKey(),
     ...(Number.isFinite(hb.updatedAt) ? { updatedAt: hb.updatedAt } : {}),
   };
+}
+
+/** { 'YYYY-MM-DD': true } maps (valid date keys, true values only); null when empty. */
+function dateFlags(v) {
+  if (!isObj(v)) return null;
+  const out = {};
+  for (const [k, val] of Object.entries(v).slice(0, 5000)) if (val === true && isValidKey(k)) out[k] = true;
+  return Object.keys(out).length ? out : null;
 }
 
 function imageIcon(icon) {
