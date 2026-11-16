@@ -52,14 +52,23 @@ function reminderNotice(hasReminder) {
       }, 'How to add it') : null));
   };
   refresh();
-  const off = onPushChange(() => { if (!el.isConnected && el.dataset.shown) { off(); return; } el.dataset.shown = '1'; refresh(); });
+  whileShown(el, refresh);
   return { el, refresh };
+}
+
+/** Run fn on push-state changes while el is in the page; stop listening once it has been removed. */
+function whileShown(el, fn) {
+  let seen = false;
+  const off = onPushChange(() => {
+    if (el.isConnected) { seen = true; fn(); } else if (seen) off();
+  });
+  setTimeout(() => { if (el.isConnected) seen = true; }, 0);
 }
 
 /** Field hint that follows the push state (stops listening once the form is gone). */
 function reachHint() {
   const el = h('span', reminderReach().replace(/^Reminders/, 'Optional. Reminders'));
-  const off = onPushChange(() => { if (!el.isConnected) { off(); return; } el.textContent = reminderReach().replace(/^Reminders/, 'Optional. Reminders'); });
+  whileShown(el, () => { el.textContent = reminderReach().replace(/^Reminders/, 'Optional. Reminders'); });
   return el;
 }
 
