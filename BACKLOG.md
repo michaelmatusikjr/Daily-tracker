@@ -56,7 +56,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Scope:** whether to include bodyweight exercises with a vest (likely not; strength only, as asked).
 - **Size:** small.
 - **Added:** 2026-11-16
-- **Shipped:** v1.8.0 (pending QA before going live)
+- **Shipped:** v1.8.0 (2026-11-16)
 
 ### 5. Non-daily habits counted by their own frequency
 - **What:** habits that aren't daily (e.g. "Work out 3×/week") shouldn't drag down the daily completion percentage. They're judged only against their own target:
@@ -71,4 +71,4 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Capping:** a week counts as complete when the target is met. Extra sessions beyond the target add nothing.
 - **Size:** small–medium.
 - **Added:** 2026-11-16
-- **Shipped:** v1.8.0 (pending QA before going live)
+- **Shipped:** v1.8.0 (2026-11-16)
