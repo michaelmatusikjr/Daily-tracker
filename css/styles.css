@@ -1227,3 +1227,22 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .missed-dash { width: 34px; text-align: center; color: var(--text-3); font-weight: 700; flex: none; }
 .mc-day.missed { position: relative; color: var(--text-3); }
 .mc-day.missed::after { content: '–'; position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 10px; line-height: 1; color: var(--text-3); }
+
+/* ---------- 1.7.2: View task sheet ---------- */
+.task-view-sheet .sheet-title { font-size: 22px; line-height: 1.25; overflow-wrap: anywhere; outline: none; }
+.task-view { display: grid; gap: var(--s3); }
+.tv-state { justify-self: start; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 650; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+.tv-state.done { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
+.tv-status { display: flex; gap: 6px; align-items: center; margin: 0; font-size: 14px; }
+.tv-status.overdue { color: var(--warn); }
+.tv-status.missed { color: var(--text-2); }
+.tv-section { display: grid; gap: 8px; padding: var(--s3); border-radius: 14px; background: var(--surface-2); }
+.tv-head { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-3); }
+.tv-line { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 15px; }
+.tv-line > span { min-width: 0; overflow-wrap: anywhere; }
+.tv-line > svg { color: var(--text-3); flex: none; }
+.tv-prio { color: var(--prio); display: inline-flex; }
+.tv-notes { margin: 0; font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
+.tv-notes a { color: var(--accent); text-decoration: underline; }
+.tv-done { min-height: 52px; font-size: 16px; }
+.tv-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }

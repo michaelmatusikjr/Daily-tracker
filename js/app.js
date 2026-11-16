@@ -20,7 +20,8 @@ import { renderWorkouts, renderExercise } from './views/workouts.js';
 import { openWorkoutForm } from './workoutForm.js';
 import { openProfileEditor } from './profiles.js';
 import { APP_VERSION as APP_VERSION_STR, getProfiles, readProfileState, switchProfile } from './store.js';
-import { showMenu, taskMenu, habitMenu } from './itemMenu.js';
+import { showMenu, habitMenu } from './itemMenu.js';
+import { openTaskView } from './taskView.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today' },
@@ -96,7 +97,9 @@ function openDeepLink() {
     setTimeout(() => row.classList.remove('pulse'), 2400);
     (row.querySelector('.task-main, .habit-row-main') || row.querySelector('button'))?.focus({ preventScroll: true });
   }
-  const menu = kind === 'task' ? taskMenu(id, date) : habitMenu(id, date);
+  // A task opens its View sheet (the row stays highlighted behind it); a habit opens its menu.
+  if (kind === 'task') { setTimeout(() => openTaskView(id, date), row ? 350 : 0); return; }
+  const menu = habitMenu(id, date);
   if (menu) setTimeout(() => showMenu(menu.title, menu.items, { mode: 'touch' }), row ? 350 : 0);
 }
 

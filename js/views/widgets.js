@@ -7,7 +7,7 @@ import { ctx } from '../ctx.js';
 import { bumpHabit, toggleHabitDay, toggleTask } from '../actions.js';
 import { habitVal, habitTarget, isScheduled, habitStart, isTaskDone, isRecurring, PRIORITIES, weekCount, recurrenceLabel } from '../logic.js';
 import { addDays, fmtTime, fmtDuration, weekdayNarrow, weekdayLabels, fmtDateShort, todayKey, timeToMin, minToTime } from '../dates.js';
-import { openTaskForm } from '../forms.js';
+import { openTaskView } from '../taskView.js';
 import { canFire, reminderProblem } from '../reminders.js';
 
 /** Small bell-off badge for a reminder that can't fire right now. */
@@ -114,7 +114,7 @@ export function taskRow(t, k, { draggable = false, showDate = false, nowMin = nu
     'aria-label': done ? `Mark “${t.title}” as not done` : `Complete “${t.title}”`,
     onclick: () => toggleTask(t.id, k),
   }, icon('check', { size: 16 })),
-  h('button.task-main', { type: 'button', onclick: () => openTaskForm(t), 'aria-label': `Edit “${t.title}”` },
+  h('button.task-main', { type: 'button', onclick: () => openTaskView(t.id, k), 'aria-label': `Open “${t.title}”` },
     h('span.task-title', t.title),
     meta.length ? h('span.task-meta', meta) : null),
   t.priority ? h('span.prio-flag', { title: PRIORITIES[t.priority].label + ' priority' }, icon('flag', { size: 14 }), h('span.sr-only', PRIORITIES[t.priority].label + ' priority')) : null,

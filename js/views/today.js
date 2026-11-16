@@ -11,6 +11,7 @@ import { moveToToday, reorderTasks, setMood, setNote, bumpHabit } from '../actio
 import { openQuickAdd } from '../forms.js';
 import { attachMenu, habitMenu, taskMenu, showMenu } from '../itemMenu.js';
 import { habitIcon } from '../habitIcon.js';
+import { openTaskView } from '../taskView.js';
 
 const TOD_ORDER = { morning: 0, afternoon: 1, evening: 2, anytime: 3 };
 const TOD_LABEL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: '' };
@@ -224,7 +225,7 @@ function missedSection(k, habits, tasks) {
         return li;
       }),
       ...tasks.map((t) => {
-        const btn = h('button.missed-item', { type: 'button', onclick: () => { const m = taskMenu(t.id, k); if (m) showMenu(m.title, m.items, { mode: 'touch' }); } },
+        const btn = h('button.missed-item', { type: 'button', onclick: () => openTaskView(t.id, k) },
           h('span.missed-dash', { 'aria-hidden': 'true' }, '–'), h('span.missed-name', t.title), h('span.muted.small', t.time ? fmtTime(t.time, getState().settings.timeFormat) : 'Task'));
         const li = h('li', { dataset: { id: t.id } }, btn);
         attachMenu(li, () => taskMenu(t.id, k), btn);

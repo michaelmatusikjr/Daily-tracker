@@ -62,6 +62,13 @@ A calm, offline-first **daily planner + habit tracker** that runs entirely in yo
 - **Exercise** (manage list and filter chips): Edit · View history · Archive · Delete (offers Archive instead when it has history).
 - **Calendar day:** Open day · Add task on this day · Log workout on this day (not for future days).
 
+**View task:** tapping a task anywhere (Today's timeline, Anytime, the overdue list, the Missed list), or tapping a task's reminder notification, opens a read-only **View task** sheet.
+- It shows the date, time range and repeat rule (and which occurrence you're looking at), priority, category, reminder (with a warning if notifications can't appear), and notes with clickable http(s) links.
+- It flags the task if it's overdue or marked missed.
+- One big button marks that occurrence done or not done. **Edit** opens the form and comes back to the view after saving; **More** has the long-press actions.
+- It updates live, and closes if the task is deleted (in another tab too).
+- The checkbox still toggles done directly, long-press still opens the menu, and new tasks still open the edit form.
+
 **Mark as missed:** if you know you won't get to a habit or task today (say, morning prayer and the morning is gone), long-press it and choose **Mark as missed**.
 - It leaves Today's lists, and a missed one-off task also leaves the "Unfinished from earlier" list.
 - It gets no reminder that day.

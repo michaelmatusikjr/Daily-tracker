@@ -20,7 +20,7 @@ import { openExerciseEditor, confirmDeleteExercise } from './views/workouts.js';
  * Show a menu. items: [{ label, icon, run, danger }] (falsy entries are skipped; danger items go last).
  * Touch → bottom sheet; mouse/keyboard on wide screens → popover anchored to the item.
  */
-export function showMenu(title, items, { mode = 'touch', anchor = null, x = 0, y = 0 } = {}) {
+export function showMenu(title, items, { mode = 'touch', anchor = null, x = 0, y = 0, keepOthers = false } = {}) {
   const list = items.filter(Boolean);
   const ordered = [...list.filter((i) => !i.danger), ...list.filter((i) => i.danger)];
   let at = null;
@@ -30,7 +30,7 @@ export function showMenu(title, items, { mode = 'touch', anchor = null, x = 0, y
   }
   const buttons = ordered.map((it) => h(`button.menu-item${it.danger ? '.danger' : ''}`, {
     type: 'button', role: 'menuitem',
-    onclick: () => { closeAllSheets(); it.run(); },
+    onclick: () => { if (keepOthers) sheet.close(); else closeAllSheets(); it.run(); },
   }, icon(it.icon, { size: 20 }), h('span', it.label)));
   const menu = h('div.menu-list', {
     role: 'menu', 'aria-label': typeof title === 'string' ? title : title.textContent.trim(),
@@ -47,7 +47,8 @@ export function showMenu(title, items, { mode = 'touch', anchor = null, x = 0, y
   }, buttons);
   // Keyboard/mouse: focus the first action. Touch: focus the sheet itself (no focus ring on a row).
   if (mode !== 'touch') buttons[0]?.setAttribute('autofocus', '');
-  return openSheet({ title, content: menu, cls: 'action-menu', at });
+  const sheet = openSheet({ title, content: menu, cls: 'action-menu', at });
+  return sheet;
 }
 
 /** Wire an element to open the menu built by build() (called at open time, so it reflects current state). */
