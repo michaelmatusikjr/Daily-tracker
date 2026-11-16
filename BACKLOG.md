@@ -69,6 +69,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **"Specific days" habits** (e.g. Mon/Wed/Fri) count exactly like daily habits, but only on their scheduled days.
   - **The current week:** it isn't counted against you until it ends. As soon as the weekly target is met, it counts as complete in weekly/overall progress (no need to wait for the week to end).
   - **Capping:** a week counts as complete when the target is met. Extra sessions beyond the target add nothing.
+  - **First, partial week** (habit created mid-week): counts like any other week. If the target isn't met, it's a miss. Decided 2026-11-16, option (c).
 - **Size:** small–medium.
 - **Added:** 2026-11-16
 - **Shipped:** v1.8.0 (2026-11-16)
