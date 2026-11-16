@@ -18,7 +18,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 4. Weather line on Today
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central): one combined update with #4, #6, #7 and #8
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central)
 - **What:** a small, non-interactive line under the week strip on Today, e.g. "📍 Springfield · ⛅ 72° / 51° · 💧 20%":
   - today's high/low temperature and chance of precipitation
   - the location name
@@ -36,7 +36,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 6. Image attachments on tasks
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central): one combined update with #4, #6, #7 and #8
+- **Status:** in progress (v1.9.0), started 2026-11-16
 - **What:** attach one or more photos or images to a task, shown on the View task screen; tap one to see it full size.
 - **Feasible:** yes.
 - **Notes:**
@@ -48,7 +48,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 7. Completed tasks history
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central): one combined update with #4, #6, #7 and #8
+- **Status:** in progress (v1.9.0), started 2026-11-16
 - **What:** a place to see every completed task, searchable, and filterable by category, date (range), priority and so on.
 - **Feasible:** yes; all the data is already stored.
 - **Open details:**
@@ -59,7 +59,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 8. Reminder-note polish (from v1.8.1 QA and user feedback)
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central): one combined update with #4, #6, #7 and #8
+- **Status:** in progress (v1.9.0), started 2026-11-16
 - **What:**
   - **No positive message:** never say "Reminders arrive even when the app is closed". Only show a note when reminders will **not** arrive while the app is closed: push off or unhealthy, notifications blocked, or iOS not installed to the Home Screen.
   - **Blocked notifications:** the habit form currently contradicts the "notifications blocked" note; the reach check must also require notification permission.
