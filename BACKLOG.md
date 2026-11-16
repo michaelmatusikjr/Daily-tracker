@@ -33,6 +33,27 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** small–medium.
 - **Added:** 2026-11-16
 
+### 6. Image attachments on tasks
+- **What:** attach one or more photos or images to a task, shown on the View task screen; tap one to see it full size.
+- **Feasible:** yes.
+- **Notes:**
+  - **Storage:** images can't go in the app's current storage (localStorage, about 5 MB shared by all profiles). They'd be stored in the browser's larger on-device database (IndexedDB), shrunk on the phone first (e.g. up to ~1600 px, JPEG).
+  - **Backups:** Export/Import would need to include the images, so backup files get bigger.
+  - **Sync:** item #2 would have to upload them too.
+  - **Clean-up:** deleting a task deletes its images, unless Undo is used.
+- **Size:** medium.
+- **Added:** 2026-11-16
+
+### 7. Completed tasks history
+- **What:** a place to see every completed task, searchable, and filterable by category, date (range), priority and so on.
+- **Feasible:** yes; all the data is already stored.
+- **Open details:**
+  - **Location:** probably a "Completed" entry reachable from Today and from Stats.
+  - **Repeating tasks:** each completed occurrence appears as its own row.
+  - **Actions:** tapping a row opens View task, so you can un-complete it.
+- **Size:** small–medium.
+- **Added:** 2026-11-16
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
