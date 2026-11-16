@@ -6,6 +6,7 @@ import { icon } from '../icons.js';
 import { ctx } from '../ctx.js';
 import { dayProgress, activeHabits, streaks, completionRate, totalCompletions, habitStart } from '../logic.js';
 import { todayKey, addDays, startOfWeek, fmtDateShort, weekdayNarrow, weekdayLabels, fromKey } from '../dates.js';
+import { habitIcon, habitTitle } from '../habitIcon.js';
 
 const pctStr = (x) => (x === null || Number.isNaN(x) ? '—' : Math.round(x * 100) + '%');
 
@@ -32,7 +33,7 @@ export function renderStats() {
     tile(pctStr(wTotal ? wDone / wTotal : null), 'This week', wTotal ? `${wDone} of ${wTotal} so far` : 'No items yet'),
     tile(String(totalHabitDone), 'Habit check-ins', 'All time'),
     tile(longest && longest.s.current ? `🔥 ${longest.s.current}` : '—', 'Longest active streak',
-      longest && longest.s.current ? `${longest.hb.emoji} ${longest.hb.name}` : 'Start one today')));
+      longest && longest.s.current ? habitTitle(longest.hb) : 'Start one today')));
 
   // Bar chart
   const range = ctx.ui.statsRange;
@@ -59,7 +60,7 @@ export function renderStats() {
       const r30 = completionRate(st, hb, 30, today);
       const all = completionRate(st, hb, null, today);
       list.append(h('li.rate-row', { style: { '--c': hb.color } },
-        h('span.emoji-bubble.small', { 'aria-hidden': 'true' }, hb.emoji),
+        h('span.emoji-bubble.small', { 'aria-hidden': 'true' }, habitIcon(hb)),
         h('div.rate-main',
           h('div.rate-top', h('span.habit-name', hb.name), h('span.rate-val', pctStr(r30))),
           h('div.rate-bar', { role: 'img', 'aria-label': `${hb.name}: ${pctStr(r30)} over the last 30 days, ${pctStr(all)} all time` },

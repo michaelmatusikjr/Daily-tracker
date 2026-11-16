@@ -6,6 +6,7 @@ import { streaks, completionRate, totalCompletions, scheduleLabel, habitVal, hab
 import { todayKey, addDays, startOfWeek, fromKey, fmtDateShort, fmtMonthYear, monthStart, addMonths, daysInMonth, weekdayLabels, fmt, fmtTime } from '../dates.js';
 import { habitControl } from './widgets.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
+import { habitIcon } from '../habitIcon.js';
 import { setArchived, deleteHabit, toggleHabitDay, bumpHabit } from '../actions.js';
 import { openHabitForm } from '../forms.js';
 
@@ -29,7 +30,7 @@ export function renderHabitDetail(id) {
     iconBtn('arrowLeft', 'Back to habits', () => ctx.go('habits')),
     h('div.page-head-text', { style: { '--c': hb.color } },
       h('p.eyebrow', scheduleLabel(hb, dayNames) + (hb.archived ? ' · Archived' : '')),
-      h('h1.page-title', h('span.title-emoji', { 'aria-hidden': 'true' }, hb.emoji), ' ', hb.name)),
+      h('h1.page-title', h('span.title-emoji', { 'aria-hidden': 'true' }, habitIcon(hb)), ' ', hb.name)),
     iconBtn('edit', 'Edit habit', () => openHabitForm(hb))));
 
   // Hero: today's control

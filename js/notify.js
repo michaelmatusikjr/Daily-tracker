@@ -4,6 +4,7 @@
 import { getProfiles, readProfileState } from './store.js';
 import { todayKey, addDays, dateAt, fmtTime, timeToMin, minToTime } from './dates.js';
 import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone } from './logic.js';
+import { habitText } from './habitIcon.js';
 import { pushCoversReminders, deepLink, hideTextOn, HIDDEN_TITLE, HIDDEN_BODY } from './push.js';
 
 const FIRED_KEY = 'dailyTracker:fired';
@@ -69,7 +70,7 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
       }
       for (const hb of activeHabits(st)) {
         if (!hb.reminder || !isDueOn(st, hb, k) || habitDone(st, hb, k)) continue;
-        add(`h:${hb.id}:${k}`, dateAt(k, hb.reminder).getTime(), `${hb.emoji} ${hb.name}`, 'Time for your habit', k,
+        add(`h:${hb.id}:${k}`, dateAt(k, hb.reminder).getTime(), habitText(hb), 'Time for your habit', k,
           (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && !habitDone(s2, x, k); });
       }
     }

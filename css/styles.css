@@ -1194,3 +1194,18 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 @keyframes pulse-ring { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 30%, 70% { box-shadow: 0 0 0 3px var(--accent); } }
 .task.pulse, .habit-row.pulse { animation: pulse-ring 1.2s ease-in-out 2; border-radius: 14px; }
 @media (prefers-reduced-motion: reduce) { .task.pulse, .habit-row.pulse { animation: none; box-shadow: 0 0 0 3px var(--accent); } }
+
+/* ---------- 1.6.2: image habit icons (Genmoji) ---------- */
+.habit-img { width: 72%; height: 72%; object-fit: contain; display: block; pointer-events: none; -webkit-user-drag: none; }
+.title-emoji .habit-img { display: inline-block; width: 1.05em; height: 1.05em; vertical-align: -0.12em; }
+.habit-title { display: inline-flex; align-items: center; gap: 0; min-width: 0; }
+.habit-title .habit-img { width: 1.15em; height: 1.15em; margin-right: 0; flex: none; }
+.stat-sub .habit-img { display: inline-block; width: 1.1em; height: 1.1em; vertical-align: -0.2em; }
+.emoji-preview .habit-img { width: 70%; height: 70%; }
+.icon-image-row { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: 14px; }
+.icon-image-row[hidden] { display: none; }
+.icon-image-panel { margin-top: var(--s2); display: grid; gap: var(--s2); }
+.icon-image-panel[hidden] { display: none; }
+.genmoji-box { min-height: 48px; padding: 12px 14px; cursor: text; white-space: normal; overflow: hidden; font-size: 15px; line-height: 1.3; outline-offset: 2px; }
+.genmoji-box:empty::before { content: attr(data-placeholder); color: var(--text-3); pointer-events: none; }
+.icon-status:empty { display: none; }

@@ -10,6 +10,7 @@ import { openWorkoutForm } from './workoutForm.js';
 import { reminderStatus, reminderProblem, ensureReminderPermission } from './reminders.js';
 import { closeAllSheets } from './ui.js';
 import { dow, fmtTime, fmtDuration, relativeLabel, weekdayLabels, isValidKey, todayKey } from './dates.js';
+import { habitIcon, processIcon, validIcon } from './habitIcon.js';
 
 export const HABIT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316', '#f59e0b', '#10b981', '#14b8a6', '#0ea5e9', '#64748b'];
 const CATEGORY_COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
@@ -383,20 +384,71 @@ export function openHabitForm(habit) {
 
   const name = h('input.input', { type: 'text', value: d.name, placeholder: 'e.g. Drink water, Read, Meditate', maxlength: 100, autofocus: isNew, autocomplete: 'off' });
 
-  // Emoji picker
-  const preview = h('span.emoji-preview', { style: { '--c': d.color }, 'aria-hidden': 'true' }, d.emoji);
+  // Icon picker: emoji grid, custom emoji, or an image (e.g. an iOS Genmoji, which isn't text).
+  if (!validIcon(d.icon)) delete d.icon;
+  const preview = h('span.emoji-preview', { style: { '--c': d.color }, 'aria-hidden': 'true' });
   const emojiGrid = h('div.emoji-grid', { role: 'radiogroup', 'aria-label': 'Icon' });
   const custom = h('input.input.narrow', { type: 'text', maxlength: 8, placeholder: '🙂', 'aria-label': 'Custom emoji', value: EMOJIS.includes(d.emoji) ? '' : d.emoji });
+  const setEmoji = (e) => { d.emoji = e; delete d.icon; renderEmojis(); };
   function renderEmojis() {
+    preview.replaceChildren(habitIcon(d));
     emojiGrid.replaceChildren(...EMOJIS.map((e) => h('button.emoji-btn', {
-      type: 'button', role: 'radio', 'aria-checked': String(e === d.emoji), 'aria-label': e,
-      onclick: () => { d.emoji = e; custom.value = ''; preview.textContent = e; renderEmojis(); },
+      type: 'button', role: 'radio', 'aria-checked': String(!d.icon && e === d.emoji), 'aria-label': e,
+      onclick: () => { custom.value = ''; setEmoji(e); },
     }, e)));
+    imgRow.hidden = !d.icon;
+    imgThumb.replaceChildren(d.icon ? h('img.habit-img', { src: d.icon.data, alt: '' }) : '');
   }
   custom.addEventListener('input', () => {
     const v = firstGrapheme(custom.value.trim());
-    if (v) { d.emoji = v; preview.textContent = v; renderEmojis(); }
+    if (v) setEmoji(v);
   });
+  const imgThumb = h('span.emoji-bubble.small', { 'aria-hidden': 'true' });
+  const imgRow = h('div.icon-image-row', imgThumb, h('span', 'Image icon'),
+    h('button.link-btn', { type: 'button', onclick: () => { delete d.icon; renderEmojis(); iconStatus.textContent = 'Image removed – using the emoji.'; } }, 'Remove image'));
+  const iconStatus = h('p.field-hint.icon-status', { role: 'status', 'aria-live': 'polite' });
+  const useImage = async (src, label = 'Image') => {
+    iconStatus.textContent = 'Processing…';
+    try {
+      d.icon = { type: 'image', data: await processIcon(src) };
+      renderEmojis();
+      iconStatus.textContent = `${label} set as the icon.`;
+    } catch (e) {
+      iconStatus.textContent = e.message || 'That image couldn’t be used.';
+    }
+  };
+  // 1) Paste / Genmoji target. iOS 18 inserts a Genmoji as an inline <img>; plain inputs drop it.
+  const pasteBox = h('div.input.genmoji-box', {
+    contenteditable: 'true', role: 'textbox', tabindex: '0', 'aria-multiline': 'false',
+    'aria-label': 'Tap here, then pick a Genmoji from the emoji keyboard (or paste an image)',
+    'data-placeholder': 'Tap here, then pick a Genmoji from the emoji keyboard (or paste an image)',
+  });
+  pasteBox.addEventListener('paste', (e) => {
+    const cd = e.clipboardData;
+    const file = [...(cd?.files || [])].find((f) => /^image\//.test(f.type))
+      || [...(cd?.items || [])].filter((i) => i.kind === 'file' && /^image\//.test(i.type)).map((i) => i.getAsFile()).find(Boolean);
+    if (file) { e.preventDefault(); pasteBox.replaceChildren(); useImage(file, 'Pasted image'); }
+    // Otherwise let the browser insert it (HTML with <img>, or text) and handle it on `input`.
+  });
+  pasteBox.addEventListener('input', () => {
+    const img = pasteBox.querySelector('img');
+    const text = pasteBox.textContent.trim();
+    pasteBox.replaceChildren();
+    if (img) { useImage(img.currentSrc || img.getAttribute('src'), 'Genmoji'); return; }
+    const v = firstGrapheme(text);
+    if (v && /\p{Extended_Pictographic}|\p{RI}/u.test(v)) { custom.value = v; setEmoji(v); iconStatus.textContent = `${v} set as the icon.`; }
+    else if (text) iconStatus.textContent = 'Only an emoji, Genmoji or image works here.';
+  });
+  // 2) File picker
+  const fileInput = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: () => { const f = fileInput.files?.[0]; fileInput.value = ''; if (f) useImage(f, 'Image'); } });
+  const imagePanel = h('div.icon-image-panel', { hidden: !d.icon },
+    pasteBox,
+    h('div.recur-extra.inline', h('button.btn.secondary.small', { type: 'button', onclick: () => fileInput.click() }, icon('upload', { size: 16 }), 'Choose image…'), fileInput),
+    iconStatus);
+  const imageToggle = h('button.link-btn', {
+    type: 'button', 'aria-expanded': String(!!d.icon),
+    onclick: () => { imagePanel.hidden = !imagePanel.hidden; imageToggle.setAttribute('aria-expanded', String(!imagePanel.hidden)); if (!imagePanel.hidden) pasteBox.focus(); },
+  }, 'Use image / Genmoji');
   renderEmojis();
 
   const colors = swatches(HABIT_COLORS, d.color, (c) => { d.color = c; preview.style.setProperty('--c', c); }, 'Color');
@@ -434,7 +486,7 @@ export function openHabitForm(habit) {
 
   const form = h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
     h('div.habit-name-row', preview, field('Name', name)),
-    groupField('Icon', h('div', emojiGrid, h('div.recur-extra.inline', h('span', 'Or type your own'), custom))),
+    groupField('Icon', h('div', emojiGrid, h('div.recur-extra.inline', h('span', 'Or type your own'), custom), imgRow, imageToggle, imagePanel)),
     groupField('Color', colors),
     groupField('Schedule', h('div', sched, daysRow, timesRow)),
     groupField('Goal', h('div', goal, countRow), 'Count goals: tap to add one, tap − to remove one.'),
@@ -448,7 +500,7 @@ export function openHabitForm(habit) {
     const n = name.value.trim();
     if (!n) { err.textContent = 'Please name your habit.'; name.focus(); return; }
     const data = {
-      name: n, emoji: d.emoji || '✅', color: d.color,
+      name: n, emoji: d.emoji || '✅', icon: d.icon ? { type: 'image', data: d.icon.data } : undefined, color: d.color,
       schedule: { type: d.schedule.type, days: d.schedule.days, times: d.schedule.times || 3 },
       goal: { type: d.goal.type, target: d.goal.type === 'count' ? Math.max(1, Math.min(999, parseInt(target.value, 10) || 1)) : 1, unit: unit.value.trim() },
       timeOfDay: d.timeOfDay,

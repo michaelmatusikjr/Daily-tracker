@@ -10,6 +10,7 @@ import { todayKey, addDays, timeToMin, minToTime, startOfWeek, fmtTime } from '.
 import { activeHabits, habitDone, weekCount } from './logic.js';
 import { isIOS, isStandalone } from './pwa.js';
 import { blockedHelp } from './reminders.js';
+import { habitText } from './habitIcon.js';
 
 const STATE_KEY = 'dailyTracker:push';
 const CONFIG_KEY = 'dailyTracker:pushConfig';
@@ -188,7 +189,7 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
       }
       rules.push({
         id: safeId(`${profile.id}:h:${hb.id}`).slice(0, 128), kind: 'habit',
-        ...text(`${hb.emoji} ${hb.name}`, 'Time for your habit'),
+        ...text(habitText(hb), 'Time for your habit'),
         url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:h:${hb.id}:{date}`.slice(0, 128),
         time: hb.reminder, offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
       });

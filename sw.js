@@ -1,6 +1,6 @@
 // Daily Tracker service worker: cache-first app shell, versioned cache.
 // Bump VERSION whenever any app file changes so clients get the update.
-const VERSION = '1.6.1';
+const VERSION = '1.6.2';
 const CACHE = `daily-tracker-${VERSION}`;
 const SHELL = [
   './',
@@ -33,6 +33,7 @@ const SHELL = [
   './js/views/workouts.js',
   './js/workoutForm.js',
   './js/itemMenu.js',
+  './js/habitIcon.js',
   './js/push.js',
   './js/pushConfig.js',
   './js/workouts.js',

@@ -9,6 +9,7 @@ import { canFire } from '../reminders.js';
 import { reorderHabits, setArchived, seedExamples, bumpHabit } from '../actions.js';
 import { openHabitForm } from '../forms.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
+import { habitIcon } from '../habitIcon.js';
 
 const GROUPS = [['morning', 'Morning', '🌅'], ['afternoon', 'Afternoon', '☀️'], ['evening', 'Evening', '🌙'], ['anytime', 'Anytime', '✨']];
 
@@ -48,7 +49,7 @@ export function renderHabits() {
     const li = h('li.habit-card', { dataset: { id: hb.id }, style: { '--c': hb.color } },
       h('div.habit-card-top',
         h('button.habit-open', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `Open ${hb.name}` },
-          h('span.emoji-bubble', { 'aria-hidden': 'true' }, hb.emoji),
+          h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
           h('span.habit-row-text',
             h('span.habit-name', hb.name),
             h('span.habit-sub', hb.reminder && !canFire() ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))))),
@@ -94,7 +95,7 @@ export function renderHabits() {
     if (open) {
       sec.append(h('ul.archived-list', archived.map((hb) => withMenu(hb, h('li.archived-item',
         h('button.habit-open', { type: 'button', onclick: () => ctx.go('habit/' + hb.id) },
-          h('span.emoji-bubble.small', { style: { '--c': hb.color }, 'aria-hidden': 'true' }, hb.emoji), h('span.habit-name', hb.name)),
+          h('span.emoji-bubble.small', { style: { '--c': hb.color }, 'aria-hidden': 'true' }, habitIcon(hb)), h('span.habit-name', hb.name)),
         h('button.btn.small.secondary', { type: 'button', onclick: () => setArchived(hb.id, false) }, 'Restore'))))));
     }
     root.append(sec);

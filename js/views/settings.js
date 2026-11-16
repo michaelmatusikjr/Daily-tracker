@@ -11,6 +11,7 @@ import { showOnboarding } from '../onboarding.js';
 import { ensureCategory } from '../forms.js';
 import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '../reminders.js';
 import { setWorkoutHabit } from '../actions.js';
+import { habitText } from '../habitIcon.js';
 import { pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
@@ -68,7 +69,7 @@ export function renderSettings() {
   const habitSel = h('select.input', {
     'aria-label': 'Habit to check off when you log a workout',
     onchange: (e) => setWorkoutHabit(e.target.value || null),
-  }, h('option', { value: '', selected: !linkedOk }, 'None'), checkHabits.map((x) => h('option', { value: x.id, selected: x.id === wh.habitId }, `${x.emoji} ${x.name}`)));
+  }, h('option', { value: '', selected: !linkedOk }, 'None'), checkHabits.map((x) => h('option', { value: x.id, selected: x.id === wh.habitId }, habitText(x))));
   root.append(group('Workouts',
     row('Weight', null, segmented([{ value: 'lb', label: 'lbs' }, { value: 'kg', label: 'kg' }], set.weightUnit, (v) => setSetting('weightUnit', v), { label: 'Weight unit', small: true })),
     row('Distance', null, segmented([{ value: 'mi', label: 'mi' }, { value: 'km', label: 'km' }], set.distanceUnit, (v) => setSetting('distanceUnit', v), { label: 'Distance unit', small: true })),

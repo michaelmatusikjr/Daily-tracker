@@ -10,6 +10,7 @@ import { canFire } from '../reminders.js';
 import { moveToToday, reorderTasks, setMood, setNote, bumpHabit } from '../actions.js';
 import { openQuickAdd } from '../forms.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
+import { habitIcon } from '../habitIcon.js';
 
 const TOD_ORDER = { morning: 0, afternoon: 1, evening: 2, anytime: 3 };
 const TOD_LABEL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: '' };
@@ -150,7 +151,7 @@ export function renderToday() {
       if (TOD_LABEL[hb.timeOfDay]) sub.push(TOD_LABEL[hb.timeOfDay]);
       list.append(attachLi(h('li.habit-row', { dataset: { id: hb.id }, style: { '--c': hb.color } },
         h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
-          h('span.emoji-bubble', { 'aria-hidden': 'true' }, hb.emoji),
+          h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
           h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || (hb.reminder && !canFire()) ? h('span.habit-sub', streakBadge(s), hb.reminder && !canFire() ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
         hb.goal.type === 'count' && v > 0 && k <= today ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, k, -1), 'minus-btn') : null,
         habitControl(hb, k)), () => habitMenu(hb.id, k)));

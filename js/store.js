@@ -2,7 +2,7 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.6.1';
+export const APP_VERSION = '1.6.2';
 export const SCHEMA_VERSION = 4;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
@@ -112,6 +112,8 @@ function normHabit(hb, i) {
     id: str(hb.id, 40) || uid(),
     name: str(hb.name, 100).trim(),
     emoji: str(hb.emoji, 16) || '✅',
+    // Optional image icon (e.g. a Genmoji): PNG/JPEG/WebP data URL up to 60 KB, else dropped.
+    ...(imageIcon(hb.icon) ? { icon: imageIcon(hb.icon) } : {}),
     color: /^#[0-9a-f]{6}$/i.test(hb.color) ? hb.color : '#6366f1',
     schedule: {
       type,
@@ -130,6 +132,13 @@ function normHabit(hb, i) {
     createdAt: isValidKey(hb.createdAt) ? hb.createdAt : todayKey(),
     ...(Number.isFinite(hb.updatedAt) ? { updatedAt: hb.updatedAt } : {}),
   };
+}
+
+function imageIcon(icon) {
+  if (!isObj(icon) || icon.type !== 'image' || typeof icon.data !== 'string') return null;
+  if (!/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/.test(icon.data)) return null;
+  if ((icon.data.length - icon.data.indexOf(',') - 1) * 3 / 4 > 60 * 1024) return null;
+  return { type: 'image', data: icon.data };
 }
 
 // ---------- Workouts ----------

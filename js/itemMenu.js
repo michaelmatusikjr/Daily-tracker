@@ -12,6 +12,7 @@ import {
 } from './actions.js';
 import { openTaskForm, openHabitForm } from './forms.js';
 import { openWorkoutForm } from './workoutForm.js';
+import { habitTitle } from './habitIcon.js';
 import { exerciseById } from './workouts.js';
 import { openExerciseEditor, confirmDeleteExercise } from './views/workouts.js';
 
@@ -32,7 +33,7 @@ export function showMenu(title, items, { mode = 'touch', anchor = null, x = 0, y
     onclick: () => { closeAllSheets(); it.run(); },
   }, icon(it.icon, { size: 20 }), h('span', it.label)));
   const menu = h('div.menu-list', {
-    role: 'menu', 'aria-label': title,
+    role: 'menu', 'aria-label': typeof title === 'string' ? title : title.textContent.trim(),
     onkeydown: (e) => {
       const i = buttons.indexOf(document.activeElement);
       let j = null;
@@ -105,7 +106,7 @@ export function habitMenu(id, k = todayKey()) {
   const dayWord = k === todayKey() ? 'today' : fmtDateShort(k);
   const count = hb.goal.type === 'count';
   return {
-    title: `${hb.emoji} ${hb.name}`,
+    title: habitTitle(hb),
     items: [
       { label: 'Edit', icon: 'edit', run: () => openHabitForm(hb) },
       { label: 'View details', icon: 'stats', run: () => ctx.go('habit/' + id) },
