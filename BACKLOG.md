@@ -52,11 +52,11 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - Days without it aren't counted as misses.
   - Doing it 5 times still counts as 100%, with no extra credit.
 - **Feasible:** yes; it's a change to how stats are calculated.
-- **Open details to confirm before building:**
-  - **Today screen:** while the week's target isn't met yet, should the habit still appear in Today's list? Likely yes, with "1/3 this week". Should it count toward that day's progress ring? Likely no.
-  - **"Specific days" habits** (e.g. Mon/Wed/Fri) already only count on their scheduled days. Confirm that's the desired behaviour.
-  - **Where weekly habits show up in Stats:** e.g. a per-week completion figure, capped at 100%.
-  - **The current week:** it's in progress, so it shouldn't count as a miss until the week ends.
+- **Decided (2026-11-16):**
+  - **Today:** an X-per-week habit shows on Today as a weekly habit with how many are still needed this week (e.g. "2 left this week"). It does **not** count toward that day's progress ring.
+  - **"Specific days" habits** (e.g. Mon/Wed/Fri) count exactly like daily habits, but only on their scheduled days.
+  - **The current week:** it isn't counted against you until it ends. As soon as the weekly target is met, it counts as complete in weekly/overall progress (no need to wait for the week to end).
+  - **Capping:** a week counts as complete when the target is met. Extra sessions beyond the target add nothing.
 - **Size:** small–medium.
 - **Added:** 2026-11-16
 
