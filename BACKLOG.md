@@ -30,7 +30,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 4. Weather line on Today
-- **What:** a small, non-interactive line under the week strip on Today, e.g. "📍 Plano, TX · ⛅ 72° / 51° · 💧 20%":
+- **What:** a small, non-interactive line under the week strip on Today, e.g. "📍 Springfield · ⛅ 72° / 51° · 💧 20%":
   - today's high/low temperature and chance of precipitation
   - the location name
 - **Other days:** when another day within the next 7 days is selected in the week strip, the line shows that day's forecast. Days past 7, and past days, show nothing.
