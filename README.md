@@ -23,6 +23,7 @@ A calm, offline-first **daily planner + habit tracker** that runs entirely in yo
 
 **Habits**
 - Name, emoji, colour, schedule (every day, specific weekdays, or X times per week), goal (check-off, or a count such as 8 glasses), optional reminder time, and time of day (morning, afternoon, evening, anytime).
+- **Image icons / Genmoji:** under Icon › **Use image / Genmoji**, tap the box and pick a Genmoji from the iOS 18 emoji keyboard (Genmoji are inline images, not text, so a normal field can't hold them). You can also paste an image there or use **Choose image…**. The image is trimmed to its visible part, resized to 96×96 and saved as a PNG with transparency (at most about 40 KB), on the device. It shows on Today, Habits, the habit page, item menus and Stats. Text-only places (notifications, the workout-link list) show just the name. Exports include image icons. On import, PNG/JPEG/WebP icons up to 60 KB are kept and anything else falls back to the emoji.
 - One-tap check, or tap +1 for count habits. Long-press, right-click or the − button removes one.
 - Current 🔥 and best streaks, plus a 7-day row of dots you can tap to edit past days.
 - Streaks follow the schedule: days off never break a streak, and "X per week" habits count by ISO week.
@@ -93,6 +94,7 @@ js/profiles.js          Avatar, profile menu/editor, photo resizing
 js/workouts.js          Workout logic: units, time parsing, summaries, records, charts, habit link
 js/workoutForm.js       Workout log form
 js/itemMenu.js          Long-press / right-click / keyboard item menus
+js/habitIcon.js         Habit image icons (Genmoji / pasted / chosen images): processing + rendering
 js/push.js              Optional Web Push: subscription, rules sync, offline queue
 js/pushConfig.js        Push server URL + VAPID public key (empty = off)
 server/                 Optional Cloudflare Worker push server (see server/README.md)
