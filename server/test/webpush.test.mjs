@@ -99,6 +99,19 @@ test('sendPush posts an encrypted body with the Web Push headers', async () => {
   assert.equal(gone.gone, true);
 });
 
+test('a hanging push service is aborted by the timeout', async () => {
+  const keys = webpush.generateVAPIDKeys();
+  const vapid = await importVapidKeys(keys.publicKey, keys.privateKey);
+  const r = makeReceiver();
+  let sawSignal = false;
+  const fetchImpl = (url, init) => new Promise((_, rej) => { sawSignal = !!init.signal; init.signal.addEventListener('abort', () => rej(init.signal.reason)); });
+  const t = Date.now();
+  const keepAlive = setTimeout(() => {}, 5000); // AbortSignal.timeout timers don't hold the event loop
+  await assert.rejects(sendPush({ endpoint: 'https://fcm.googleapis.com/x', ...r.keys }, { title: 'x' }, { vapid, subject: 'mailto:a@b.c', fetchImpl, timeoutMs: 200 }), /timeout|abort/i);
+  clearTimeout(keepAlive);
+  assert.ok(sawSignal && Date.now() - t < 2000);
+});
+
 test('setup-keys output works with the reference library', async () => {
   const { execFileSync } = await import('node:child_process');
   const out = execFileSync(process.execPath, [new URL('../scripts/setup-keys.mjs', import.meta.url).pathname]).toString();

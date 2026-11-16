@@ -78,10 +78,26 @@ export function nowMin() {
 }
 
 /** Date object for a local date key + "HH:MM". */
+/**
+ * Local date k at "HH:MM". Same rule as the push server (server/src/recur.js localToUTC):
+ * a time that happens twice (DST fall-back) → the first one; a time that doesn't exist
+ * (spring-forward gap) → the next valid minute, i.e. the moment the clocks jump.
+ */
 export function dateAt(k, t) {
   const [y, m, d] = k.split('-').map(Number);
   const [hh, mm] = (t || '00:00').split(':').map(Number);
-  return new Date(y, m - 1, d, hh, mm, 0, 0);
+  const r = new Date(y, m - 1, d, hh, mm, 0, 0);
+  if (r.getHours() === hh && r.getMinutes() === mm && r.getDate() === d) return r;
+  // In a gap the engine moved the time forward by the gap length (02:30 → 03:30); step back to the jump.
+  const want = hh * 60 + mm;
+  const wall = (x) => (x.getDate() !== d ? (x < r ? -1 : 1e9) : x.getHours() * 60 + x.getMinutes());
+  let x = r;
+  for (let i = 0; i < 180; i++) {
+    const prev = new Date(x.getTime() - 60000);
+    if (wall(prev) <= want) break;
+    x = prev;
+  }
+  return x;
 }
 
 export function fmtTime(t, format = '12') {

@@ -142,7 +142,8 @@ By default there is no server: reminders are scheduled **while the app is open o
 If you deploy the small free server in [`server/`](server/README.md) (a Cloudflare Worker with a D1 database), reminders arrive even when the app is closed.
 
 **Setting it up**
-- Put the server URL and public key in `js/pushConfig.js`, or in **Settings › Reminders › Advanced: push server**.
+- Put the server URL and public key in `js/pushConfig.js` or in **Settings › Reminders › Advanced: push server**.
+- Enter the server's **register key** in Advanced on each device. It is never stored in the code. Only devices with this key can sign up with your server.
 - Then turn on **Settings › Reminders › Remind me even when the app is closed**.
 - One subscription per device covers every profile.
 - On iPhone and iPad this needs iOS 16.4 or later and the app added to the Home Screen.
@@ -152,7 +153,9 @@ If you deploy the small free server in [`server/`](server/README.md) (a Cloudfla
 - The app sends the server one **rule** per task or habit reminder: local time (minus the reminder lead), repeat pattern, skipped and completed days, and your time zone. It re-sends them about 2 s after any change, when the app opens, when it goes to the background, and twice a day.
 - The server repeats the rules itself, so **reminders keep coming even if you don't open the app for weeks**. Daylight-saving changes keep the local time.
 - Changes made while offline are queued and retried with backoff.
-- While the server has an up-to-date copy, the app's own timers stay off, so you don't get duplicates. The notification tags also match, so the system replaces any duplicate.
+- While the server has an up-to-date copy **and its timer is healthy**, the app's own timers stay off, so you don't get duplicates. The notification tags also match, so the system replaces any duplicate.
+- The app checks the server's health hourly, on open and when shown. If the server can't be reached, its timer has stopped for more than 5 minutes, or a key is missing, the app's own timers take over immediately and Settings says why in plain words.
+- If you have more than 500 reminders, Settings says so: the first 500 come from the server and the rest only while the app is open.
 - **Limit:** things you complete while the app isn't open here (say, on another device) can't reach the server until you open the app here. Until then, the reminder for that thing still fires.
 
 **Tapping a reminder** opens the exact task or habit. The app switches to its profile if needed (and says so), shows Today on that date, highlights the item and opens its action menu (Mark done, Edit…). If the item was deleted, you see Today and a note saying so. The link (`#open/…`) is then replaced, so going back or reloading doesn't trigger it again.

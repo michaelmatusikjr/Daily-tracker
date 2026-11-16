@@ -2,7 +2,7 @@
 // app is open (or recently backgrounded) and shown via the service worker. With the optional
 // push server (js/push.js) the same occurrences are sent from the server instead.
 import { getProfiles, readProfileState } from './store.js';
-import { todayKey, addDays, dateAt, fmtTime } from './dates.js';
+import { todayKey, addDays, dateAt, fmtTime, timeToMin, minToTime } from './dates.js';
 import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone } from './logic.js';
 import { pushCoversReminders, deepLink, hideTextOn, HIDDEN_TITLE, HIDDEN_BODY } from './push.js';
 
@@ -61,7 +61,9 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
     for (const k of days) {
       for (const t of tasksOn(st, k)) {
         if (!t.time || t.reminder === null || isTaskDone(t, k)) continue;
-        const at = dateAt(k, t.time).getTime() - t.reminder * 60000;
+        // Local fire time = task time minus the lead, as wall-clock time (same as the push server).
+        const mins = timeToMin(t.time) - t.reminder;
+        const at = dateAt(addDays(k, Math.floor(mins / 1440)), minToTime(((mins % 1440) + 1440) % 1440)).getTime();
         add(`t:${t.id}:${k}`, at, t.title, t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now', k,
           (s2) => { const x = s2.tasks.find((y) => y.id === t.id); return x && !isTaskDone(x, k); });
       }

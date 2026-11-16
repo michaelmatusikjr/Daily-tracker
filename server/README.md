@@ -8,7 +8,7 @@ You don't need this to use Daily Tracker. Without it, reminders still work while
 
 - When you turn on **Settings › Reminders › Remind me even when the app is closed**, the app asks your browser for a push subscription and registers it with this server. The server returns a random device id and a secret token. Only a SHA-256 hash of the token is stored.
 - The app sends **reminder rules**: one per task or habit reminder, with the local time, the repeat pattern (daily, weekdays, weekly, monthly, every N days), the dates to skip, and your time zone. It sends them again whenever something changes.
-- Every minute a cron trigger finds the reminders that are due, encrypts each one for your device (RFC 8291, aes128gcm), signs the request with your VAPID key (RFC 8292), and sends it through your browser's push service (Google, Mozilla, Apple…).
+- Every minute a cron trigger finds the reminders that are due (at most 10 per device and 200 in all per run, taking turns between devices), encrypts each one for your device (RFC 8291, aes128gcm), signs the request with your VAPID key (RFC 8292), and sends it through your browser's push service (Google, Mozilla, Apple…).
 - The rules repeat on the server, so reminders keep coming even if you don't open the app for weeks.
 - A reminder the server couldn't send within 15 minutes of its time (for example during a Cloudflare outage) is skipped. It is never sent hours late.
 - **Limits:** at most 500 rules per device, and the time zone must be a real IANA time zone.
@@ -21,16 +21,17 @@ You don't need this to use Daily Tracker. Without it, reminders still work while
 | Reminder rules: title, body, link, time, repeat pattern, skip dates | Replaced on every sync; deleted with the device. With **Hide reminder text** on, titles and bodies are generic and contain no task or habit names. |
 | Sent markers (rule id + date), so nothing is sent twice | 3 days |
 | Rate-limit counters (per IP or device, per hour) | About 2 hours |
+| The timer's last run time and last error (for `/api/health`) | Overwritten every minute |
 
 Links contain only random ids and a date, for example `./#open/task/<profileId>/<taskId>/2026-11-20`. There are no names in them.
 
 ## Deploy (about 15 minutes)
 
-You need a computer with a terminal. These steps also work from a phone with a cloud terminal such as GitHub Codespaces.
+You need a computer with a terminal. These steps also work from a phone with a cloud terminal such as GitHub Codespaces. The app's error messages refer to the step numbers below.
 
 1. **Create a free Cloudflare account** at <https://dash.cloudflare.com/sign-up>.
 2. **Install Node.js 20 or newer** from <https://nodejs.org> (the "LTS" button).
-3. In a terminal, go to this folder and install the tools:
+3. **Install the tools.** In a terminal, go to this folder:
    ```sh
    cd server
    npm install
@@ -39,11 +40,14 @@ You need a computer with a terminal. These steps also work from a phone with a c
    ```sh
    npx wrangler login
    ```
-5. **Make your VAPID keys.** These identify your server to the push services:
+5. **Make your keys:**
    ```sh
-   npm run gen-vapid
+   npm run setup-keys
    ```
-   It prints a public key and a private key. Keep the terminal open.
+   It prints three values. Keep the terminal open.
+   - **VAPID public key:** not secret.
+   - **VAPID private key:** secret.
+   - **Register key:** secret.
 6. **Create the database:**
    ```sh
    npx wrangler d1 create daily-tracker-push
@@ -56,41 +60,66 @@ You need a computer with a terminal. These steps also work from a phone with a c
    - `VAPID_PUBLIC_KEY`: the public key from step 5.
    - `VAPID_SUBJECT`: `mailto:` followed by an address push services can contact. It can be any address you read.
    - `ALLOWED_ORIGINS`: the address where your app runs, with no path and no trailing slash, for example `https://yourname.github.io`. Separate several with commas.
-8. **Store the private key as a secret.** It is never written to a file:
-   ```sh
-   npx wrangler secret put VAPID_PRIVATE_KEY
-   ```
-   Paste the private key from step 5 when asked.
-9. **Deploy:**
+   - `MAX_DEVICES`: how many devices may sign up. The default is 20; raise it if your family has more phones and computers.
+8. **Deploy:**
    ```sh
    npx wrangler deploy
    ```
-   It prints your Worker's URL, like `https://daily-tracker-push.yourname.workers.dev`. Open `<that URL>/api/health` to check: it should say `"ok":true`.
-10. **In the app**, open **Settings › Reminders › Advanced: push server**. Paste the Worker URL and the public key, then tap **Save**. Turn on **Remind me even when the app is closed**.
+   It prints your Worker's URL, like `https://daily-tracker-push.yourname.workers.dev`.
+   - **First time on Workers?** If it says you need a `workers.dev` subdomain, open the Cloudflare dashboard › **Workers & Pages**, pick a subdomain name when asked, then run `npx wrangler deploy` again.
+9. **Store the two secrets.** They are never written to a file. Paste each value from step 5 when asked:
+   ```sh
+   npx wrangler secret put VAPID_PRIVATE_KEY
+   npx wrangler secret put REGISTER_KEY
+   ```
+   Open `<your Worker URL>/api/health` to check. Once the timer has run (it runs every minute), it shows `"ok":true`. Any `false` value points to the step to redo:
+   - `vapidPrivate`: step 9
+   - `registerKey`: step 9
+   - `db`: step 6
+10. **In the app**, open **Settings › Reminders › Advanced: push server**. Paste the Worker URL, the VAPID public key and the register key, then tap **Save**. Turn on **Remind me even when the app is closed**. Do this on each device.
 
-   You can also put both values into `js/pushConfig.js` before publishing the app, so every device gets them.
+   You can also put the URL and public key (not the register key) into `js/pushConfig.js` before publishing the app.
 
 **iPhone and iPad:** web push needs iOS/iPadOS **16.4 or later**, and Daily Tracker must be added to the Home Screen (Share › Add to Home Screen). Open it from there.
 
+### What the register key protects
+
+Your Worker's address is public. Without the register key, anyone who found it could sign up their own devices, use up your free quota and slow down your reminders.
+
+With it, only devices where *you* typed the register key can sign up. Everything else is refused, and if the key isn't set, sign-ups are refused altogether ("Server not set up").
+
+On top of that:
+- `MAX_DEVICES` caps how many devices can exist.
+- Each device gets at most 10 reminders sent per minute, in turn with the others, so a busy device can't hold up anyone else's.
+
+The register key isn't needed after sign-up. Each device then uses its own token. If you think the key leaked, set a new one with `npx wrangler secret put REGISTER_KEY`; devices already signed up keep working.
+
+The server only sends to real browser push services:
+- `fcm.googleapis.com`
+- `*.push.services.mozilla.com`
+- `*.push.apple.com`
+- `*.notify.windows.com`
+
+It never sends to any other address, and each send gives up after 10 seconds.
+
 ### Deploying with an API token (no browser login)
 
-Someone helping you, or a CI job, can deploy with a token instead of `wrangler login`. Create one at **Cloudflare dashboard › My Profile › API Tokens › Create Token › Custom token** with these permissions:
+Someone helping you, or a CI job, can deploy with a token instead of `wrangler login`:
 
-- Account › **Workers Scripts** › Edit
-- Account › **D1** › Edit
-- Account › **Account Settings** › Read
-- User › **User Details** › Read (lets wrangler show who is logged in)
-- Zone access isn't needed: the Worker uses its free `workers.dev` address.
+1. In the Cloudflare dashboard, go to **My Profile › API Tokens › Create Token** and pick the **"Edit Cloudflare Workers"** template.
+2. Add one more permission: **Account › D1 › Edit**.
+3. Limit the token to your account, then create it.
 
-Then run the same commands with the token and your account id in the environment:
+Then run the same steps with the token and your account id in the environment:
 
 ```sh
 export CLOUDFLARE_API_TOKEN=...      # never commit this
 export CLOUDFLARE_ACCOUNT_ID=...     # dashboard › Workers & Pages › Account ID
-npx wrangler d1 create daily-tracker-push
+npx wrangler d1 create daily-tracker-push   # then paste database_id into wrangler.toml
 npm run db:init
-echo "<private key>" | npx wrangler secret put VAPID_PRIVATE_KEY
 npx wrangler deploy
+npx wrangler secret put VAPID_PRIVATE_KEY   # paste when asked (or pipe it in)
+npx wrangler secret put REGISTER_KEY
 ```
 
 ## API
@@ -99,8 +128,8 @@ All endpoints take and return JSON. CORS is limited to `ALLOWED_ORIGINS`, and re
 
 | Method & path | Auth | Body | Result |
 |---|---|---|---|
-| `GET /api/health` | — | — | `{ok, time, vapid}` |
-| `POST /api/register` | — | `{subscription}` (from `PushSubscription.toJSON()`) | `201 {deviceId, token}`. Rate limit: 10/hour per IP. |
+| `GET /api/health` | — | — | `{ok, time, vapidPublic, vapidPublicKey, vapidPrivate, registerKey, db, lastCronAt, lastCronError}` |
+| `POST /api/register` | `X-Register-Key: <REGISTER_KEY>` | `{subscription}` (from `PushSubscription.toJSON()`) | `201 {deviceId, token}`. Possible errors: 403 for a wrong key, 503 if the key isn't set or the device limit is reached, 400 if the endpoint isn't a known push service. Rate limit: 10/hour per IP. |
 | `PUT /api/schedule` | `Authorization: Bearer <token>`, `X-Device: <deviceId>` | `{tz, rules:[…]}` | Replaces the device's rules. Rate limit: 120/hour. |
 | `POST /api/subscription` | same | `{subscription}` | Updates a rotated subscription. Rate limit: 30/hour. |
 | `DELETE /api/device` | same | — | Deletes the device and everything for it. |

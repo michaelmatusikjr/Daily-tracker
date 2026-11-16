@@ -182,7 +182,7 @@ function pushRows() {
       busy = true;
       if (want) {
         const r = await enablePush();
-        toast(r.ok ? 'Reminders will arrive even when the app is closed' : r.message, { duration: r.ok ? 4500 : 7000, force: true });
+        toast(r.ok ? (r.warning || 'Reminders will arrive even when the app is closed') : r.message, { duration: r.ok && !r.warning ? 4500 : 8000, force: true });
       } else {
         await disablePush();
         toast('Closed-app reminders are off. Reminders appear while the app is open.', { force: true });
@@ -199,11 +199,12 @@ function pushRows() {
   const cfg = pushConfig();
   const url = h('input.input', { type: 'url', value: cfg.serverUrl, placeholder: 'https://daily-tracker-push.you.workers.dev', 'aria-label': 'Push server URL', autocomplete: 'off', spellcheck: false });
   const key = h('input.input', { type: 'text', value: cfg.publicKey, placeholder: 'VAPID public key', 'aria-label': 'VAPID public key', autocomplete: 'off', spellcheck: false });
+  const rkey = h('input.input', { type: 'password', value: cfg.registerKey, placeholder: 'Register key (from npm run setup-keys)', 'aria-label': 'Register key', autocomplete: 'off', spellcheck: false });
   const err = h('p.form-error', { role: 'alert' });
   const save = async (clear = false) => {
     try {
       const was = pushEnabled();
-      const next = clear ? { serverUrl: '', publicKey: '' } : { serverUrl: url.value, publicKey: key.value };
+      const next = clear ? { serverUrl: '', publicKey: '', registerKey: '' } : { serverUrl: url.value, publicKey: key.value, registerKey: rkey.value };
       const cur = pushConfig();
       if (was && (next.serverUrl.trim().replace(/\/+$/, '') !== cur.serverUrl || next.publicKey.trim() !== cur.publicKey)) await disablePush();
       setPushConfig(next);
@@ -215,7 +216,9 @@ function pushRows() {
     h('summary', 'Advanced: push server'),
     h('p.set-desc', 'Optional. With your own free server (see server/README.md in the app’s code), reminders arrive even when the app is closed.'),
     h('label.field-label', 'Server URL'), url,
-    h('label.field-label', 'VAPID public key'), key, err,
+    h('label.field-label', 'VAPID public key'), key,
+    h('label.field-label', 'Register key'), rkey,
+    h('p.set-desc', 'The register key lets this device sign up with your server; without it nobody else can use your server. It stays on this device.'), err,
     h('div.set-actions',
       h('button.btn.secondary.small', { type: 'button', onclick: () => save(false) }, 'Save'),
       cfg.overridden ? h('button.btn.ghost.small', { type: 'button', onclick: () => save(true) }, 'Clear') : null)));

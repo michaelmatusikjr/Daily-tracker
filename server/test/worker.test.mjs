@@ -13,6 +13,7 @@ const webpush = require('web-push');
 const ece = require(require.resolve('http_ece', { paths: [require.resolve('web-push')] }));
 
 const ORIGIN = 'https://app.example.org';
+const REGISTER_KEY = 'test-register-key-0123456789';
 const vapid = webpush.generateVAPIDKeys();
 const pushed = [];        // requests received by the fake push service
 let pushStatus = 201;     // what the fake push service answers
@@ -23,7 +24,7 @@ function subscription(name) {
   const ua = crypto.createECDH('prime256v1');
   ua.generateKeys();
   const auth = crypto.randomBytes(16);
-  const endpoint = `https://push.example.net/send/${name}`;
+  const endpoint = `https://fcm.googleapis.com/fcm/send/${name}`;
   receivers.set(endpoint, { ua, auth });
   return { endpoint, keys: { p256dh: b64urlEncode(ua.getPublicKey()), auth: b64urlEncode(auth) } };
 }
@@ -35,7 +36,7 @@ before(async () => {
     scriptPath: new URL('../src/index.js', import.meta.url).pathname,
     compatibilityDate: '2026-07-01',
     d1Databases: ['DB'],
-    bindings: { VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey, VAPID_SUBJECT: 'mailto:test@example.com', ALLOWED_ORIGINS: `${ORIGIN}, http://localhost:8080` },
+    bindings: { VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey, VAPID_SUBJECT: 'mailto:test@example.com', ALLOWED_ORIGINS: `${ORIGIN}, http://localhost:8080`, REGISTER_KEY, MAX_DEVICES: '200' },
     // Every outbound fetch from the Worker lands here: a fake push service.
     outboundService: async (req) => {
       const body = Buffer.from(await req.arrayBuffer());
@@ -51,10 +52,10 @@ before(async () => {
 });
 after(async () => { await mf?.dispose(); });
 
-const call = (method, path, { body, token, device, origin = ORIGIN, headers = {} } = {}) => mf.dispatchFetch('https://push.local' + path, {
+const call = (method, path, { body, token, device, origin = ORIGIN, headers = {}, key = REGISTER_KEY } = {}) => mf.dispatchFetch('https://push.local' + path, {
   method,
   headers: {
-    ...(origin ? { Origin: origin } : {}), 'Content-Type': 'application/json',
+    ...(origin ? { Origin: origin } : {}), 'Content-Type': 'application/json', ...(key && path === '/api/register' ? { 'X-Register-Key': key } : {}),
     ...(token ? { Authorization: 'Bearer ' + token, 'X-Device': device } : {}), ...headers,
   },
   body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
@@ -77,7 +78,14 @@ const minute = (ms) => Math.floor(ms / 60000) * 60000;
 test('health, CORS and origin checks', async () => {
   const h = await call('GET', '/api/health', { origin: null });
   assert.equal(h.status, 200);
-  assert.equal((await h.json()).ok, true);
+  const hj = await h.json();
+  assert.deepEqual([hj.vapidPublic, hj.vapidPrivate, hj.registerKey, hj.db, hj.vapidPublicKey], [true, true, true, true, vapid.publicKey]);
+  assert.equal(hj.ok, false, 'not ok until the timer has run');
+  assert.equal(hj.lastCronAt, null);
+  await cron(Date.now());
+  const h2 = await (await call('GET', '/api/health')).json();
+  assert.equal(h2.ok, true);
+  assert.ok(h2.lastCronAt > 0 && h2.lastCronError === null);
   const pre = await call('OPTIONS', '/api/schedule');
   assert.equal(pre.status, 204);
   assert.equal(pre.headers.get('Access-Control-Allow-Origin'), ORIGIN);
@@ -183,17 +191,19 @@ test('cron: sends due occurrences once, fills {date}, catches up within 15 min, 
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM rules').first()).n, 0);
 });
 
-test('cron sends at most one batch per run', async () => {
+test('cron: at most 10 per device and 200 in all per run, the rest next minute', async () => {
   const db = await mf.getD1Database('DB');
   await db.prepare('DELETE FROM rules').run();
-  const d = await register('batch', '9.9.9.9');
   const t0 = minute(Date.now()) + 2 * 60000;
-  await call('PUT', '/api/schedule', { body: { tz: TZ, rules: Array.from({ length: 250 }, (_, i) => once('b' + i, t0)) }, token: d.token, device: d.deviceId });
+  const devs = [];
+  for (let i = 0; i < 30; i++) devs.push(await register('batch' + i, '9.9.' + i + '.1'));
+  for (const d of devs) await call('PUT', '/api/schedule', { body: { tz: TZ, rules: Array.from({ length: 12 }, (_, j) => once('b' + j, t0)) }, token: d.token, device: d.deviceId });
   pushed.length = 0;
   await cron(t0);
   assert.equal(pushed.length, 200);
   await cron(t0 + 60000);
-  assert.equal(pushed.length, 250);
+  assert.equal(pushed.length, 360, 'everything sent by the next run (still within 15 min)');
+  for (const d of devs) await call('DELETE', '/api/device', { token: d.token, device: d.deviceId });
 });
 
 test('subscription update and device delete', async () => {
@@ -223,6 +233,84 @@ test('daily purge removes old send records and devices unseen for 180 days', asy
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE id = ?').bind(d.deviceId).first()).n, 0);
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE id = ?').bind(keep.deviceId).first()).n, 1, 'inactive 100 days: kept (no expiry from inactivity)');
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM fired WHERE device_id = ?').bind(keep.deviceId).first()).n, 0);
+});
+
+test('register needs the register key, and only push-service endpoints are accepted', async () => {
+  const sub = subscription('rk');
+  assert.equal((await call('POST', '/api/register', { body: { subscription: sub }, key: null, headers: { 'CF-Connecting-IP': '3.3.3.3' } })).status, 403, 'no key');
+  assert.equal((await call('POST', '/api/register', { body: { subscription: sub }, key: 'wrong', headers: { 'CF-Connecting-IP': '3.3.3.3' } })).status, 403, 'wrong key');
+  // A spoofed Origin alone is not enough any more.
+  assert.equal((await call('POST', '/api/register', { body: { subscription: sub }, key: null, origin: ORIGIN, headers: { 'CF-Connecting-IP': '3.3.3.4' } })).status, 403);
+  const bad = async (endpoint, why) => {
+    const s = { ...subscription('x'), endpoint };
+    assert.equal((await call('POST', '/api/register', { body: { subscription: s }, headers: { 'CF-Connecting-IP': '4.4.4.' + Math.floor(Math.random() * 250) } })).status, 400, why);
+  };
+  await bad('https://evil.example/push', 'arbitrary host');
+  await bad('http://fcm.googleapis.com/fcm/send/x', 'not https');
+  await bad('https://fcm.googleapis.com:8443/fcm/send/x', 'port');
+  await bad('https://user:pw@fcm.googleapis.com/fcm/send/x', 'userinfo');
+  await bad('https://127.0.0.1/x', 'IP');
+  await bad('https://[::1]/x', 'IPv6');
+  await bad('https://fcm.googleapis.com.evil.example/x', 'suffix trick');
+  await bad('https://evilpush.apple.com/x', 'no dot boundary');
+  await bad('https://push.apple.com/x', 'bare suffix');
+  const { isPushServiceUrl } = await import('../src/index.js');
+  for (const ok of ['https://fcm.googleapis.com/fcm/send/a', 'https://updates.push.services.mozilla.com/wpush/v2/a', 'https://web.push.apple.com/Q', 'https://wns2-by3p.notify.windows.com/w/?token=a', 'https://autopush.push.services.mozilla.com/x']) assert.ok(isPushServiceUrl(ok), ok);
+});
+
+test('register is refused (503) when REGISTER_KEY is not set, and health says so', async () => {
+  const mf2 = new Miniflare({
+    modules: true, modulesRules: [{ type: 'ESModule', include: ['**/*.js'] }],
+    scriptPath: new URL('../src/index.js', import.meta.url).pathname, compatibilityDate: '2026-07-01', d1Databases: ['DB'],
+    bindings: { VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: 'not-a-key', ALLOWED_ORIGINS: ORIGIN },
+  });
+  try {
+    const res = await mf2.dispatchFetch('https://x/api/register', { method: 'POST', headers: { Origin: ORIGIN, 'X-Register-Key': 'anything' }, body: '{}' });
+    assert.equal(res.status, 503);
+    assert.match((await res.json()).error, /not set up/);
+    const h = await (await mf2.dispatchFetch('https://x/api/health')).json();
+    assert.deepEqual([h.ok, h.registerKey, h.vapidPrivate, h.db], [false, false, false, false], 'no key, bad private key, no tables');
+  } finally { await mf2.dispose(); }
+});
+
+test('device cap (MAX_DEVICES)', async () => {
+  const mf3 = new Miniflare({
+    modules: true, modulesRules: [{ type: 'ESModule', include: ['**/*.js'] }],
+    scriptPath: new URL('../src/index.js', import.meta.url).pathname, compatibilityDate: '2026-07-01', d1Databases: ['DB'],
+    bindings: { VAPID_PUBLIC_KEY: vapid.publicKey, VAPID_PRIVATE_KEY: vapid.privateKey, ALLOWED_ORIGINS: ORIGIN, REGISTER_KEY, MAX_DEVICES: '2' },
+  });
+  try {
+    const db3 = await mf3.getD1Database('DB');
+    for (const st of readFileSync(new URL('../schema.sql', import.meta.url), 'utf8').replace(/--.*$/gm, '').split(';').map((s) => s.trim()).filter(Boolean)) await db3.prepare(st).run();
+    const reg = (i) => mf3.dispatchFetch('https://x/api/register', { method: 'POST', headers: { Origin: ORIGIN, 'X-Register-Key': REGISTER_KEY, 'CF-Connecting-IP': '5.5.5.' + i }, body: JSON.stringify({ subscription: subscription('cap' + i) }) });
+    assert.equal((await reg(1)).status, 201);
+    assert.equal((await reg(2)).status, 201);
+    const third = await reg(3);
+    assert.equal(third.status, 503);
+    assert.match((await third.json()).error, /Device limit/);
+  } finally { await mf3.dispose(); }
+});
+
+test('fair cron: 8 flooding devices × 500 rules cannot starve one real reminder', async () => {
+  const db = await mf.getD1Database('DB');
+  await db.prepare('DELETE FROM rules').run();
+  const t0 = minute(Date.now()) + 3 * 60000;
+  const attackers = [];
+  for (let i = 0; i < 8; i++) attackers.push(await register('flood' + i, '10.0.0.' + i));
+  for (const a of attackers) {
+    const res = await call('PUT', '/api/schedule', { body: { tz: TZ, rules: Array.from({ length: 500 }, (_, j) => once('f' + j, t0 - 60000)) }, token: a.token, device: a.deviceId });
+    assert.equal(res.status, 200);
+  }
+  const real = await register('owner', '10.0.1.1');
+  await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [once('dentist', t0)] }, token: real.token, device: real.deviceId });
+  pushed.length = 0;
+  await cron(t0);
+  assert.ok(pushed.some((p) => p.payload.title === 'Title dentist'), 'the real reminder is sent on time');
+  assert.ok(pushed.length <= 200, 'overall cap kept');
+  const perDevice = new Map();
+  for (const p of pushed) perDevice.set(p.url, (perDevice.get(p.url) || 0) + 1);
+  assert.ok(Math.max(...perDevice.values()) <= 10, 'at most 10 per device per run');
+  for (const a of attackers) await call('DELETE', '/api/device', { token: a.token, device: a.deviceId });
 });
 
 test('rate limits: register per IP', async () => {

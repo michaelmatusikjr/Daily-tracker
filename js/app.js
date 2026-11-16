@@ -4,7 +4,7 @@ import { ctx } from './ctx.js';
 import { h, closeAllSheets, isSheetOpen, confirmDialog, toast, choose } from './ui.js';
 import { icon } from './icons.js';
 import { applyTheme } from './theme.js';
-import { todayKey, monthStart } from './dates.js';
+import { todayKey, monthStart, isValidKey } from './dates.js';
 import { renderToday } from './views/today.js';
 import { renderHabits } from './views/habits.js';
 import { renderHabitDetail } from './views/habitDetail.js';
@@ -73,6 +73,12 @@ function openDeepLink() {
     ctx.ui.date = todayKey();
     render();
     toast('That reminder’s item was deleted.', { force: true });
+    return;
+  }
+  if (!isValidKey(date)) {
+    ctx.ui.date = todayKey();
+    render();
+    toast('That reminder’s date isn’t valid – showing today.', { force: true });
     return;
   }
   if (getActiveProfile()?.id !== pid) {

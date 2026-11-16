@@ -9,6 +9,7 @@ import { reschedule } from './notify.js';
 import { todayKey, addDays, timeToMin, minToTime, startOfWeek, fmtTime } from './dates.js';
 import { activeHabits, habitDone, weekCount } from './logic.js';
 import { isIOS, isStandalone } from './pwa.js';
+import { blockedHelp } from './reminders.js';
 
 const STATE_KEY = 'dailyTracker:push';
 const CONFIG_KEY = 'dailyTracker:pushConfig';
@@ -17,6 +18,8 @@ const NEAR_DAYS = 60; // completions/exceptions sent for the near term only
 const DEBOUNCE_MS = 2000;
 const BACKOFF = [5000, 30000, 120000, 600000, 1800000];
 const RESYNC_AFTER = 12 * 3600000; // re-send at least twice a day (near-term skip dates roll forward)
+const HEALTH_EVERY = 3600000;       // check the server's timer hourly (and on open / when shown)
+const HEALTH_MAX_AGE = 2 * 3600000; // a health result older than this no longer counts
 
 // ---------- persisted state ----------
 function readJSON(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; } }
@@ -29,42 +32,100 @@ export function onPushChange(fn) { listeners.add(fn); return () => listeners.del
 const changed = () => listeners.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
 
 // ---------- configuration ----------
-/** { serverUrl, publicKey, overridden } — Settings overrides win over js/pushConfig.js. */
+/**
+ * { serverUrl, publicKey, registerKey, overridden } — Settings overrides win over js/pushConfig.js.
+ * The register key is only ever entered in Settings (stored on this device), never in code,
+ * because js/pushConfig.js is published with the app.
+ */
 export function pushConfig() {
   const o = readJSON(CONFIG_KEY) || {};
   const serverUrl = String(o.serverUrl || PUSH_SERVER_URL || '').trim().replace(/\/+$/, '');
   const publicKey = String(o.publicKey || VAPID_PUBLIC_KEY || '').trim();
-  return { serverUrl, publicKey, overridden: !!(o.serverUrl || o.publicKey) };
+  return { serverUrl, publicKey, registerKey: String(o.registerKey || '').trim(), overridden: !!(o.serverUrl || o.publicKey || o.registerKey) };
 }
 export const pushConfigured = () => { const c = pushConfig(); return !!(c.serverUrl && c.publicKey); };
-export function setPushConfig({ serverUrl = '', publicKey = '' }) {
+export function setPushConfig({ serverUrl = '', publicKey = '', registerKey = '' }) {
   serverUrl = serverUrl.trim().replace(/\/+$/, '');
   publicKey = publicKey.trim();
+  registerKey = registerKey.trim();
   if (serverUrl && !/^https:\/\/[^\s/]+/i.test(serverUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(serverUrl)) throw new Error('The server URL must start with https://');
   if (publicKey && !/^[A-Za-z0-9_-]{80,100}$/.test(publicKey)) throw new Error('That doesn’t look like a VAPID public key');
-  writeJSON(CONFIG_KEY, serverUrl || publicKey ? { serverUrl, publicKey } : null);
+  if (registerKey && !/^[\x21-\x7e]{8,200}$/.test(registerKey)) throw new Error('That doesn’t look like a register key');
+  writeJSON(CONFIG_KEY, serverUrl || publicKey || registerKey ? { serverUrl, publicKey, registerKey } : null);
   changed();
 }
 
 export const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 export const pushEnabled = () => !!loadState().on && pushConfigured();
 
-/** True while the server holds an up-to-date schedule: local timers then stay off (no duplicates). */
-export function pushCoversReminders() {
-  const s = loadState();
-  return !!(s.on && pushConfigured() && s.lastOk && !s.pending && !s.error);
+/** What's wrong with the server, in plain words (null when it's fine). h = last /api/health result. */
+export function healthProblem(h, cfg = pushConfig()) {
+  if (!h) return null;
+  if (!h.reachable) return 'Can’t reach your server right now.';
+  if (h.db === false) return 'Your server’s database isn’t set up – run “npm run db:init” (server/README.md, step 6).';
+  if (!h.vapidPublic) return 'Your server has no public key – set VAPID_PUBLIC_KEY in wrangler.toml and deploy again (step 7).';
+  if (!h.vapidPrivate) return 'Your server is missing its private key (or it isn’t valid) – run “npx wrangler secret put VAPID_PRIVATE_KEY” (step 9).';
+  if (!h.registerKey) return 'Your server has no register key – run “npx wrangler secret put REGISTER_KEY” (step 9).';
+  if (h.vapidPublicKey && cfg.publicKey && h.vapidPublicKey !== cfg.publicKey) return 'The public key in Advanced doesn’t match your server’s – paste the one from your server setup.';
+  if (h.lastCronError) return `Your server’s timer reported an error: ${h.lastCronError}`;
+  if (!h.lastCronAt) return 'Your server’s timer hasn’t run yet. It runs every minute once deployed – check “Triggers” for the Worker in the Cloudflare dashboard.';
+  if (h.time - h.lastCronAt > 5 * 60000) return 'Your server’s timer isn’t running – check “Triggers” for the Worker in the Cloudflare dashboard.';
+  return null;
 }
 
-/** Human status for Settings. { kind: 'on'|'pending'|'offline'|'error'|'off'|'ios', text } */
+/** Server error messages → plain wording. */
+function plainError(e) {
+  const m = String(e?.message || e || '');
+  if (e?.status === 0) return m === 'offline' ? 'You’re offline' : 'Can’t reach your server';
+  if (/Origin not allowed/.test(m)) return `Your server doesn’t allow this app’s address – add ${location.origin} to ALLOWED_ORIGINS (server/README.md, step 7)`;
+  if (/Wrong register key/.test(m)) return 'The register key doesn’t match your server’s – check it in Advanced';
+  if (/REGISTER_KEY is missing|not set up/i.test(m)) return 'Your server has no register key yet – run “npx wrangler secret put REGISTER_KEY” (step 9)';
+  if (/Device limit/.test(m)) return 'Your server already has its maximum number of devices (MAX_DEVICES)';
+  if (/Too many requests/.test(m)) return 'Your server is busy – trying again shortly';
+  if (/known push service/.test(m)) return 'This browser’s push service isn’t supported by your server';
+  if (e?.status >= 500) return 'Your server had a problem – trying again shortly';
+  return m || 'Something went wrong';
+}
+
+/** True while the server holds an up-to-date schedule AND its timer is running: local timers then stay off. */
+export function pushCoversReminders() {
+  const s = loadState();
+  const h = s.health;
+  return !!(s.on && pushConfigured() && s.lastOk && !s.pending && !s.error && !s.overLimit
+    && h && Date.now() - h.at < HEALTH_MAX_AGE && !healthProblem(h));
+}
+
+/** Human status for Settings. { kind: 'on'|'pending'|'offline'|'error'|'off'|'ios'|'blocked'|'server', text, help? } */
 export function pushStatus() {
   const s = loadState();
   if (isIOS() && !isStandalone()) return { kind: 'ios', text: 'On iPhone and iPad this needs Daily Tracker added to your Home Screen (Share › Add to Home Screen) and iOS 16.4 or later.' };
   if (!pushSupported()) return { kind: 'unsupported', text: 'This browser can’t receive push notifications.' };
-  if (!s.on) return { kind: 'off', text: 'Your server sends the reminders, so they arrive even when the app is closed. Things you complete on another device can’t reach the server until you open the app here.' };
-  if (s.pending && !navigator.onLine) return { kind: 'offline', text: 'Waiting to sync (offline). Your latest changes will be sent when you’re back online.' };
-  if (s.error) return { kind: 'error', text: `Couldn’t reach your server: ${s.error}. Retrying automatically.` };
+  if (!s.on) return { kind: 'off', text: 'When on, your server sends the reminders, so they arrive even when the app is closed. Things you complete on another device can’t reach the server until you open the app here.' };
+  if (Notification.permission === 'denied') return { kind: 'blocked', text: `Notifications are blocked – closed-app reminders can’t appear. ${blockedHelp()}` };
+  if (s.pending && !navigator.onLine) return { kind: 'offline', text: 'Waiting to sync (offline). Your latest changes will be sent when you’re back online. Reminders come from this device meanwhile.' };
+  if (s.error) return { kind: 'error', text: `Couldn’t sync: ${s.error}. Retrying automatically; reminders come from this device meanwhile.` };
+  const hp = healthProblem(s.health);
+  if (hp) return { kind: 'server', text: `${hp} Reminders come from this device meanwhile (only while it’s open or recently used).` };
   if (s.pending || !s.lastOk) return { kind: 'pending', text: 'Syncing reminders with your server…' };
+  if (s.overLimit) return { kind: 'server', text: `You have ${s.overLimit} reminders; your server takes 500. The first 500 are sent from the server; the rest only appear while the app is open.` };
   return { kind: 'on', text: `On – reminders are sent from your server (last synced ${new Date(s.lastOk).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}).` };
+}
+
+/** Ask the server how it is (config + timer heartbeat). Local timers come back when it's unhealthy. */
+export async function checkHealth() {
+  if (!pushEnabled()) return null;
+  let h;
+  try {
+    const data = await api('GET', '/api/health', undefined, { auth: false });
+    h = { ...data, reachable: true, at: Date.now() };
+  } catch {
+    h = { reachable: false, at: Date.now() };
+  }
+  const before = pushCoversReminders();
+  saveState({ health: h });
+  if (before !== pushCoversReminders()) reschedule();
+  changed();
+  return h;
 }
 export const hideTextOn = () => !!loadState().hideText;
 export function setHideText(on) { saveState({ hideText: !!on, hash: null }); changed(); scheduleSync(0); }
@@ -134,14 +195,15 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
     }
   }
   const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();
-  return { tz, rules: rules.slice(0, MAX_RULES) };
+  return { tz, rules: rules.slice(0, MAX_RULES), total: rules.length };
 }
 
 // ---------- server calls ----------
 class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 async function api(method, path, body, { auth = true, keepalive = false, state = loadState(), cfg = pushConfig() } = {}) {
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = body === undefined ? {} : { 'Content-Type': 'application/json' };
   if (auth) { headers.Authorization = 'Bearer ' + state.token; headers['X-Device'] = state.deviceId; }
+  if (path === '/api/register') headers['X-Register-Key'] = cfg.registerKey;
   const text = body === undefined ? undefined : JSON.stringify(body);
   let res;
   try {
@@ -186,6 +248,7 @@ async function currentSubscription(cfg, { create = true } = {}) {
 export async function enablePush() {
   const cfg = pushConfig();
   if (!cfg.serverUrl || !cfg.publicKey) return { ok: false, message: 'Set your push server in Advanced first.' };
+  if (!cfg.registerKey) return { ok: false, message: 'Enter your server’s register key in Advanced first.' };
   if (isIOS() && !isStandalone()) return { ok: false, message: 'Add Daily Tracker to your Home Screen first (iOS 16.4 or later).' };
   if (!pushSupported()) return { ok: false, message: 'This browser can’t receive push notifications.' };
   let perm = Notification.permission;
@@ -196,13 +259,14 @@ export async function enablePush() {
     const { deviceId, token } = await api('POST', '/api/register', { subscription: sub.toJSON() }, { auth: false, cfg });
     saveState({ on: true, deviceId, token, endpoint: sub.endpoint, serverUrl: cfg.serverUrl, lastOk: null, pending: true, error: null, hash: null, pendingDelete: null });
   } catch (e) {
-    return { ok: false, message: `Couldn’t turn it on: ${e.message || e}` };
+    return { ok: false, message: `Couldn’t turn it on: ${plainError(e)}.` };
   }
   // Reminders only exist for profiles with notifications on: switch them on for this profile.
   if (!getState().settings.notifications) update((s) => { s.settings.notifications = true; });
   changed();
-  await syncNow();
-  return { ok: true };
+  await Promise.all([syncNow(), checkHealth()]);
+  const problem = healthProblem(loadState().health);
+  return problem ? { ok: true, warning: `Turned on, but: ${problem}` } : { ok: true };
 }
 
 /** Turn off: forget the device on the server (retried later if offline) and unsubscribe. */
@@ -261,8 +325,10 @@ export async function syncNow({ keepalive = false, force = false } = {}) {
   clearTimeout(debounceTimer);
   if (inflight) { await inflight.catch(() => {}); }
   inflight = (async () => {
-    const schedule = buildRules();
+    const { tz, rules, total } = buildRules();
+    const schedule = { tz, rules };
     const hash = hashOf(schedule);
+    if ((loadState().overLimit || 0) !== (total > MAX_RULES ? total : 0)) saveState({ overLimit: total > MAX_RULES ? total : 0 });
     let s = loadState();
     // Nothing changed and the server copy is fresh: skip the network.
     if (!force && s.hash === hash && s.lastOk && !s.pending && !s.error && Date.now() - s.lastOk < RESYNC_AFTER) return true;
@@ -283,7 +349,7 @@ export async function syncNow({ keepalive = false, force = false } = {}) {
       return true;
     } catch (e) {
       const offline = e.status === 0 && !navigator.onLine;
-      saveState({ pending: true, error: offline ? null : e.message || 'error' });
+      saveState({ pending: true, error: offline ? null : plainError(e) });
       changed(); reschedule(); // fall back to local timers meanwhile
       clearTimeout(retryTimer);
       retryTimer = setTimeout(() => syncNow(), BACKOFF[Math.min(attempt++, BACKOFF.length - 1)]);
@@ -314,19 +380,23 @@ export async function pushOnOpen() {
       }
     }
   } catch { /* the sync below reports problems */ }
-  await syncNow({ force: true });
+  await Promise.all([syncNow({ force: true }), checkHealth()]);
 }
 
-/** Wire the triggers: online, page hidden, and a periodic roll-forward of the 14-day window. */
+/** Wire the triggers: online, page hidden/shown, hourly health + twice-daily refresh. */
 export function initPush() {
-  window.addEventListener('online', () => { if (loadState().pending) syncNow(); flushPendingDelete(); });
+  window.addEventListener('online', () => { if (loadState().pending) syncNow(); flushPendingDelete(); checkHealth(); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && pushEnabled()) syncNow({ keepalive: true });
+    if (!pushEnabled()) return;
+    if (document.visibilityState === 'hidden') syncNow({ keepalive: true });
+    else checkHealth();
   });
   setInterval(() => {
+    if (!pushEnabled()) return;
+    checkHealth();
+    // Refresh near-term completions/skips (the rules themselves don't expire).
     const s = loadState();
-    // Daily: refresh near-term completions/skips (the rules themselves don't expire).
-    if (pushEnabled() && (!s.lastOk || Date.now() - s.lastOk > RESYNC_AFTER)) syncNow({ force: true });
-  }, 3600000);
+    if (!s.lastOk || Date.now() - s.lastOk > RESYNC_AFTER) syncNow({ force: true });
+  }, HEALTH_EVERY);
   pushOnOpen();
 }
