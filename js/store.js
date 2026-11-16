@@ -2,7 +2,7 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.6.3';
+export const APP_VERSION = '1.6.4';
 export const SCHEMA_VERSION = 4;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
@@ -115,10 +115,11 @@ function normHabit(hb, i) {
     // Optional image icon (e.g. a Genmoji): PNG/JPEG/WebP data URL up to 60 KB, else dropped.
     ...(imageIcon(hb.icon) ? { icon: imageIcon(hb.icon) } : {}),
     color: /^#[0-9a-f]{6}$/i.test(hb.color) ? hb.color : '#6366f1',
+    // Keep what was stored: days only matter for "some days", times only for "X per week".
     schedule: {
       type,
-      days: days.length ? days : [1, 2, 3, 4, 5],
-      times: Number.isInteger(sc.times) && sc.times > 0 && sc.times < 7 ? sc.times : 3,
+      days,
+      ...(Number.isInteger(sc.times) && sc.times > 0 && sc.times < 7 ? { times: sc.times } : type === 'perWeek' ? { times: 3 } : {}),
     },
     goal: {
       type: goal.type === 'count' ? 'count' : 'check',

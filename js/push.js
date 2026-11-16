@@ -52,7 +52,13 @@ export function setPushConfig({ serverUrl = '', publicKey = '', registerKey = ''
   if (serverUrl && !/^https:\/\/[^\s/]+/i.test(serverUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?/.test(serverUrl)) throw new Error('The server URL must start with https://');
   if (publicKey && !/^[A-Za-z0-9_-]{80,100}$/.test(publicKey)) throw new Error('That doesn’t look like a VAPID public key');
   if (registerKey && !/^[\x21-\x7e]{8,200}$/.test(registerKey)) throw new Error('That doesn’t look like a register key');
-  writeJSON(CONFIG_KEY, serverUrl || publicKey || registerKey ? { serverUrl, publicKey, registerKey } : null);
+  // Only keep what differs from the bundled js/pushConfig.js, so a later app update can change
+  // those defaults; the register key is never bundled, so it's always stored here.
+  const o = {};
+  if (serverUrl && serverUrl !== String(PUSH_SERVER_URL || '').trim().replace(/\/+$/, '')) o.serverUrl = serverUrl;
+  if (publicKey && publicKey !== String(VAPID_PUBLIC_KEY || '').trim()) o.publicKey = publicKey;
+  if (registerKey) o.registerKey = registerKey;
+  writeJSON(CONFIG_KEY, Object.keys(o).length ? o : null);
   changed();
 }
 

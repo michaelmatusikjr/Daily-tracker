@@ -57,9 +57,13 @@ export async function blobFromSrc(src) {
   if (typeof src !== 'string' || !src) throw new Error('That image couldn’t be read.');
   const u = new URL(src, location.href);
   if (!['data:', 'blob:'].includes(u.protocol) && u.origin !== location.origin) throw new Error('That image couldn’t be read.');
-  const res = await fetch(u.href);
-  if (!res.ok) throw new Error('That image couldn’t be read.');
-  return res.blob();
+  try {
+    const res = await fetch(u.href);
+    if (!res.ok) throw new Error('status');
+    return await res.blob();
+  } catch {
+    throw new Error('That image couldn’t be read.');
+  }
 }
 
 /**

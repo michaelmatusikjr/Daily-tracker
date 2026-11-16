@@ -373,6 +373,15 @@ export function openTaskForm(task, defaults = {}) {
 }
 
 // ---------------- Habit form ----------------
+/** Keep the stored schedule's other fields as they were; only the chosen type's own field changes. */
+function scheduleFor(orig, ui) {
+  const out = { ...(orig || {}), type: ui.type };
+  if (ui.type === 'days') out.days = [...ui.days];
+  if (ui.type === 'perWeek') out.times = ui.times || 3;
+  if (!orig && ui.type !== 'days') delete out.days;
+  return out;
+}
+
 export function openHabitForm(habit) {
   const isNew = !habit;
   const d = habit ? JSON.parse(JSON.stringify(habit)) : {
@@ -423,22 +432,51 @@ export function openHabitForm(habit) {
     'aria-label': 'Tap here, then pick a Genmoji from the emoji keyboard (or paste an image)',
     'data-placeholder': 'Tap here, then pick a Genmoji from the emoji keyboard (or paste an image)',
   });
-  pasteBox.addEventListener('paste', (e) => {
-    const cd = e.clipboardData;
-    const file = [...(cd?.files || [])].find((f) => /^image\//.test(f.type))
-      || [...(cd?.items || [])].filter((i) => i.kind === 'file' && /^image\//.test(i.type)).map((i) => i.getAsFile()).find(Boolean);
-    if (file) { e.preventDefault(); pasteBox.replaceChildren(); useImage(file, 'Pasted image'); }
-    // Otherwise let the browser insert it (HTML with <img>, or text) and handle it on `input`.
-  });
-  pasteBox.addEventListener('input', () => {
-    const img = pasteBox.querySelector('img');
-    const text = pasteBox.textContent.trim();
-    pasteBox.replaceChildren();
-    if (img) { useImage(img.currentSrc || img.getAttribute('src'), 'Genmoji'); return; }
-    const v = firstGrapheme(text);
+  // Nothing pasted or dropped is ever inserted live: we read the data ourselves (HTML through an
+  // inert DOMParser document, so no handlers or loads run) and keep only an image or an emoji.
+  const takeText = (text) => {
+    const v = firstGrapheme(String(text || '').trim());
     if (v && /\p{Extended_Pictographic}|\p{RI}/u.test(v)) { custom.value = v; setEmoji(v); iconStatus.textContent = `${v} set as the icon.`; }
-    else if (text) iconStatus.textContent = 'Only an emoji, Genmoji or image works here.';
+    else if (String(text || '').trim()) iconStatus.textContent = 'Only an emoji, Genmoji or image works here.';
+  };
+  const takeTransfer = (dt, label) => {
+    if (!dt) return false;
+    const file = [...(dt.files || [])].find((f) => /^image\//.test(f.type))
+      || [...(dt.items || [])].filter((i) => i.kind === 'file' && /^image\//.test(i.type)).map((i) => i.getAsFile()).find(Boolean);
+    if (file) { useImage(file, label); return true; }
+    const html = dt.getData?.('text/html');
+    if (html) {
+      const img = new DOMParser().parseFromString(html, 'text/html').querySelector('img[src]');
+      if (img) { useImage(img.getAttribute('src'), label === 'Pasted image' ? 'Genmoji' : label); return true; }
+    }
+    takeText(dt.getData?.('text/plain'));
+    return true;
+  };
+  pasteBox.addEventListener('paste', (e) => { e.preventDefault(); pasteBox.replaceChildren(); takeTransfer(e.clipboardData, 'Pasted image'); });
+  pasteBox.addEventListener('drop', (e) => { e.preventDefault(); pasteBox.replaceChildren(); takeTransfer(e.dataTransfer, 'Dropped image'); });
+  pasteBox.addEventListener('beforeinput', (e) => {
+    if (e.dataTransfer && /^insertFrom(Paste|Drop)|insertReplacementText/.test(e.inputType)) {
+      e.preventDefault();
+      takeTransfer(e.dataTransfer, 'Pasted image');
+    }
   });
+  // Anything that still lands in the box (the iOS emoji keyboard inserting a Genmoji <img>, typing,
+  // or script-driven insertion): neutralise it synchronously, before any image load/error event can
+  // fire — strip every element's event-handler attributes, keep only an <img> src, then empty the box.
+  const neutralise = () => {
+    if (!pasteBox.firstChild) return;
+    let src = null;
+    for (const el of pasteBox.querySelectorAll('*')) {
+      for (const attr of [...el.attributes]) if (/^on/i.test(attr.name) || attr.name === 'srcset') el.removeAttribute(attr.name);
+      if (!src && el.tagName === 'IMG') src = el.getAttribute('src');
+      if (el.tagName === 'IMG') el.removeAttribute('src');
+    }
+    const text = pasteBox.textContent;
+    pasteBox.replaceChildren();
+    if (src) useImage(src, 'Genmoji');
+    else takeText(text);
+  };
+  new MutationObserver(neutralise).observe(pasteBox, { childList: true, subtree: true, characterData: true, attributes: true });
   // 2) File picker
   const fileInput = h('input', { type: 'file', accept: 'image/*', hidden: true, onchange: () => { const f = fileInput.files?.[0]; fileInput.value = ''; if (f) useImage(f, 'Image'); } });
   const imagePanel = h('div.icon-image-panel', { hidden: !d.icon },
@@ -501,7 +539,7 @@ export function openHabitForm(habit) {
     if (!n) { err.textContent = 'Please name your habit.'; name.focus(); return; }
     const data = {
       name: n, emoji: d.emoji || '✅', icon: d.icon ? { type: 'image', data: d.icon.data } : undefined, color: d.color,
-      schedule: { type: d.schedule.type, days: d.schedule.days, times: d.schedule.times || 3 },
+      schedule: scheduleFor(habit?.schedule, d.schedule),
       goal: { type: d.goal.type, target: d.goal.type === 'count' ? Math.max(1, Math.min(999, parseInt(target.value, 10) || 1)) : 1, unit: unit.value.trim() },
       timeOfDay: d.timeOfDay,
       reminder: /^\d{2}:\d{2}$/.test(reminder.value) ? reminder.value : null,

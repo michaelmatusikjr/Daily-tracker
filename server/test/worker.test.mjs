@@ -182,7 +182,9 @@ test('cron: sends due occurrences once, fills {date}, catches up within 15 min, 
   pushed.length = 0;
   for (let day = 1; day <= 35; day++) await cron(t0 + day * 86400000);
   assert.equal(pushed.filter((x) => x.payload.title === 'Title every').length, 35, 'fires every day for 35 days without a new PUT');
-  assert.equal(pushed.at(-1).payload.url, `./#open/task/p/every/${keyOf(t0 + 35 * 86400000)}`);
+  // Find day 35's push by its tag (other devices' pushes can come after it in the same run).
+  const day35 = pushed.find((x) => x.payload.tag === `p:t:every:${keyOf(t0 + 35 * 86400000)}`);
+  assert.equal(day35?.payload.url, `./#open/task/p/every/${keyOf(t0 + 35 * 86400000)}`);
   // 410 from the push service removes the device and its rules.
   pushStatus = 410;
   await cron(t0 + 36 * 86400000);

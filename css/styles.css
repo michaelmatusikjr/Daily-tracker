@@ -1209,3 +1209,8 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .genmoji-box { min-height: 48px; padding: 12px 14px; cursor: text; white-space: normal; overflow: hidden; font-size: 15px; line-height: 1.3; outline-offset: 2px; }
 .genmoji-box:empty::before { content: attr(data-placeholder); color: var(--text-3); pointer-events: none; }
 .icon-status:empty { display: none; }
+
+/* ---------- 1.6.4 ---------- */
+.habit-title { gap: .3em; }
+.wrap-seg .segmented { flex-wrap: wrap; }
+.wrap-seg .segmented button { flex: 1 0 auto; }
