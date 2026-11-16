@@ -2,7 +2,7 @@
 // and exercise management.
 import { h, s, iconBtn, segmented, emptyState, openSheet, choose, confirmDialog, toast } from '../ui.js';
 import { icon } from '../icons.js';
-import { getState, update } from '../store.js';
+import { getState, update, getActiveProfile } from '../store.js';
 import { ctx } from '../ctx.js';
 import { fmt, fmtDateShort, relativeLabel } from '../dates.js';
 import {
@@ -51,6 +51,47 @@ function entryRow(w, st, records, { showName = true } = {}) {
   return li;
 }
 
+// ---------------- Strength progress table ----------------
+const uiKey = () => 'dailyTracker:ui:' + (getActiveProfile()?.id || '');
+function uiPrefs() { try { return JSON.parse(localStorage.getItem(uiKey()) || '{}'); } catch { return {}; } }
+export function setUiPref(patch) { try { localStorage.setItem(uiKey(), JSON.stringify({ ...uiPrefs(), ...patch })); } catch { /* per-device convenience only */ } }
+
+/** Rows for every non-archived strength exercise, from computeRecords (one source of truth). */
+export function strengthProgress(st) {
+  return st.exercises.filter((e) => !e.archived && (e.type || 'strength') === 'strength').map((ex) => {
+    const { summary, list } = computeRecords(st, ex.id);
+    return { ex, latest: summary.latest35, best: summary.threeByFive, one: summary.oneRm, last: list.length ? list[list.length - 1].date : '' };
+  });
+}
+
+/** Collapsible "Progress" card: Exercise · Latest 3×5 · Best 3×5 · 1RM (remembered per profile). */
+function progressCard(st) {
+  const prefs = uiPrefs();
+  const open = prefs.progressOpen !== false;
+  const sort = prefs.progressSort === 'az' ? 'az' : 'recent';
+  const unit = weightLabel(st.settings.weightUnit);
+  const head = h('button.collapse-btn.progress-head', {
+    type: 'button', 'aria-expanded': String(open), 'aria-controls': 'progress-body',
+    onclick: () => { setUiPref({ progressOpen: !open }); ctx.rerender(); },
+  }, icon('dumbbell', { size: 16 }), 'Progress', h('span.chev', icon('chevronDown', { size: 16 })));
+  const card = h('section.card.progress-table-card', { id: 'progress-card' }, head);
+  if (!open) return card;
+  const rows = strengthProgress(st);
+  if (!rows.length) { card.append(h('p.hint-line', { id: 'progress-body' }, 'Log a strength exercise to see your progress.')); return card; }
+  rows.sort(sort === 'az' ? (a, b) => a.ex.name.localeCompare(b.ex.name) : (a, b) => b.last.localeCompare(a.last) || a.ex.name.localeCompare(b.ex.name));
+  const cell = (r) => (r ? h('td', h('b', trimNum(r.v, 1)), h('small', ` ${unit}`), r.date ? h('span.pt-date', fmtDateShort(r.date)) : null) : h('td.muted', '—'));
+  const table = h('table.progress-table',
+    h('caption.sr-only', `Strength progress in ${unit}, sorted ${sort === 'az' ? 'A to Z' : 'by most recently trained'}`),
+    h('thead', h('tr', h('th', { scope: 'col' }, 'Exercise'), h('th', { scope: 'col' }, 'Latest 3×5'), h('th', { scope: 'col' }, 'Best 3×5'), h('th', { scope: 'col' }, '1RM'))),
+    // The name is a real link (keyboard/screen readers); the whole row is also tappable.
+    h('tbody', rows.map((r) => h('tr', { onclick: (e) => { if (!e.target.closest('a')) ctx.go('exercise/' + r.ex.id); } },
+      h('th', { scope: 'row' }, h('a', { href: '#exercise/' + encodeURIComponent(r.ex.id) }, r.ex.name)), cell(r.latest), cell(r.best), cell(r.one)))));
+  card.append(h('div', { id: 'progress-body' },
+    h('div.pt-sort', segmented([{ value: 'recent', label: 'Recent' }, { value: 'az', label: 'A–Z' }], sort, (v) => { setUiPref({ progressSort: v }); ctx.rerender(); }, { label: 'Sort exercises', small: true })),
+    table));
+  return card;
+}
+
 function matchesFilter(w, f, st) {
   if (f === 'all') return true;
   const ex = exerciseById(st, w.exerciseId);
@@ -68,6 +109,8 @@ export function renderWorkouts() {
       h('h1.page-title', 'Workouts')),
     h('div.head-actions', iconBtn('list', 'Manage exercises', () => openExerciseManager()))));
   root.append(h('button.btn.primary.block.log-btn', { type: 'button', onclick: () => openWorkoutForm(null) }, icon('plus', { size: 20 }), 'Log workout'));
+
+  root.append(progressCard(st));
 
   if (!st.workouts.length) {
     root.append(h('section.card', emptyState('💪', 'No workouts yet',

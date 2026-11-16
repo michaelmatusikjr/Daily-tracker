@@ -1246,3 +1246,23 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .tv-notes a { color: var(--accent); text-decoration: underline; }
 .tv-done { min-height: 52px; font-size: 16px; }
 .tv-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.habit-row.week-done { opacity: .72; }
+
+/* ---------- 1.8.0: strength progress table ---------- */
+.progress-table-card { padding: var(--s3) var(--s4); }
+.progress-head { width: 100%; }
+.pt-sort { margin: var(--s2) 0; }
+.progress-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+.progress-table th, .progress-table td { padding: 8px 4px; text-align: right; vertical-align: top; border-bottom: 1px solid var(--border); }
+.progress-table thead th { font-size: 11px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: .03em; line-height: 1.2; vertical-align: bottom; overflow-wrap: normal; }
+.progress-table th:first-child { text-align: left; width: 34%; }
+.progress-table tbody th { font-weight: 600; overflow-wrap: anywhere; }
+.progress-table tbody th a { color: var(--text); text-decoration: none; }
+.progress-table tbody tr { cursor: pointer; }
+.progress-table tbody tr:hover { background: var(--surface-2); }
+.progress-table td b { font-weight: 700; }
+.progress-table td small { color: var(--text-2); font-size: 11px; }
+.progress-table .pt-date { display: block; font-size: 11px; color: var(--text-3); }
+.progress-table td.muted { color: var(--text-3); }
+.head-links { display: flex; gap: var(--s3); flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 360px) { .progress-table { font-size: 13px; } .progress-table thead th { font-size: 10px; letter-spacing: 0; } }

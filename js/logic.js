@@ -134,20 +134,43 @@ export function streaks(state, h, today = todayKey()) {
   return { current: run, best, unit: 'day' };
 }
 
+// ---------- Weekly (X per week) habits: judged by their own weekly target ----------
+export const isWeekly = (h) => h?.schedule?.type === 'perWeek';
+
+/**
+ * One week of an X-per-week habit (ws = week start, per the week-start setting).
+ * done is capped at the target (extra sessions add nothing). A week is "counted" once it has
+ * ended, or as soon as its target is met; the current, unmet week isn't held against you.
+ */
+export function weekStatus(state, h, ws, today = todayKey()) {
+  const target = Math.max(1, h.schedule?.times || 1);
+  const count = weekCount(state, h, ws);
+  const met = count >= target;
+  return { ws, target, done: Math.min(count, target), left: Math.max(0, target - count), met, counted: met || addDays(ws, 6) < today };
+}
+
+/** Weeks hit / weeks counted for an X-per-week habit, over weeks overlapping [from, today]. */
+export function weeklyRate(state, h, days = null, today = todayKey()) {
+  const start = habitStart(state, h);
+  if (start > today) return { hit: 0, counted: 0, rate: null };
+  const from = days ? (addDays(today, -(days - 1)) > start ? addDays(today, -(days - 1)) : start) : start;
+  let hit = 0, counted = 0;
+  for (let w = habitWeekStart(state, from); w <= today; w = addDays(w, 7)) {
+    const s = weekStatus(state, h, w, today);
+    if (!s.counted) continue;
+    counted++;
+    if (s.met) hit++;
+  }
+  return { hit, counted, rate: counted ? hit / counted : null };
+}
+
 /** Completion rate over the last `days` days (or all time when null). Returns 0..1 or null. */
 export function completionRate(state, h, days = null, today = todayKey()) {
   const start = habitStart(state, h);
   if (start > today) return null;
   const from = days ? (addDays(today, -(days - 1)) > start ? addDays(today, -(days - 1)) : start) : start;
-  if (h.schedule?.type === 'perWeek') {
-    const times = h.schedule.times || 1;
-    let done = 0;
-    for (let k = from; k <= today; k = addDays(k, 1)) if (habitDone(state, h, k)) done++;
-    const span = diffDays(from, today) + 1;
-    if (done === 0 && span < 7) return null; // too early to judge a weekly goal
-    const expected = Math.max(1, Math.round((span / 7) * times));
-    return Math.min(1, done / expected);
-  }
+  // Weekly habits: weeks hit / weeks counted (see weekStatus), never per day.
+  if (isWeekly(h)) return weeklyRate(state, h, days, today).rate;
   let sched = 0, done = 0;
   for (let k = from; k <= today; k = addDays(k, 1)) {
     if (!isScheduled(h, k)) continue;
@@ -183,7 +206,8 @@ export function scheduleLabel(h, dayNames) {
 export function dayProgress(state, k) {
   const tasks = tasksOn(state, k);
   const tDone = tasks.filter((t) => isTaskDone(t, k)).length;
-  const habits = activeHabits(state).filter((h) => habitStart(state, h) <= k && isDueOn(state, h, k));
+  // Weekly (X per week) habits are judged by their weekly target, never per day: not in the day's numbers.
+  const habits = activeHabits(state).filter((h) => !isWeekly(h) && habitStart(state, h) <= k && isDueOn(state, h, k));
   const hDone = habits.filter((h) => habitDone(state, h, k)).length;
   const total = tasks.length + habits.length;
   const done = tDone + hDone;

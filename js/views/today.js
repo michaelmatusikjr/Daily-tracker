@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { avatarEl, openProfileMenu } from '../profiles.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, tasksOn, splitTasks, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, MOODS, weekCount, isTaskMissed, isHabitMissed } from '../logic.js';
+import { dayProgress, tasksOn, splitTasks, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, MOODS, weekCount, isTaskMissed, isHabitMissed, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
 import { fmt as fmtDate, diffDays, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, greeting, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
 import { taskRow, habitControl, streakBadge, timeRange, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
@@ -136,10 +136,13 @@ export function renderToday() {
   }
 
   // ---- Habits due ----
+  // Weekly (X per week) habits show all week: "2 left this week", then "Done for this week ✓",
+  // sitting after the others once met. They never count toward the day's ring.
+  const weekMet = (hb) => isWeekly(hb) && weekStatus(st, hb, habitWeekStart(st, k), today).met && !habitDone(st, hb, k);
   const dueHabits = activeHabits(st)
     .filter((hb) => habitStart(st, hb) <= k || k >= hb.createdAt)
-    .filter((hb) => isDueOn(st, hb, k))
-    .sort((a, b) => TOD_ORDER[a.timeOfDay] - TOD_ORDER[b.timeOfDay] || a.order - b.order);
+    .filter((hb) => isWeekly(hb) || isDueOn(st, hb, k))
+    .sort((a, b) => weekMet(a) - weekMet(b) || TOD_ORDER[a.timeOfDay] - TOD_ORDER[b.timeOfDay] || a.order - b.order);
   // "Mark as missed" only hides an item from these lists (it still counts as not done).
   const habits = dueHabits.filter((hb) => !isHabitMissed(st, hb, k));
   const missedHabits = dueHabits.filter((hb) => isHabitMissed(st, hb, k));
@@ -150,10 +153,13 @@ export function renderToday() {
       const v = habitVal(st, hb, k);
       // Most useful info first, since the line is truncated with an ellipsis.
       const sub = [];
-      if (hb.schedule.type === 'perWeek') sub.push(`${weekCount(st, hb, k)}/${hb.schedule.times} this week`);
+      if (isWeekly(hb)) {
+        const ws = weekStatus(st, hb, habitWeekStart(st, k), today);
+        sub.push(ws.met ? 'Done for this week ✓' : `${ws.left} left this week`);
+      }
       if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
       if (TOD_LABEL[hb.timeOfDay]) sub.push(TOD_LABEL[hb.timeOfDay]);
-      list.append(attachLi(h('li.habit-row', { dataset: { id: hb.id }, style: { '--c': hb.color } },
+      list.append(attachLi(h(`li.habit-row${isWeekly(hb) ? '.weekly' : ''}${weekMet(hb) ? '.week-done' : ''}`, { dataset: { id: hb.id }, style: { '--c': hb.color } },
         h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
           h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
           h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || (hb.reminder && !canFire()) ? h('span.habit-sub', streakBadge(s), hb.reminder && !canFire() ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),

@@ -280,8 +280,15 @@ export function computeRecords(state, exerciseId) {
     });
     // Days that qualified as 3×5 (for chart markers).
     const days35 = new Set([...day].filter(([, d]) => [...d.sets.values()].some((g) => g.n >= 3)).map(([k]) => k));
+    // Most recent 3×5 day and its heaviest qualifying weight (same rule as the record).
+    let latest35 = null;
+    for (const [k, d] of day) {
+      if (latest35 && k <= latest35.date) continue;
+      const q = [...d.sets.values()].filter((g) => g.n >= 3).map((g) => g.v);
+      if (q.length) latest35 = { v: Math.max(...q), date: k };
+    }
     sortRecords(records);
-    return { records, list, summary: { type, oneRm: best1, threeByFive: best35, days35 } };
+    return { records, list, summary: { type, oneRm: best1, threeByFive: best35, days35, latest35 } };
   }
 
   if (type === 'bodyweight') {

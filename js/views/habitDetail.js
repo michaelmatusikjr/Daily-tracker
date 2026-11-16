@@ -2,7 +2,7 @@ import { h, iconBtn, confirmDialog, onSwipe } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState } from '../store.js';
 import { ctx } from '../ctx.js';
-import { streaks, completionRate, totalCompletions, scheduleLabel, habitVal, habitTarget, isScheduled, habitStart } from '../logic.js';
+import { streaks, completionRate, totalCompletions, scheduleLabel, habitVal, habitTarget, isScheduled, habitStart, isWeekly, weeklyRate } from '../logic.js';
 import { todayKey, addDays, startOfWeek, fromKey, fmtDateShort, fmtMonthYear, monthStart, addMonths, daysInMonth, weekdayLabels, fmt, fmtTime } from '../dates.js';
 import { habitControl } from './widgets.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
@@ -49,8 +49,8 @@ export function renderHabitDetail(id) {
   root.append(h('section.stat-grid',
     statCard('🔥', String(s.current), `Current streak (${unit})`),
     statCard('🏆', String(s.best), `Best streak (${unit})`),
-    statCard('📅', pct(completionRate(st, hb, 30, today)), 'Last 30 days'),
-    statCard('📈', pct(completionRate(st, hb, null, today)), 'All time'),
+    statCard('📅', pct(completionRate(st, hb, 30, today)), isWeekly(hb) ? weeksLabel(weeklyRate(st, hb, 30, today), 'Last 30 days') : 'Last 30 days'),
+    statCard('📈', pct(completionRate(st, hb, null, today)), isWeekly(hb) ? weeksLabel(weeklyRate(st, hb, null, today), 'All time') : 'All time'),
     statCard('✅', String(totalCompletions(st, hb)), 'Total completions')));
 
   root.append(heatmap(hb));
@@ -69,6 +69,9 @@ export function renderHabitDetail(id) {
     }, icon('trash', { size: 18 }), 'Delete')));
   return root;
 }
+
+/** "Last 30 days · 3 of 4 weeks" for weekly habits (the current week counts once its target is met). */
+const weeksLabel = (r, label) => `${label} · ${r.hit} of ${r.counted} week${r.counted === 1 ? '' : 's'}`;
 
 function statCard(emoji, value, label) {
   return h('div.stat-card', h('span.stat-emoji', { 'aria-hidden': 'true' }, emoji), h('span.stat-value', value), h('span.stat-label', label));

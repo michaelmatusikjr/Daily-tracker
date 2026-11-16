@@ -29,6 +29,12 @@ A calm, offline-first **daily planner + habit tracker** that runs entirely in yo
 - Streaks follow the schedule: days off never break a streak, and "X per week" habits count by ISO week.
 - The detail screen has a GitHub-style year heatmap, 30-day and all-time completion rates, total completions, and an editable month calendar.
 - Archive, restore, reorder, and delete (with confirmation and undo).
+- **X-per-week habits are judged by their weekly target, not per day.**
+  - On Today they show "2 left this week", then "Done for this week ✓" (listed after the others).
+  - They never count toward a day's progress ring, the week strip, calendar shading, or Stats' daily figures (Today %, 7/30-day chart, best day).
+  - A week counts once it has ended, or as soon as its target is met. The current unmet week isn't held against you, and extra sessions add nothing.
+  - Stats and the habit page show them as "weeks hit / weeks counted". Stats' "This week" counts each weekly habit as one item once its target is met.
+  - "Some days" habits count like daily ones, on their days only.
 
 **Workouts** (Workouts tab, or + → Workout)
 - Log any exercise you define yourself. Each exercise is **Strength** (weight × sets × reps, several lines per entry), **Bodyweight** (sets × reps, optional extra weight such as a vest, optional hold time m:ss) or **Cardio** (time and distance). New exercise names suggest a type (push-ups, sit-ups, pull-ups, chin-ups, dips, planks, burpees, lunges, crunches, wall sits, air/bodyweight squats → Bodyweight). Older strength entries that have a time keep and show it; Manage exercises suggests switching exercises with time-only or weightless entries to Bodyweight.
@@ -40,6 +46,7 @@ A calm, offline-first **daily planner + habit tracker** that runs entirely in yo
   - Bodyweight: most reps in a day / week (follows the week-start setting) / month / year, with the current period so far, and longest hold. A period record needs an earlier period to beat.
   - Cardio: fastest time at 1 mi, 2 mi, 5K, 10K, 10 mi, half marathon and marathon; an entry counts when its distance is within ±2% (no pro-rating).
   - The toast names every record the entry set, most important first, e.g. "🏆 New 3×5 max & 1-rep max: Squat 235 lbs" or "🏆 Fastest 5K: Run 24:50". Re-saving an entry without beating anything new shows the normal saved toast.
+- **Progress table** (top of Workouts, collapsible, remembered per profile; also "Strength progress" in Stats): every strength exercise with **Latest 3×5** (heaviest qualifying weight on the most recent 3×5 day, and its date), **Best 3×5** and **1RM**, in your display unit. Sort by most recently trained or A–Z, and tap a row for the exercise.
 - History grouped by day with filters (All / Strength / Bodyweight / Cardio / one exercise); each exercise has a detail page with records, totals and an inline-SVG progress chart (top weight per day with 3×5 days marked, reps per day for bodyweight, distance/pace/time for cardio).
 - **Units:** lbs/kg and mi/km per profile (default lbs/mi). Each workout stores the values and the unit it was logged in; everything is displayed converted to the current setting (weights rounded to 0.5, distances to 0.01), so switching units never changes history. Editing an entry keeps the original value and unit of every number you don't change, and records compare values after that same rounding, so a converted 100 kg vs 220.5 lb is a tie, not a record.
 - Calendar shows 💪 on workout days; Stats has a Workouts section (workout days this week/month, strength / bodyweight / cardio split, cardio time and distance, recent records, links to each exercise's chart).

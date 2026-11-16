@@ -16,19 +16,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** large (the biggest item here).
 - **Added:** 2026-11-16
 
-### 3. Workouts progress table
-- **What:** one easy-to-scan table of every strength exercise, with columns for:
-  - most recent 3×5 weight (and its date), if any
-  - best 3×5 weight
-  - 1-rep max
-- **Feasible:** yes. All the numbers already exist in the records logic.
-- **Open details:**
-  - **Placement:** likely the top of the Workouts tab, plus a link from Stats.
-  - **Sorting:** probably by name, or by most recently trained.
-  - **Scope:** whether to include bodyweight exercises with a vest (likely not; strength only, as asked).
-- **Size:** small.
-- **Added:** 2026-11-16
-
 ### 4. Weather line on Today
 - **What:** a small, non-interactive line under the week strip on Today, e.g. "📍 Springfield · ⛅ 72° / 51° · 💧 20%":
   - today's high/low temperature and chance of precipitation
@@ -46,6 +33,31 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** small–medium.
 - **Added:** 2026-11-16
 
+## Done
+
+### 1. Mark a habit or task as "missed"
+- **What:** an option (in the long-press menu) to mark today's habit or task as missed, which takes it off the Today list because there's no chance to do it anymore. Example: "Morning prayer" was missed this morning.
+- **Rules:**
+  - Marking missed only hides it from Today for that day. It is not required: anything not marked complete already counts as missed.
+  - It doesn't count as done: streaks and completion stats treat it exactly like any other missed day.
+  - Should be undoable (Undo toast, and "Unmark missed" from the menu or from a small "Missed (n)" section).
+- **Added:** 2026-11-15
+- **Shipped:** v1.7.1 (2026-11-16)
+
+### 3. Workouts progress table
+- **What:** one easy-to-scan table of every strength exercise, with columns for:
+  - most recent 3×5 weight (and its date), if any
+  - best 3×5 weight
+  - 1-rep max
+- **Feasible:** yes. All the numbers already exist in the records logic.
+- **Open details:**
+  - **Placement:** likely the top of the Workouts tab, plus a link from Stats.
+  - **Sorting:** probably by name, or by most recently trained.
+  - **Scope:** whether to include bodyweight exercises with a vest (likely not; strength only, as asked).
+- **Size:** small.
+- **Added:** 2026-11-16
+- **Shipped:** v1.8.0 (pending QA before going live)
+
 ### 5. Non-daily habits counted by their own frequency
 - **What:** habits that aren't daily (e.g. "Work out 3×/week") shouldn't drag down the daily completion percentage. They're judged only against their own target:
   - Hitting 3 of 3 in a week counts as 100%.
@@ -59,14 +71,4 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Capping:** a week counts as complete when the target is met. Extra sessions beyond the target add nothing.
 - **Size:** small–medium.
 - **Added:** 2026-11-16
-
-## Done
-
-### 1. Mark a habit or task as "missed"
-- **What:** an option (in the long-press menu) to mark today's habit or task as missed, which takes it off the Today list because there's no chance to do it anymore. Example: "Morning prayer" was missed this morning.
-- **Rules:**
-  - Marking missed only hides it from Today for that day. It is not required: anything not marked complete already counts as missed.
-  - It doesn't count as done: streaks and completion stats treat it exactly like any other missed day.
-  - Should be undoable (Undo toast, and "Unmark missed" from the menu or from a small "Missed (n)" section).
-- **Added:** 2026-11-15
-- **Shipped:** v1.7.1 (2026-11-16)
+- **Shipped:** v1.8.0 (pending QA before going live)

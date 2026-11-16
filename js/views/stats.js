@@ -1,10 +1,10 @@
 import { h, s, segmented } from '../ui.js';
 import { getState } from '../store.js';
 import { periodStats, recentRecords, exerciseById, fmtLong, trimNum, distLabel, recordText } from '../workouts.js';
-import { typeIcon } from './workouts.js';
+import { typeIcon, setUiPref } from './workouts.js';
 import { icon } from '../icons.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, activeHabits, streaks, completionRate, totalCompletions, habitStart } from '../logic.js';
+import { dayProgress, activeHabits, streaks, completionRate, totalCompletions, habitStart, isWeekly, weekStatus, weeklyRate } from '../logic.js';
 import { todayKey, addDays, startOfWeek, fmtDateShort, weekdayNarrow, weekdayLabels, fromKey } from '../dates.js';
 import { habitIcon, habitTitle } from '../habitIcon.js';
 
@@ -22,6 +22,13 @@ export function renderStats() {
   const ws = startOfWeek(today, st.settings.weekStart);
   let wTotal = 0, wDone = 0;
   for (let k = ws; k <= today; k = addDays(k, 1)) { const p = dayProgress(st, k); wTotal += p.total; wDone += p.done; }
+  // Weekly (X per week) habits count once for the week: as 1 of 1 once met; an unmet current week isn't counted yet.
+  let weeklyMet = 0;
+  for (const hb of habits.filter(isWeekly)) {
+    if (habitStart(st, hb) > today) continue;
+    const w = weekStatus(st, hb, ws, today);
+    if (w.counted) { wTotal++; if (w.met) { wDone++; weeklyMet++; } }
+  }
   const totalHabitDone = habits.reduce((n, hb) => n + totalCompletions(st, hb), 0);
   let longest = null;
   for (const hb of habits) {
@@ -30,7 +37,7 @@ export function renderStats() {
   }
   root.append(h('section.stat-grid',
     tile(pctStr(tp.total ? tp.pct : null), 'Today', tp.total ? `${tp.done} of ${tp.total} done` : 'Nothing planned'),
-    tile(pctStr(wTotal ? wDone / wTotal : null), 'This week', wTotal ? `${wDone} of ${wTotal} so far` : 'No items yet'),
+    tile(pctStr(wTotal ? wDone / wTotal : null), 'This week', wTotal ? `${wDone} of ${wTotal} so far${weeklyMet ? ` · incl. ${weeklyMet} weekly goal${weeklyMet === 1 ? '' : 's'} met` : ''}` : 'No items yet'),
     tile(String(totalHabitDone), 'Habit check-ins', 'All time'),
     tile(longest && longest.s.current ? `🔥 ${longest.s.current}` : '—', 'Longest active streak',
       longest && longest.s.current ? habitTitle(longest.hb) : 'Start one today')));
@@ -59,13 +66,16 @@ export function renderStats() {
     for (const hb of habits) {
       const r30 = completionRate(st, hb, 30, today);
       const all = completionRate(st, hb, null, today);
+      // Weekly habits: weeks hit / weeks counted (current week only once met).
+      const wk = isWeekly(hb) ? { r: weeklyRate(st, hb, 30, today), a: weeklyRate(st, hb, null, today) } : null;
+      const sub = wk ? `${wk.r.hit} of ${wk.r.counted} week${wk.r.counted === 1 ? '' : 's'} · all time ${wk.a.hit} of ${wk.a.counted}` : `All time ${pctStr(all)}`;
       list.append(h('li.rate-row', { style: { '--c': hb.color } },
         h('span.emoji-bubble.small', { 'aria-hidden': 'true' }, habitIcon(hb)),
         h('div.rate-main',
           h('div.rate-top', h('span.habit-name', hb.name), h('span.rate-val', pctStr(r30))),
           h('div.rate-bar', { role: 'img', 'aria-label': `${hb.name}: ${pctStr(r30)} over the last 30 days, ${pctStr(all)} all time` },
             h('span', { style: { width: `${Math.round((r30 || 0) * 100)}%` } })),
-          h('span.muted.small', `All time ${pctStr(all)}`))));
+          h('span.muted.small', sub))));
     }
     root.append(h('section.card', h('div.section-head', h('h2.section-title', 'Habits · last 30 days')), list));
   }
@@ -137,8 +147,18 @@ function barChart(days, range) {
 }
 
 /** Workouts: days this week/month, strength vs cardio split, cardio totals, recent records, charts. */
+/** Stats › "Strength progress": the Workouts tab with its Progress table open and in view. */
+function openStrengthProgress() {
+  setUiPref({ progressOpen: true });
+  ctx.go('workouts');
+  setTimeout(() => document.getElementById('progress-card')?.scrollIntoView({ block: 'start' }), 60);
+}
+
 function workoutSection(st) {
-  const sec = h('section.section.stats-workouts', h('div.section-head', h('h2.section-title', '💪 Workouts'), h('a.link-btn', { href: '#workouts' }, 'All workouts')));
+  const sec = h('section.section.stats-workouts', h('div.section-head', h('h2.section-title', '💪 Workouts'),
+    h('div.head-links',
+      h('button.link-btn.strength-link', { type: 'button', onclick: openStrengthProgress }, 'Strength progress'),
+      h('a.link-btn', { href: '#workouts' }, 'All workouts'))));
   if (!st.workouts.length) {
     sec.append(h('div.card', h('p.muted', 'No workouts logged yet. ', h('a.link-btn.inline', { href: '#workouts' }, 'Log your first workout'))));
     return sec;
