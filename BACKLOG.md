@@ -5,6 +5,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 ## Open
 
 ### 2. Accounts and sync across devices
+- **Scheduled:** Fri Dec 4, 8:00 AM (US Central)
 - **What:** sign in, and see the same tasks, habits, workouts, journal and settings on every device (e.g. iPhone + iPad + computer).
 - **Feasible:** yes. It builds on the push server already running on Cloudflare (Worker + D1).
 - **Things to decide or build:**
@@ -17,6 +18,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 4. Weather line on Today
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central), together with #4, #6, #7 and #8
 - **What:** a small, non-interactive line under the week strip on Today, e.g. "📍 Springfield · ⛅ 72° / 51° · 💧 20%":
   - today's high/low temperature and chance of precipitation
   - the location name
@@ -34,6 +36,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 6. Image attachments on tasks
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central), together with #4, #6, #7 and #8
 - **What:** attach one or more photos or images to a task, shown on the View task screen; tap one to see it full size.
 - **Feasible:** yes.
 - **Notes:**
@@ -45,6 +48,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-16
 
 ### 7. Completed tasks history
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central), together with #4, #6, #7 and #8
 - **What:** a place to see every completed task, searchable, and filterable by category, date (range), priority and so on.
 - **Feasible:** yes; all the data is already stored.
 - **Open details:**
@@ -52,6 +56,16 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Repeating tasks:** each completed occurrence appears as its own row.
   - **Actions:** tapping a row opens View task, so you can un-complete it.
 - **Size:** small–medium.
+- **Added:** 2026-11-16
+
+### 8. Reminder-note polish (from v1.8.1 QA and user feedback)
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central), together with #4, #6 and #7
+- **What:**
+  - **No positive message:** never say "Reminders arrive even when the app is closed". Only show a note when reminders will **not** arrive while the app is closed: push off or unhealthy, notifications blocked, or iOS not installed to the Home Screen.
+  - **Blocked notifications:** the habit form currently contradicts the "notifications blocked" note; the reach check must also require notification permission.
+  - **No duplicate line** in the habit form.
+  - **Focus after delete:** after deleting a task from the View task screen, keyboard focus should go to the next item instead of getting lost.
+- **Size:** small.
 - **Added:** 2026-11-16
 
 ## Done
