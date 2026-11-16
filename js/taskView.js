@@ -20,8 +20,16 @@ export function linkify(text) {
     let last = 0, m;
     while ((m = re.exec(line))) {
       let url = m[0];
-      const trail = url.match(/[.,;:!?)\]]+$/); // leave trailing punctuation as text
-      if (trail) url = url.slice(0, -trail[0].length);
+      // Leave trailing punctuation as text, but keep a closing bracket that has its opener in the URL
+      // (e.g. https://en.wikipedia.org/wiki/Foo_(bar)).
+      for (;;) {
+        const c = url.slice(-1);
+        const count = (ch) => url.split(ch).length - 1;
+        if ('.,;:!?'.includes(c) && c) url = url.slice(0, -1);
+        else if (c === ')' && count(')') > count('(')) url = url.slice(0, -1);
+        else if (c === ']' && count(']') > count('[')) url = url.slice(0, -1);
+        else break;
+      }
       let ok = false;
       try { ok = ['http:', 'https:'].includes(new URL(url).protocol); } catch { /* not a URL */ }
       if (!ok) continue;
@@ -46,6 +54,8 @@ export function openTaskView(id, k = null) {
   let t = getState().tasks.find((x) => x.id === id);
   if (!t) { toast('That task was deleted.'); return null; }
   k = k || t.date;
+  // e.g. an old notification for a day that was skipped since: don't open an empty sheet.
+  if (isRecurring(t) && !occursOn(t, k)) { toast('That occurrence was skipped or moved.'); return null; }
   const body = h('div.task-view');
   let deletingHere = false;
   const render = () => {
@@ -96,6 +106,8 @@ export function openTaskView(id, k = null) {
         }, icon('list', { size: 16 }), 'More')),
     ].filter(Boolean)); // (null children would render as "null" text)
     titleEl.textContent = t.title;
+    // Re-rendering replaces the buttons, so focus can drop to <body> (e.g. after Edit › Save): bring it back.
+    setTimeout(() => { const a = document.activeElement; if ((!a || a === document.body) && document.contains(titleEl)) titleEl.focus({ preventScroll: true }); }, 0);
     return true;
   };
   const sheet = openSheet({ title: t.title, content: body, cls: 'task-view-sheet', onClose: () => unsub() });
