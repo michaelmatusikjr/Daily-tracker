@@ -1269,4 +1269,10 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 
 /* ---------- 1.8.1 ---------- */
 .progress-table .pt-val { white-space: nowrap; }
-.progress-table-card { scroll-margin-top: calc(var(--safe-t) + 12px); }
+.progress-table-card { scroll-margin-top: calc(var(--safe-t) + 16px); }
+@media (max-width: 360px) {
+  .progress-table-card { padding: var(--s3) 10px; }
+  .progress-table th:first-child { width: 27%; }
+  .progress-table th, .progress-table td { padding: 7px 2px; }
+  .progress-table td small { font-size: 10px; }
+}

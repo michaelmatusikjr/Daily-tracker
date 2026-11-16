@@ -102,6 +102,11 @@ export function pushCoversReminders() {
     && h && Date.now() - h.at < HEALTH_MAX_AGE && !healthProblem(h));
 }
 
+/** One-line "when will reminders appear" text, used under reminder fields and in Settings. */
+export const CLOSED_APP_OK = 'Reminders arrive even when the app is closed.';
+export const OPEN_APP_ONLY = 'Reminders fire while the app is open or was recently used.';
+export const reminderReach = () => (pushCoversReminders() ? CLOSED_APP_OK : OPEN_APP_ONLY);
+
 /** Human status for Settings. { kind: 'on'|'pending'|'offline'|'error'|'off'|'ios'|'blocked'|'server', text, help? } */
 export function pushStatus() {
   const s = loadState();

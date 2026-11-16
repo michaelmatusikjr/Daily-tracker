@@ -12,7 +12,7 @@ import { ensureCategory } from '../forms.js';
 import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '../reminders.js';
 import { setWorkoutHabit } from '../actions.js';
 import { habitText } from '../habitIcon.js';
-import { pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
+import { pushCoversReminders, CLOSED_APP_OK, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
 
@@ -114,9 +114,11 @@ export function renderSettings() {
       h('span', h('b', `${countText} won’t appear. `), reminderProblem(rStatus) || ''),
       rStatus === 'needs-install' ? h('button.link-btn.inline', { type: 'button', onclick: () => document.getElementById('set-install')?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 'How to add it') : null);
   } else if (count) {
-    banner = h('div.reminder-banner.ok', { role: 'status' }, icon('bell', { size: 18 }), h('span', `${countText} set. They appear while Daily Tracker is open or was recently used.`));
+    banner = h('div.reminder-banner.ok', { role: 'status' }, icon('bell', { size: 18 }), h('span', pushCoversReminders()
+      ? `${countText} set. They arrive even when the app is closed.`
+      : `${countText} set. They appear while Daily Tracker is open or was recently used.`));
   }
-  let notifDesc = 'Reminders fire while the app is open or was recently used. Browsers cannot guarantee reminders when the app is fully closed.';
+  let notifDesc = pushCoversReminders() ? CLOSED_APP_OK : 'Reminders fire while the app is open or was recently used. Browsers cannot guarantee reminders when the app is fully closed.';
   if (rStatus === 'needs-install') notifDesc = 'On iPhone, add the app to your Home Screen first to enable notifications.';
   else if (rStatus === 'unsupported') notifDesc = 'This browser does not support notifications.';
   else if (rStatus === 'denied') notifDesc = `Notifications are blocked for this app. ${blockedHelp()}`;

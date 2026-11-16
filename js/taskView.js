@@ -115,7 +115,15 @@ export function openTaskView(id, k = null) {
     setTimeout(() => { const a = document.activeElement; if ((!a || a === document.body) && document.contains(titleEl)) titleEl.focus({ preventScroll: true }); }, 0);
     return true;
   };
-  const sheet = openSheet({ title: t.title, content: body, cls: 'task-view-sheet', onClose: () => unsub() });
+  const sheet = openSheet({
+    title: t.title, content: body, cls: 'task-view-sheet',
+    onClose: () => {
+      unsub();
+      // The row that opened the view may have been re-rendered (e.g. after an edit): focus its replacement.
+      const a = document.activeElement;
+      if (!a || a === document.body || sheet.panel.contains(a)) document.querySelector(`.task[data-id="${CSS.escape(id)}"] .task-main`)?.focus({ preventScroll: true });
+    },
+  });
   const titleEl = sheet.panel.querySelector('.sheet-title');
   titleEl.setAttribute('tabindex', '-1');
   render();

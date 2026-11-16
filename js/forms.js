@@ -11,6 +11,7 @@ import { reminderStatus, reminderProblem, ensureReminderPermission } from './rem
 import { closeAllSheets } from './ui.js';
 import { dow, fmtTime, fmtDuration, relativeLabel, weekdayLabels, isValidKey, todayKey } from './dates.js';
 import { habitIcon, processIcon, validIcon } from './habitIcon.js';
+import { pushCoversReminders, onPushChange, reminderReach, CLOSED_APP_OK } from './push.js';
 
 export const HABIT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316', '#f59e0b', '#10b981', '#14b8a6', '#0ea5e9', '#64748b'];
 const CATEGORY_COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
@@ -40,7 +41,8 @@ function reminderNotice(hasReminder) {
     if (!problem || status === 'default' || status === 'off') {
       // 'default'/'off' are fixed automatically when the reminder is chosen or saved.
       el.className = 'reminder-note ok';
-      el.replaceChildren(icon('bell', { size: 15 }), h('span', 'You’ll get a notification while Daily Tracker is open or was recently used.'));
+      // With a healthy push server the "only while open" caveat doesn't apply.
+      el.replaceChildren(icon('bell', { size: 15 }), h('span', pushCoversReminders() ? CLOSED_APP_OK : 'You’ll get a notification while Daily Tracker is open or was recently used.'));
       return;
     }
     el.className = 'reminder-note warn';
@@ -50,7 +52,15 @@ function reminderNotice(hasReminder) {
       }, 'How to add it') : null));
   };
   refresh();
+  const off = onPushChange(() => { if (!el.isConnected && el.dataset.shown) { off(); return; } el.dataset.shown = '1'; refresh(); });
   return { el, refresh };
+}
+
+/** Field hint that follows the push state (stops listening once the form is gone). */
+function reachHint() {
+  const el = h('span', reminderReach().replace(/^Reminders/, 'Optional. Reminders'));
+  const off = onPushChange(() => { if (!el.isConnected) { off(); return; } el.textContent = reminderReach().replace(/^Reminders/, 'Optional. Reminders'); });
+  return el;
 }
 
 function field(label, control, hint = null, id = null) {
@@ -530,7 +540,7 @@ export function openHabitForm(habit) {
     groupField('Schedule', h('div', sched, daysRow, timesRow)),
     groupField('Goal', h('div', goal, countRow), 'Count goals: tap to add one, tap − to remove one.'),
     groupField('Time of day', tod),
-    field('Reminder', reminder, 'Optional. Reminders fire while the app is open or was recently used.'),
+    field('Reminder', reminder, reachHint()),
     habitNotice.el,
     err);
   syncSched(); syncGoal();

@@ -118,9 +118,10 @@ export function fmtDuration(min) {
 }
 
 export const fmt = (k, opts) => fromKey(k).toLocaleDateString(undefined, opts);
-export const fmtDateLong = (k) => fmt(k, { weekday: 'long', month: 'long', day: 'numeric' });
+// Months are always abbreviated (locale-aware); weekdays stay full. e.g. "Monday, Nov 16", "Nov 2026".
+export const fmtDateLong = (k) => fmt(k, { weekday: 'long', month: 'short', day: 'numeric' });
 export const fmtDateShort = (k) => fmt(k, { month: 'short', day: 'numeric' });
-export const fmtMonthYear = (k) => fmt(k, { month: 'long', year: 'numeric' });
+export const fmtMonthYear = (k) => fmt(k, { month: 'short', year: 'numeric' });
 export const weekdayShort = (k) => fmt(k, { weekday: 'short' });
 export const weekdayNarrow = (k) => fmt(k, { weekday: 'narrow' });
 
