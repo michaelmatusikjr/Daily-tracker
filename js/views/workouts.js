@@ -79,7 +79,8 @@ function progressCard(st) {
   const rows = strengthProgress(st);
   if (!rows.length) { card.append(h('p.hint-line', { id: 'progress-body' }, 'Log a strength exercise to see your progress.')); return card; }
   rows.sort(sort === 'az' ? (a, b) => a.ex.name.localeCompare(b.ex.name) : (a, b) => b.last.localeCompare(a.last) || a.ex.name.localeCompare(b.ex.name));
-  const cell = (r) => (r ? h('td', h('b', trimNum(r.v, 1)), h('small', ` ${unit}`), r.date ? h('span.pt-date', fmtDateShort(r.date)) : null) : h('td.muted', '—'));
+  // Number + unit never split ("106.5 kg"); the date below may wrap instead.
+  const cell = (r) => (r ? h('td', h('span.pt-val', h('b', trimNum(r.v, 1)), h('small', ` ${unit}`)), r.date ? h('span.pt-date', fmtDateShort(r.date)) : null) : h('td.muted', '—'));
   const table = h('table.progress-table',
     h('caption.sr-only', `Strength progress in ${unit}, sorted ${sort === 'az' ? 'A to Z' : 'by most recently trained'}`),
     h('thead', h('tr', h('th', { scope: 'col' }, 'Exercise'), h('th', { scope: 'col' }, 'Latest 3×5'), h('th', { scope: 'col' }, 'Best 3×5'), h('th', { scope: 'col' }, '1RM'))),

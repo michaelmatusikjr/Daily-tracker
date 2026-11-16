@@ -93,7 +93,12 @@ export function openTaskView(id, k = null) {
         type: 'button', onclick: () => toggleTask(id, k),
       }, icon(done ? 'undo' : 'check', { size: 18 }), done ? 'Mark not done' : 'Mark done'),
       h('div.tv-actions',
-        h('button.btn.secondary', { type: 'button', onclick: () => openTaskForm(t) }, icon('edit', { size: 16 }), 'Edit'),
+        h('button.btn.secondary.tv-edit', {
+          type: 'button',
+          // The view re-renders on save, so the Edit button that opened the form is gone by the time it
+          // closes: hand focus back to the current Edit button (re-queried), or the title.
+          onclick: () => openTaskForm(t, {}, { onClose: () => { if (!document.contains(sheet.panel)) return; (sheet.panel.querySelector('.tv-edit') || titleEl).focus({ preventScroll: true }); } }),
+        }, icon('edit', { size: 16 }), 'Edit'),
         h('button.btn.secondary', {
           type: 'button', 'aria-label': 'More actions', 'aria-haspopup': 'menu',
           onclick: (e) => {

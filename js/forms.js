@@ -229,7 +229,8 @@ export function openQuickAdd() {
 }
 
 // ---------------- Task form ----------------
-export function openTaskForm(task, defaults = {}) {
+/** opts.onClose(result): called after the form closes (e.g. so the View sheet can take focus back). */
+export function openTaskForm(task, defaults = {}, opts = {}) {
   const st = getState();
   const isNew = !task;
   const d = task ? JSON.parse(JSON.stringify(task)) : {
@@ -369,7 +370,7 @@ export function openTaskForm(task, defaults = {}) {
     }, icon('trash', { size: 18 }), 'Delete') : h('span'),
     h('button.btn.primary', { type: 'button', onclick: submit }, isNew ? 'Add task' : 'Save'),
   ];
-  const sheet = openSheet({ title: isNew ? 'New task' : 'Edit task', content: form, footer });
+  const sheet = openSheet({ title: isNew ? 'New task' : 'Edit task', content: form, footer, onClose: opts.onClose });
 }
 
 // ---------------- Habit form ----------------

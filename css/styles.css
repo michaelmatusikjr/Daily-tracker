@@ -1266,3 +1266,7 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .progress-table td.muted { color: var(--text-3); }
 .head-links { display: flex; gap: var(--s3); flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 360px) { .progress-table { font-size: 13px; } .progress-table thead th { font-size: 10px; letter-spacing: 0; } }
+
+/* ---------- 1.8.1 ---------- */
+.progress-table .pt-val { white-space: nowrap; }
+.progress-table-card { scroll-margin-top: calc(var(--safe-t) + 12px); }
