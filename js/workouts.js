@@ -444,6 +444,8 @@ export function syncHabitLink(state, date) {
   const auto = (state.autoHabit[hb.id] = state.autoHabit[hb.id] || {});
   if (has) {
     if (!(logs[date] >= 1)) { logs[date] = 1; auto[date] = true; }
+    // Done wins: an auto-check clears a "missed" mark for that day, like every other done path.
+    if (hb.missed?.[date]) { delete hb.missed[date]; if (!Object.keys(hb.missed).length) delete hb.missed; }
   } else if (auto[date]) {
     delete logs[date];
     delete auto[date];

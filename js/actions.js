@@ -171,6 +171,7 @@ export function duplicateTask(id) {
   const t = getState().tasks.find((x) => x.id === id);
   if (!t) return;
   const copy = { ...JSON.parse(JSON.stringify(t)), id: uid(), done: false, doneDates: {}, createdAt: Date.now(), updatedAt: Date.now(), order: (t.order || 0) + 0.5 };
+  delete copy.missedDates; // a copy starts clean, not missed
   update((s) => { s.tasks.push(copy); });
   toast(`Duplicated “${t.title}”`, { action: 'Undo', onAction: () => update((s) => { s.tasks = s.tasks.filter((x) => x.id !== copy.id); }) });
 }
