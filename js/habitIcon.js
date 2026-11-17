@@ -33,7 +33,8 @@ const isJpeg = (u) => u.startsWith('data:image/jpeg');
 export async function analyseStoredIcon(data) {
   const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('decode')); i.src = data; });
   const W = img.naturalWidth, H = img.naturalHeight;
-  if (!W || !H) return { photo: false };
+  // A stored icon is at most ~60 KB, but its pixel size isn't validated: never decode a huge bitmap.
+  if (!W || !H || W > 512 || H > 512) return { photo: false };
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const x = c.getContext('2d', { willReadFrequently: true });

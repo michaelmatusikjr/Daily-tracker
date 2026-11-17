@@ -33,10 +33,12 @@ export function initNoZoom() {
 }
 
 /** After the photo viewer closes, undo any zoom the viewer left behind (best effort; browsers differ). */
+let origViewport = null;
 export function resetZoom() {
   const meta = document.querySelector('meta[name="viewport"]');
   if (!meta) return;
-  const orig = meta.getAttribute('content');
+  if (origViewport === null) origViewport = meta.getAttribute('content'); // remembered once, even if called twice quickly
+  const orig = origViewport;
   meta.setAttribute('content', orig + ', maximum-scale=1, minimum-scale=1');
   setTimeout(() => meta.setAttribute('content', orig), 120);
 }

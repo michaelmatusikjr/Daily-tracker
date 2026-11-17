@@ -13,7 +13,7 @@ import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '.
 import { setWorkoutHabit } from '../actions.js';
 import { habitText } from '../habitIcon.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
-import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
+import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
 
@@ -295,7 +295,12 @@ async function importFile(input) {
         // Files that had to get a new id (the old one belonged to another profile): update the tasks.
         const byProfile = new Map();
         for (const [oldId, r] of renamed) (byProfile.get(r.profileId) || byProfile.set(r.profileId, new Map()).get(r.profileId)).set(oldId, r.id);
-        for (const [pid, map] of byProfile) mutateProfileData(pid, (s) => { for (const t of s.tasks) for (const a of t.attachments || []) if (map.has(a.id)) a.id = map.get(a.id); });
+        let unsaved = false;
+        for (const [pid, map] of byProfile) {
+          const ok = mutateProfileData(pid, (s) => { for (const t of s.tasks) for (const a of t.attachments || []) if (map.has(a.id)) a.id = map.get(a.id); });
+          if (!ok) { unsaved = true; await deleteFiles([...map.values()]).catch(() => {}); } // drop the copies nothing points at
+        }
+        if (unsaved) throw new Error('some photos couldn’t be linked to their tasks (storage full?)');
         if (error) throw error; // after the references are fixed, so nothing keeps pointing at another profile's photo
         const n = stored.size;
         if (n) toast(`Backup imported with ${n} photo${n === 1 ? '' : 's'}`, { force: true });

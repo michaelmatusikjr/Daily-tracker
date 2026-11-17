@@ -223,9 +223,11 @@ export async function importFiles(list, profileIdFor) {
       const profileId = profileIdFor(f.profileId);
       let id = f.id;
       const existing = await getFile(id);
-      if (existing && existing.profileId !== profileId) { id = 'f' + uid(); renamed.set(f.id, { id, profileId }); }
+      let rename = null;
+      if (existing && existing.profileId !== profileId) { id = 'f' + uid(); rename = { id, profileId }; }
       const dim = (v) => Math.min(10000, Math.max(0, Math.round(Number(v) || 0)));
       await putFile({ id, profileId, taskId: typeof f.taskId === 'string' ? f.taskId : null, blob, thumbBlob, type: m[1], w: dim(f.w), h: dim(f.h), size: blob.size, createdAt: Number(f.createdAt) || Date.now() });
+      if (rename) renamed.set(f.id, rename); // only once the copy is really stored
       stored.add(id);
     } catch (e) {
       // Stop here, but still hand back what was renamed so far: the caller must repoint those tasks
