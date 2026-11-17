@@ -156,6 +156,17 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
+### 20. Habit photo icons fill the whole icon
+- **What:**
+  - Habit image icons that are photos fill the entire rounded square. They scale so the shorter side matches the square, with the overflow cropped (centred), and no letterbox bars.
+- **Details:**
+  - **New photos:** cropped to a square when picked, using the same crop/zoom/rotate step as the profile photo (#16) so the user can position it.
+  - **Genmoji/stickers with transparency:** stay fully visible (not cropped).
+  - **Existing photo icons:** they were stored with transparent bars. Trim the bars and fill the square automatically (may look slightly softer); re-picking gives full sharpness.
+- **Size:** small.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
