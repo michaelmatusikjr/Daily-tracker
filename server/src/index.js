@@ -4,7 +4,7 @@
 // messages, so reminders keep coming even if the app isn't opened for weeks.
 import { b64urlEncode, b64urlDecode, utf8 } from './b64.js';
 import { importVapidKeys, sendPush } from './webpush.js';
-import { nextFire, isDateKey, isValidTimeZone } from './recur.js';
+import { nextFire, isDateKey, isValidTimeZone, localToUTC, addDays } from './recur.js';
 
 export const LIMITS = {
   maxRules: 500,
@@ -206,13 +206,24 @@ async function route(request, env, now) {
     // Rules the device already had keep firing for occurrences missed in the last 15 minutes;
     // brand-new rules only fire from (about) now on. Occurrences already sent never repeat.
     const known = new Set((await env.DB.prepare('SELECT rule_id FROM rules WHERE device_id = ?1').bind(id).all()).results.map((r) => r.rule_id));
-    const firedRows = (await env.DB.prepare('SELECT rule_id, date FROM fired WHERE device_id = ?1').bind(id).all()).results;
-    const fired = new Map();
-    for (const f of firedRows) (fired.get(f.rule_id) || fired.set(f.rule_id, new Set()).get(f.rule_id)).add(f.date);
+    const firedRows = (await env.DB.prepare('SELECT rule_id, date, at FROM fired WHERE device_id = ?1').bind(id).all()).results;
+    const firedByRule = new Map();
+    for (const f of firedRows) (firedByRule.get(f.rule_id) || firedByRule.set(f.rule_id, []).get(f.rule_id)).push(f);
+    // A sent-marker only counts while the rule still fires at the time it was sent for: moving the
+    // task's time (or date) later re-arms it. fired.at holds the scheduled fire time (older rows hold
+    // the send time, up to 15 min after it), so "sent for this fire time" = sent at/after it, within the late window.
+    const firedFor = (r) => {
+      const set = new Set();
+      for (const f of firedByRule.get(r.id) || []) {
+        const fireAt = localToUTC(addDays(f.date, r.offsetDays || 0), r.time, tz);
+        if (f.at >= fireAt && f.at - fireAt < LIMITS.lateWindowMs) set.add(f.date);
+      }
+      return set;
+    };
     const stmts = [env.DB.prepare('DELETE FROM rules WHERE device_id = ?1').bind(id)];
     for (const r of rules) {
       const from = known.has(r.id) ? now - LIMITS.lateWindowMs : now - LIMITS.newRuleGraceMs;
-      const next = nextFire(r, tz, from, { fired: fired.get(r.id) });
+      const next = nextFire(r, tz, from, { fired: firedFor(r) });
       stmts.push(env.DB.prepare('INSERT INTO rules (device_id, rule_id, def, next_at, next_date) VALUES (?1, ?2, ?3, ?4, ?5)')
         .bind(id, r.id, JSON.stringify(r), next ? next.at : null, next ? next.date : null));
     }
@@ -355,7 +366,8 @@ async function cronRun(env, now, { fetchImpl = fetch } = {}) {
       const rule = ruleFromRow(r);
       const nx = nextFire(rule, r.tz, Math.max(r.next_at, now - LIMITS.lateWindowMs), { fired: new Set([r.next_date]) });
       stmts.push(
-        env.DB.prepare('INSERT OR IGNORE INTO fired (device_id, rule_id, date, at) VALUES (?1, ?2, ?3, ?4)').bind(r.device_id, r.rule_id, r.next_date, now),
+        // at = the scheduled fire time (not the send time), so a later change of the rule's time can tell it apart.
+        env.DB.prepare('INSERT OR REPLACE INTO fired (device_id, rule_id, date, at) VALUES (?1, ?2, ?3, ?4)').bind(r.device_id, r.rule_id, r.next_date, r.next_at),
         env.DB.prepare('UPDATE rules SET next_at = ?3, next_date = ?4 WHERE device_id = ?1 AND rule_id = ?2').bind(r.device_id, r.rule_id, nx ? nx.at : null, nx ? nx.date : null),
       );
     }

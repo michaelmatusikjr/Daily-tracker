@@ -193,6 +193,45 @@ test('cron: sends due occurrences once, fills {date}, catches up within 15 min, 
   assert.equal((await db.prepare('SELECT COUNT(*) n FROM rules').first()).n, 0);
 });
 
+test('moving a reminder later after it fired re-arms it (sent-marker is tied to the fire time)', async () => {
+  const db = await mf.getD1Database('DB');
+  await db.prepare('DELETE FROM rules').run();
+  const d = await register('move1', '2.2.2.2');
+  const t0 = minute(Date.now()) + 2 * 60000;
+  const put = (rules) => call('PUT', '/api/schedule', { body: { tz: TZ, rules }, token: d.token, device: d.deviceId });
+  await put([once('mv', t0), daily('mvd', t0)]);
+  pushed.length = 0;
+  await cron(t0);
+  assert.deepEqual(pushed.map((p) => p.payload.title).sort(), ['Title mv', 'Title mvd']);
+  // Same time re-synced: still not repeated.
+  await put([once('mv', t0), daily('mvd', t0)]);
+  pushed.length = 0;
+  await cron(t0 + 60000);
+  assert.equal(pushed.length, 0, 'unchanged time: no repeat');
+  // Task moved 10 minutes later (same day): the marker for the old time must not block the new one.
+  const t1 = t0 + 10 * 60000;
+  await put([once('mv', t1), daily('mvd', t1)]);
+  const row = await db.prepare("SELECT next_at FROM rules WHERE rule_id = 'mv'").first();
+  assert.equal(row.next_at, t1, 're-armed for the new time');
+  pushed.length = 0;
+  await cron(t1);
+  assert.deepEqual(pushed.map((p) => p.payload.title).sort(), ['Title mv', 'Title mvd'], 'fires again at the new time');
+  pushed.length = 0;
+  await cron(t1 + 60000);
+  assert.equal(pushed.length, 0, 'and only once');
+  // Moved to another date: fires there too.
+  const t2 = t0 + 2 * 86400000;
+  await put([once('mv', t2)]);
+  pushed.length = 0;
+  await cron(t2);
+  assert.deepEqual(pushed.map((p) => p.payload.title), ['Title mv']);
+  // Legacy markers (at = send time, up to 15 min after the fire time) still suppress a repeat.
+  await db.prepare('DELETE FROM fired WHERE device_id = ?').bind(d.deviceId).run();
+  await db.prepare("INSERT INTO fired (device_id, rule_id, date, at) VALUES (?, 'leg', ?, ?)").bind(d.deviceId, keyOf(t0), t0 + 30000).run();
+  await put([once('leg', t0)]);
+  assert.equal((await db.prepare("SELECT next_at FROM rules WHERE rule_id = 'leg'").first()).next_at, null, 'legacy marker still counts');
+});
+
 test('cron: at most 10 per device and 200 in all per run, the rest next minute', async () => {
   const db = await mf.getD1Database('DB');
   await db.prepare('DELETE FROM rules').run();
