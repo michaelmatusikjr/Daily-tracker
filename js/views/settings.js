@@ -12,7 +12,8 @@ import { ensureCategory } from '../forms.js';
 import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '../reminders.js';
 import { setWorkoutHabit } from '../actions.js';
 import { habitText } from '../habitIcon.js';
-import { pushCoversReminders, CLOSED_APP_OK, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
+import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
+import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteProfileFiles } from '../attachments.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
 
@@ -115,10 +116,10 @@ export function renderSettings() {
       rStatus === 'needs-install' ? h('button.link-btn.inline', { type: 'button', onclick: () => document.getElementById('set-install')?.scrollIntoView({ block: 'center', behavior: 'smooth' }) }, 'How to add it') : null);
   } else if (count) {
     banner = h('div.reminder-banner.ok', { role: 'status' }, icon('bell', { size: 18 }), h('span', pushCoversReminders()
-      ? `${countText} set. They arrive even when the app is closed.`
+      ? `${countText} set.`
       : `${countText} set. They appear while Daily Tracker is open or was recently used.`));
   }
-  let notifDesc = pushCoversReminders() ? CLOSED_APP_OK : 'Reminders fire while the app is open or was recently used. Browsers cannot guarantee reminders when the app is fully closed.';
+  let notifDesc = pushCoversReminders() ? null : 'Reminders fire while the app is open or was recently used. Browsers cannot guarantee reminders when the app is fully closed.';
   if (rStatus === 'needs-install') notifDesc = 'On iPhone, add the app to your Home Screen first to enable notifications.';
   else if (rStatus === 'unsupported') notifDesc = 'This browser does not support notifications.';
   else if (rStatus === 'denied') notifDesc = `Notifications are blocked for this app. ${blockedHelp()}`;
@@ -158,8 +159,10 @@ export function renderSettings() {
   const fileInput = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: () => importFile(fileInput) });
   root.append(group('Your data',
     h('p.set-desc.pad', 'Everything is stored only on this device. Export saves all profiles in one file.'),
+    photoUsageRow(),
+    includePhotosRow(),
     h('div.set-actions',
-      h('button.btn.secondary', { type: 'button', onclick: exportData }, icon('download', { size: 18 }), 'Export JSON'),
+      h('button.btn.secondary', { type: 'button', onclick: () => exportData(includePhotos) }, icon('download', { size: 18 }), 'Export JSON'),
       h('button.btn.secondary', { type: 'button', onclick: () => fileInput.click() }, icon('upload', { size: 18 }), 'Import JSON'),
       fileInput),
     h('div.set-actions',
@@ -239,9 +242,31 @@ function group(title, ...rows) {
   return h('section.set-group', h('h2.set-title', title), h('div.card.set-card', rows));
 }
 
-function exportData() {
+// ---- Photos in Settings › Your data ----
+let includePhotos = true; // per session; default on
+const allAttachmentIds = (payload) => payload.profiles.flatMap((p) => (p.data?.tasks || []).flatMap((t) => (t.attachments || []).map((a) => a.id)));
+function photoUsageRow() {
+  const el = h('p.set-desc.photo-usage', { 'aria-live': 'polite' });
+  profileUsage(getActiveProfile().id).then((u) => {
+    el.textContent = u.count ? `Photos (${getActiveProfile().name}): ${u.count} · ${fmtBytes(u.bytes)}` : `Photos (${getActiveProfile().name}): none`;
+  }).catch((e) => { el.textContent = storageMessage(e); });
+  return el;
+}
+function includePhotosRow() {
+  const size = h('span.muted.small');
+  const box = h('input', { type: 'checkbox', checked: includePhotos, onchange: () => { includePhotos = box.checked; } });
+  exportSize(allAttachmentIds(exportPayload())).then((b) => { size.textContent = b ? ` (adds about ${fmtBytes(b)})` : ' (no photos yet)'; }).catch(() => {});
+  return h('label.set-check', box, ' Include photos in the backup', size);
+}
+
+async function exportData(withPhotos = true) {
   try {
-    const blob = new Blob([JSON.stringify(exportPayload(), null, 2)], { type: 'application/json' });
+    const payload = exportPayload();
+    if (withPhotos) {
+      const ids = allAttachmentIds(payload);
+      if (ids.length) { toast('Preparing backup with photos…', { force: true }); payload.attachments = await exportFiles(ids); }
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = h('a', { href: url, download: `daily-tracker-backup-${todayKey()}.json` });
     document.body.append(a);
@@ -258,9 +283,16 @@ async function importFile(input) {
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
-  if (file.size > 20 * 1024 * 1024) { toast('That file is too large'); return; }
+  if (file.size > 300 * 1024 * 1024) { toast('That file is too large'); return; }
   try {
-    const parsed = validateImport(JSON.parse(await file.text()));
+    const raw = JSON.parse(await file.text());
+    const parsed = validateImport(raw);
+    // Photos (optional): stored in IndexedDB once the data import succeeded. Old backups have none.
+    const restorePhotos = async (profileIdFor) => {
+      if (!Array.isArray(raw?.attachments) || !raw.attachments.length) return;
+      try { const n = (await importFiles(raw.attachments, profileIdFor)).size; if (n) toast(`Backup imported with ${n} photo${n === 1 ? '' : 's'}`, { force: true }); }
+      catch (e) { toast(`Backup imported, but photos couldn’t be restored: ${e.message}`, { force: true, duration: 7000 }); }
+    };
     const counts = (d) => `${d.tasks.length} tasks, ${d.habits.length} habits and ${d.workouts.length} workouts`;
     if (parsed.kind === 'multi') {
       const names = parsed.profiles.map((p) => p.name).join(', ');
@@ -283,6 +315,8 @@ async function importFile(input) {
       parsed.profiles.forEach((p) => { if (p.data) p.data.settings.onboarded = true; });
       if (!replaceAllProfiles(parsed, { deleteUnreadable })) { toast('Couldn’t import – this device’s storage is full', { force: true }); return; }
       toast('Backup imported');
+      const ids = new Set(getProfiles().map((p) => p.id));
+      await restorePhotos((pid) => (ids.has(pid) ? pid : getActiveProfile().id));
       return;
     }
     // Older single-profile backup: replace the current profile or add it as a new one.
@@ -294,9 +328,16 @@ async function importFile(input) {
       { value: 'replace', label: `Replace ${profile.name}’s data`, style: 'danger' },
       { value: null, label: 'Cancel', style: 'ghost' },
     ]);
-    if (choice === 'replace') { replaceState(data); toast('Backup imported'); }
+    if (choice === 'replace') { replaceState(data); toast('Backup imported'); await restorePhotos(() => getActiveProfile().id); }
     if (choice === 'add') {
-      if (addProfile({ name: 'Imported', data })) toast('Backup added as profile “Imported” – rename it from the profile menu');
+      // New ids for the photos, so the copy never shares files with an existing profile.
+      if (Array.isArray(raw?.attachments)) {
+        const map = new Map();
+        for (const t of data.tasks) for (const a of t.attachments || []) { if (!map.has(a.id)) map.set(a.id, 'f' + Math.random().toString(36).slice(2) + Date.now().toString(36)); a.id = map.get(a.id); }
+        raw.attachments = raw.attachments.filter((f) => f && map.has(f.id)).map((f) => ({ ...f, id: map.get(f.id) }));
+      }
+      const newId = addProfile({ name: 'Imported', data });
+      if (newId) { toast('Backup added as profile “Imported” – rename it from the profile menu'); await restorePhotos(() => (typeof newId === 'string' ? newId : getActiveProfile().id)); }
       else toast('Couldn’t import – this device’s storage is full', { force: true });
     }
   } catch (e) {
@@ -310,7 +351,9 @@ async function resetAll() {
   if (!(await confirmDialog('Are you absolutely sure?', 'This cannot be undone. Consider exporting a backup first.', { ok: 'Delete everything', danger: true }))) return;
   const fresh = defaultState();
   fresh.settings = { ...getState().settings, onboarded: true, notifications: false, workoutHabit: { habitId: null, filter: 'any' } };
+  const pid = getActiveProfile().id;
   replaceState(fresh);
+  deleteProfileFiles(pid); // its photos go too
   ctx.setDate(todayKey());
   toast(`${name}’s data was reset`);
   afterDataRemoved(); // turns closed-app reminders off when nothing needs them any more

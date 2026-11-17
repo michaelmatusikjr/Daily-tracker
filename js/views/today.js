@@ -116,7 +116,8 @@ export function renderToday() {
       h('p.progress-sub', mood),
       prog.total ? h('p.progress-break',
         h('span', icon('check', { size: 13 }), `${prog.tasks.done}/${prog.tasks.total} tasks`),
-        h('span', icon('habits', { size: 13 }), `${prog.habits.done}/${prog.habits.total} habits`)) : null)));
+        h('span', icon('habits', { size: 13 }), `${prog.habits.done}/${prog.habits.total} habits`)) : null,
+      h('a.link-btn.completed-link', { href: '#completed' }, 'Completed ›'))));
 
   // ---- Overdue (rollover) ----
   if (isToday) {

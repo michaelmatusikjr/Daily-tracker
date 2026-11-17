@@ -2,7 +2,7 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.8.1';
+export const APP_VERSION = '1.9.0';
 export const SCHEMA_VERSION = 4;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
@@ -97,6 +97,11 @@ function normTask(t, i) {
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.filter(isValidKey) : [],
     // "Mark as missed": dates the user gave up on (hidden from Today; still counts as not done).
     ...(dateFlags(t.missedDates) ? { missedDates: dateFlags(t.missedDates) } : {}),
+    // When it was completed (one-off) / per occurrence (repeating). Recorded since 1.9.0; optional.
+    ...(Number.isFinite(t.completedAt) && t.completedAt > 0 ? { completedAt: t.completedAt } : {}),
+    ...(dateTimes(t.doneAt) ? { doneAt: dateTimes(t.doneAt) } : {}),
+    // Photos: metadata only (the images live in IndexedDB, see js/attachments.js).
+    ...(attachmentList(t.attachments) ? { attachments: attachmentList(t.attachments) } : {}),
     order: Number.isFinite(t.order) ? t.order : i,
     createdAt: Number.isFinite(t.createdAt) ? t.createdAt : Date.now(),
     ...(Number.isFinite(t.updatedAt) ? { updatedAt: t.updatedAt } : {}),
@@ -136,6 +141,21 @@ function normHabit(hb, i) {
     createdAt: isValidKey(hb.createdAt) ? hb.createdAt : todayKey(),
     ...(Number.isFinite(hb.updatedAt) ? { updatedAt: hb.updatedAt } : {}),
   };
+}
+
+/** { 'YYYY-MM-DD': ms } maps; null when empty. */
+function dateTimes(v) {
+  if (!isObj(v)) return null;
+  const out = {};
+  for (const [k, val] of Object.entries(v).slice(0, 20000)) if (isValidKey(k) && Number.isFinite(val) && val > 0) out[k] = val;
+  return Object.keys(out).length ? out : null;
+}
+/** [{ id, w, h, type }] (at most 6, image types only); null when empty. */
+function attachmentList(v) {
+  if (!Array.isArray(v)) return null;
+  const out = v.filter((a) => isObj(a) && typeof a.id === 'string' && /^[\w-]{1,60}$/.test(a.id) && ['image/jpeg', 'image/png', 'image/webp'].includes(a.type))
+    .slice(0, 6).map((a) => ({ id: a.id, w: Number.isFinite(a.w) ? Math.round(a.w) : 0, h: Number.isFinite(a.h) ? Math.round(a.h) : 0, type: a.type }));
+  return out.length ? out : null;
 }
 
 /** { 'YYYY-MM-DD': true } maps (valid date keys, true values only); null when empty. */

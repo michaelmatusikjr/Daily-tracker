@@ -10,6 +10,7 @@ import { openTaskForm } from './forms.js';
 import { taskMenu, showMenu } from './itemMenu.js';
 import { timeRange, reminderWarnBadge } from './views/widgets.js';
 import { canFire } from './reminders.js';
+import { fileUrl } from './attachments.js';
 
 /** Notes → text nodes and safe links (http/https only, opened in a new tab). Never innerHTML. */
 export function linkify(text) {
@@ -49,6 +50,65 @@ const reminderText = (min) => {
   return `${min} min before`;
 };
 
+/** Thumbnail grid; tapping one opens the full-screen viewer. */
+function photoSection(t) {
+  const list = t.attachments;
+  return h('section.tv-section', { 'aria-label': 'Photos' }, h('h3.tv-head', `Photos (${list.length})`),
+    h('ul.photo-grid.tv-photos', list.map((a, i) => {
+      const img = h('img', { alt: `${t.title} – photo ${i + 1} of ${list.length}`, width: 96, height: 96 });
+      fileUrl(a.id).then((u) => { if (u) { img.src = u; img.addEventListener('load', () => URL.revokeObjectURL(u), { once: true }); } else img.closest('li')?.classList.add('missing'); });
+      return h('li.photo-item', h('button.photo-open', { type: 'button', 'aria-label': `Open photo ${i + 1} of ${list.length}`, onclick: () => openPhotoViewer(t.title, list, i) }, img));
+    })));
+}
+
+/** Full-screen photo viewer: arrows / swipe to move, Esc or × to close, pinch-zoom on touch. */
+export function openPhotoViewer(title, list, start = 0) {
+  let i = start;
+  const prevFocus = document.activeElement;
+  const img = h('img.pv-img', { alt: '' });
+  const counter = h('p.pv-count', { 'aria-live': 'polite' });
+  let url = null;
+  const show = async () => {
+    const n = list.length;
+    img.alt = `${title} – photo ${i + 1} of ${n}`;
+    counter.textContent = `${i + 1} / ${n}`;
+    prevBtn.disabled = i === 0; nextBtn.disabled = i === n - 1;
+    const u = await fileUrl(list[i].id, 'full');
+    if (url) URL.revokeObjectURL(url);
+    url = u;
+    if (u) { img.src = u; img.hidden = false; missing.hidden = true; } else { img.removeAttribute('src'); img.hidden = true; missing.hidden = false; }
+  };
+  const go = (d) => { const j = i + d; if (j >= 0 && j < list.length) { i = j; show(); } };
+  const close = () => { document.removeEventListener('keydown', onKey, true); root.remove(); if (url) URL.revokeObjectURL(url); document.body.classList.remove('viewer-open'); prevFocus?.focus?.({ preventScroll: true }); };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
+    else if (e.key === 'Tab') { const f = [...root.querySelectorAll('button:not([disabled])')]; const k = f.indexOf(document.activeElement); e.preventDefault(); f[(k + (e.shiftKey ? -1 : 1) + f.length) % f.length]?.focus(); }
+  };
+  const prevBtn = h('button.pv-nav.pv-prev', { type: 'button', 'aria-label': 'Previous photo', onclick: () => go(-1) }, icon('chevronLeft', { size: 28 }));
+  const nextBtn = h('button.pv-nav.pv-next', { type: 'button', 'aria-label': 'Next photo', onclick: () => go(1) }, icon('chevronRight', { size: 28 }));
+  const closeBtn = h('button.pv-close', { type: 'button', 'aria-label': 'Close photo' }, icon('x', { size: 24 }));
+  closeBtn.addEventListener('click', close);
+  const missing = h('p.pv-missing', { hidden: true }, 'This photo isn’t available on this device.');
+  const stage = h('div.pv-stage', img, missing);
+  // Swipe (one finger) to move; two fingers are left to the browser for pinch-zoom.
+  let sx = null, sy = 0;
+  stage.addEventListener('touchstart', (e) => { sx = e.touches.length === 1 ? e.touches[0].clientX : null; sy = e.touches[0]?.clientY || 0; }, { passive: true });
+  stage.addEventListener('touchend', (e) => {
+    if (sx === null) return;
+    const t = e.changedTouches[0]; const dx = t.clientX - sx, dy = t.clientY - sy; sx = null;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) go(dx < 0 ? 1 : -1);
+  });
+  const root = h('div.photo-viewer', { role: 'dialog', 'aria-modal': 'true', 'aria-label': `${title} photos` }, closeBtn, prevBtn, stage, nextBtn, counter);
+  document.body.append(root);
+  document.body.classList.add('viewer-open');
+  document.addEventListener('keydown', onKey, true);
+  show();
+  closeBtn.focus();
+  return { close, go, root };
+}
+
 /** Open the View sheet for task `id` on day `k` (the occurrence for repeating tasks). */
 export function openTaskView(id, k = null) {
   let t = getState().tasks.find((x) => x.id === id);
@@ -57,6 +117,8 @@ export function openTaskView(id, k = null) {
   // e.g. an old notification for a day that was skipped since: don't open an empty sheet.
   if (isRecurring(t) && !occursOn(t, k)) { toast('That occurrence was skipped or moved.'); return null; }
   const body = h('div.task-view');
+  // Rows on screen when the view opened (to move focus sensibly if this task disappears).
+  const rowOrder = [...document.querySelectorAll('.task[data-id]')].map((e) => e.dataset.id);
   let deletingHere = false;
   const render = () => {
     const st = getState();
@@ -89,6 +151,7 @@ export function openTaskView(id, k = null) {
       h('section.tv-section', { 'aria-label': 'When' }, h('h3.tv-head', 'When'), ...when),
       details.length ? h('section.tv-section', { 'aria-label': 'Details' }, h('h3.tv-head', 'Details'), ...details) : null,
       t.notes ? h('section.tv-section', { 'aria-label': 'Notes' }, h('h3.tv-head', 'Notes'), h('p.tv-notes', linkify(t.notes))) : null,
+      t.attachments?.length ? photoSection(t) : null,
       h(`button.btn.block.tv-done${done ? '.secondary' : '.primary'}`, {
         type: 'button', onclick: () => toggleTask(id, k),
       }, icon(done ? 'undo' : 'check', { size: 18 }), done ? 'Mark not done' : 'Mark done'),
@@ -121,7 +184,18 @@ export function openTaskView(id, k = null) {
       unsub();
       // The row that opened the view may have been re-rendered (e.g. after an edit): focus its replacement.
       const a = document.activeElement;
-      if (!a || a === document.body || sheet.panel.contains(a)) document.querySelector(`.task[data-id="${CSS.escape(id)}"] .task-main`)?.focus({ preventScroll: true });
+      if (a && a !== document.body && !sheet.panel.contains(a)) return;
+      const rowBtn = (tid) => document.querySelector(`.task[data-id="${CSS.escape(tid)}"] .task-main`);
+      let target = rowBtn(id);
+      if (!target) {
+        // The task (or this occurrence) is gone, e.g. deleted from here: go to the next row, else the
+        // previous one, else the list's heading, so keyboard focus never drops to <body>.
+        const i = rowOrder.indexOf(id);
+        const next = rowOrder.slice(i + 1).map(rowBtn).find(Boolean) || rowOrder.slice(0, Math.max(0, i)).reverse().map(rowBtn).find(Boolean);
+        target = next || document.querySelector('main .section-title, main h1');
+        if (target && !next && !target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+      }
+      target?.focus({ preventScroll: true });
     },
   });
   const titleEl = sheet.panel.querySelector('.sheet-title');

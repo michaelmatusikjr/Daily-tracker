@@ -11,7 +11,9 @@ import { reminderStatus, reminderProblem, ensureReminderPermission } from './rem
 import { closeAllSheets } from './ui.js';
 import { dow, fmtTime, fmtDuration, relativeLabel, weekdayLabels, isValidKey, todayKey } from './dates.js';
 import { habitIcon, processIcon, validIcon } from './habitIcon.js';
-import { pushCoversReminders, onPushChange, reminderReach, CLOSED_APP_OK } from './push.js';
+import { pushCoversReminders, onPushChange } from './push.js';
+import { getActiveProfile } from './store.js';
+import { addPhoto, fileUrl, deleteFiles, assignFiles, MAX_PER_TASK } from './attachments.js';
 
 export const HABIT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316', '#f59e0b', '#10b981', '#14b8a6', '#0ea5e9', '#64748b'];
 const CATEGORY_COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
@@ -41,8 +43,9 @@ function reminderNotice(hasReminder) {
     if (!problem || status === 'default' || status === 'off') {
       // 'default'/'off' are fixed automatically when the reminder is chosen or saved.
       el.className = 'reminder-note ok';
-      // With a healthy push server the "only while open" caveat doesn't apply.
-      el.replaceChildren(icon('bell', { size: 15 }), h('span', pushCoversReminders() ? CLOSED_APP_OK : 'You’ll get a notification while Daily Tracker is open or was recently used.'));
+      // Only say something when reminders WON'T arrive while the app is closed.
+      if (pushCoversReminders()) { el.replaceChildren(); el.hidden = true; return; }
+      el.replaceChildren(icon('bell', { size: 15 }), h('span', 'You’ll get a notification while Daily Tracker is open or was recently used.'));
       return;
     }
     el.className = 'reminder-note warn';
@@ -65,12 +68,6 @@ function whileShown(el, fn) {
   setTimeout(() => { if (el.isConnected) seen = true; }, 0);
 }
 
-/** Field hint that follows the push state (stops listening once the form is gone). */
-function reachHint() {
-  const el = h('span', reminderReach().replace(/^Reminders/, 'Optional. Reminders'));
-  whileShown(el, () => { el.textContent = reminderReach().replace(/^Reminders/, 'Optional. Reminders'); });
-  return el;
-}
 
 function field(label, control, hint = null, id = null) {
   const fid = id || 'f-' + Math.random().toString(36).slice(2, 8);
@@ -343,10 +340,58 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
   };
   recurSel.addEventListener('change', syncRecur);
 
+  // Photos: added files are stored right away (IndexedDB) but only kept if you save;
+  // removals apply on save. Cancel undoes both.
+  const photos = { list: [...(d.attachments || [])], added: [], saved: false };
+  const photoGrid = h('ul.photo-grid', { 'aria-label': 'Photos' });
+  const photoStatus = h('p.field-hint.photo-status', { role: 'status', 'aria-live': 'polite' });
+  const photoInput = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true, onchange: () => { const f = [...photoInput.files]; photoInput.value = ''; addPhotos(f); } });
+  const addBtn = h('button.btn.secondary.small', { type: 'button', onclick: () => photoInput.click() }, icon('upload', { size: 16 }), 'Add photo');
+  const urls = [];
+  function renderPhotos() {
+    urls.splice(0).forEach((u) => URL.revokeObjectURL(u));
+    photoGrid.replaceChildren(...photos.list.map((a, i) => {
+      const img = h('img', { alt: `${title.value.trim() || 'Task'} – photo ${i + 1}`, width: 72, height: 72 });
+      fileUrl(a.id).then((u) => { if (u) { urls.push(u); img.src = u; } });
+      return h('li.photo-item', img, h('button.photo-remove', {
+        type: 'button', 'aria-label': `Remove photo ${i + 1}`,
+        onclick: () => { photos.list.splice(i, 1); renderPhotos(); photoStatus.textContent = 'Photo removed – Save to apply.'; addBtn.focus(); },
+      }, icon('x', { size: 14 })));
+    }));
+    addBtn.disabled = photos.list.length >= MAX_PER_TASK;
+  }
+  async function addPhotos(files) {
+    const room = MAX_PER_TASK - photos.list.length;
+    if (room <= 0) { photoStatus.textContent = `A task can have up to ${MAX_PER_TASK} photos.`; return; }
+    const imgs = files.filter((f) => f && /^image\//.test(f.type || ''));
+    if (!imgs.length) { photoStatus.textContent = files.length ? 'That file isn’t an image.' : ''; return; }
+    const take = imgs.slice(0, room);
+    for (let i = 0; i < take.length; i++) {
+      photoStatus.textContent = take.length > 1 ? `Processing photo ${i + 1} of ${take.length}…` : 'Processing photo…';
+      try {
+        const a = await addPhoto(take[i], getActiveProfile().id, task?.id || null);
+        photos.list.push(a); photos.added.push(a.id);
+        renderPhotos();
+      } catch (e) { photoStatus.textContent = e.message || 'That photo couldn’t be added.'; return; }
+    }
+    photoStatus.textContent = imgs.length > room ? `Added ${take.length}. A task can have up to ${MAX_PER_TASK} photos.` : `${take.length === 1 ? 'Photo' : `${take.length} photos`} added.`;
+  }
+  renderPhotos();
+  const photoField = h('div.field.photo-field',
+    h('span.field-label', 'Photos'), photoGrid,
+    h('div.recur-extra.inline', addBtn, photoInput), photoStatus);
+
   const err = h('p.form-error', { role: 'alert' });
-  const form = h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+  const form = h('form.form', {
+    onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true,
+    // Desktop: drop or paste images anywhere on the form.
+    ondragover: (e) => { if ([...(e.dataTransfer?.items || [])].some((i) => i.kind === 'file')) e.preventDefault(); },
+    ondrop: (e) => { const f = [...(e.dataTransfer?.files || [])]; if (f.length) { e.preventDefault(); addPhotos(f); } },
+    onpaste: (e) => { const f = [...(e.clipboardData?.files || [])].filter((x) => /^image\//.test(x.type)); if (f.length) { e.preventDefault(); addPhotos(f); } },
+  },
     field('Title', title),
     field('Notes', notes),
+    photoField,
     h('div.grid-2', field('Date', date), h('div.field', h('label.field-label', { for: 'task-time' }, 'Start time ', clearTime), time)),
     timeExtras,
     taskNotice.el,
@@ -377,7 +422,14 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
       data.id = task.id;
     }
     if (data.reminder !== null && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
-    saveTask(data);
+    data.attachments = photos.list.map((a) => ({ id: a.id, w: a.w, h: a.h, type: a.type }));
+    const savedId = saveTask(data);
+    // Photos: point new files at the task; delete the ones removed in this edit.
+    const kept = new Set(photos.list.map((a) => a.id));
+    if (photos.added.length) assignFiles(photos.added.filter((x) => kept.has(x)), savedId, getActiveProfile().id).catch(() => {});
+    const removed = [...(d.attachments || []), ...photos.added.map((id) => ({ id }))].map((a) => a.id).filter((x) => !kept.has(x));
+    if (removed.length) deleteFiles(removed).catch(() => {});
+    photos.saved = true;
     sheet.close();
     if (isNew) toast(`Added “${t}”`);
   }
@@ -389,7 +441,15 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
     }, icon('trash', { size: 18 }), 'Delete') : h('span'),
     h('button.btn.primary', { type: 'button', onclick: submit }, isNew ? 'Add task' : 'Save'),
   ];
-  const sheet = openSheet({ title: isNew ? 'New task' : 'Edit task', content: form, footer, onClose: opts.onClose });
+  const sheet = openSheet({
+    title: isNew ? 'New task' : 'Edit task', content: form, footer,
+    onClose: (r) => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      // Cancelled: forget photos added in this session (removed ones were never deleted).
+      if (!photos.saved && photos.added.length) deleteFiles(photos.added).catch(() => {});
+      opts.onClose?.(r);
+    },
+  });
 }
 
 // ---------------- Habit form ----------------
@@ -549,7 +609,7 @@ export function openHabitForm(habit) {
     groupField('Schedule', h('div', sched, daysRow, timesRow)),
     groupField('Goal', h('div', goal, countRow), 'Count goals: tap to add one, tap − to remove one.'),
     groupField('Time of day', tod),
-    field('Reminder', reminder, reachHint()),
+    field('Reminder', reminder, 'Optional.'),
     habitNotice.el,
     err);
   syncSched(); syncGoal();

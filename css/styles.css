@@ -1276,3 +1276,46 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
   .progress-table th, .progress-table td { padding: 7px 2px; }
   .progress-table td small { font-size: 10px; }
 }
+
+/* ---------- 1.9.0: task photos ---------- */
+.photo-grid { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.photo-grid:empty { display: none; }
+.photo-item { position: relative; width: 72px; height: 72px; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.photo-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-item.missing::after { content: '?'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--text-3); }
+.photo-remove { position: absolute; top: 3px; right: 3px; width: 26px; height: 26px; border-radius: 50%; border: 0; display: grid; place-items: center; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
+.tv-photos .photo-item { width: 88px; height: 88px; }
+.photo-open { all: unset; display: block; width: 100%; height: 100%; cursor: zoom-in; }
+.photo-open:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.meta.clip { gap: 2px; }
+.photo-viewer { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.94); display: grid; grid-template-columns: 56px 1fr 56px; grid-template-rows: 1fr auto; align-items: center; color: #fff; padding: calc(var(--safe-t) + 8px) 0 calc(var(--safe-b) + 8px); }
+.pv-stage { grid-column: 2; grid-row: 1; height: 100%; display: grid; place-items: center; overflow: auto; touch-action: pinch-zoom pan-x pan-y; }
+.pv-img { max-width: 100%; max-height: calc(100dvh - 120px); object-fit: contain; }
+.pv-nav { grid-row: 1; width: 48px; height: 64px; border: 0; background: transparent; color: #fff; display: grid; place-items: center; cursor: pointer; border-radius: 12px; }
+.pv-prev { grid-column: 1; } .pv-next { grid-column: 3; }
+.pv-nav:disabled { opacity: .25; cursor: default; }
+.pv-close { position: absolute; top: calc(var(--safe-t) + 8px); right: 8px; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: #fff; display: grid; place-items: center; cursor: pointer; z-index: 1; }
+.pv-count { grid-column: 1 / -1; grid-row: 2; text-align: center; margin: 0; font-size: 14px; opacity: .85; }
+.pv-missing { color: #ddd; }
+.viewer-open { overflow: hidden; }
+.set-check { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; }
+.photo-usage { margin: 6px 0 0; }
+
+/* ---------- 1.9.0: Completed history ---------- */
+.completed-link { font-size: 13px; margin-top: 6px; display: inline-block; }
+.completed-tools { display: grid; gap: var(--s2); margin-bottom: var(--s3); }
+.completed-search { width: 100%; }
+.completed-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.completed-active { display: flex; align-items: center; gap: var(--s3); }
+.completed-count { margin: 0; font-weight: 650; color: var(--text-2); font-size: 14px; }
+.completed-day { margin-bottom: var(--s3); }
+.completed-day-head { font-size: 13px; font-weight: 700; color: var(--text-3); margin: var(--s3) 0 6px; text-transform: none; }
+.completed-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
+.completed-row { width: 100%; min-width: 0; display: flex; align-items: center; gap: var(--s3); min-height: 52px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.completed-check { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--success) 18%, transparent); color: var(--success); flex: none; }
+.completed-text { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.completed-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.check-list, .range-list { display: grid; gap: 2px; }
+.check-row { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 15px; cursor: pointer; }
+.check-row input { width: 20px; height: 20px; accent-color: var(--accent); }
+.cat-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }

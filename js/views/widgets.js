@@ -99,6 +99,7 @@ export function taskRow(t, k, { draggable = false, showDate = false, nowMin = nu
     meta.push(canFire() ? h('span.meta', { title: 'Reminder set' }, icon('bell', { size: 13 }), h('span.sr-only', 'Reminder set')) : reminderWarnBadge());
   }
   if (t.notes) meta.push(h('span.meta', { title: 'Has notes' }, icon('note', { size: 13 }), h('span.sr-only', 'Has notes')));
+  if (t.attachments?.length) meta.push(h('span.meta.clip', { title: `${t.attachments.length} photo${t.attachments.length === 1 ? '' : 's'}` }, '📎', String(t.attachments.length), h('span.sr-only', ` photo${t.attachments.length === 1 ? '' : 's'}`)));
 
   let isNow = false;
   if (nowMin !== null && t.time && !done) {

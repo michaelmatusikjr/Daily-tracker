@@ -22,6 +22,8 @@ import { openProfileEditor } from './profiles.js';
 import { APP_VERSION as APP_VERSION_STR, getProfiles, readProfileState, switchProfile } from './store.js';
 import { showMenu, habitMenu } from './itemMenu.js';
 import { openTaskView } from './taskView.js';
+import { renderCompleted } from './views/completed.js';
+import { collectGarbage } from './attachments.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today' },
@@ -33,7 +35,7 @@ const TABS = [
 ];
 // On phones Settings has no tab: it opens from the profile menu (avatar on Today) or #settings.
 // The wide-screen side nav also lists it.
-const TITLES = { today: 'Today', habits: 'Habits', habit: 'Habit', workouts: 'Workouts', exercise: 'Exercise', calendar: 'Calendar', stats: 'Stats', settings: 'Settings' };
+const TITLES = { completed: 'Completed', today: 'Today', habits: 'Habits', habit: 'Habit', workouts: 'Workouts', exercise: 'Exercise', calendar: 'Calendar', stats: 'Stats', settings: 'Settings' };
 
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
@@ -122,6 +124,7 @@ function render() {
     case 'habit': view = renderHabitDetail(arg); break;
     case 'calendar': view = renderCalendar(); break;
     case 'stats': view = renderStats(); break;
+    case 'completed': view = renderCompleted(); break;
     case 'settings': view = renderSettings(); break;
     case 'workouts': view = renderWorkouts(); break;
     case 'exercise': view = renderExercise(arg); break;
@@ -313,6 +316,15 @@ function init() {
   else setTimeout(() => offerLegacyMerge(), 500);
   registerSW();
   initPush();
+  // Photos no task refers to any more (in any profile), e.g. after a delete whose Undo window ended
+  // while the app was closed: clean up a moment after start.
+  setTimeout(() => {
+    const ids = new Set();
+    const states = getProfiles().map((p) => readProfileState(p.id));
+    if (states.some((x) => !x)) return; // a profile can't be read: don't guess what it refers to
+    for (const st of states) for (const t of st.tasks || []) for (const a of t.attachments || []) ids.add(a.id);
+    collectGarbage(ids).catch(() => { /* storage unavailable: nothing to clean */ });
+  }, 3000);
 }
 
 init();

@@ -1,5 +1,6 @@
 // State mutations used by views and forms (with undo where it matters).
-import { update, getState, uid } from './store.js';
+import { update, getState, uid, getActiveProfile } from './store.js';
+import { deleteFiles, copyFiles } from './attachments.js';
 import { ctx } from './ctx.js';
 import { toast, haptic, choose } from './ui.js';
 import { isRecurring, isTaskDone, habitTarget, habitVal, dayProgress } from './logic.js';
@@ -23,10 +24,13 @@ export function setTaskDone(id, k, value) {
   update((s) => {
     const x = s.tasks.find((y) => y.id === id);
     if (!x) return;
+    // completedAt / doneAt record when it was completed (for the Completed history).
     if (isRecurring(x)) {
-      if (value) x.doneDates[k] = true; else delete x.doneDates[k];
+      if (value) { x.doneDates[k] = true; x.doneAt = { ...(x.doneAt || {}), [k]: Date.now() }; }
+      else { delete x.doneDates[k]; if (x.doneAt) { delete x.doneAt[k]; if (!Object.keys(x.doneAt).length) delete x.doneAt; } }
     } else {
       x.done = !!value;
+      if (value) x.completedAt = Date.now(); else delete x.completedAt;
     }
     if (value) clearFlag(x, 'missedDates', isRecurring(x) ? k : null); // done wins over "missed"
     x.updatedAt = Date.now();
@@ -91,20 +95,35 @@ export function moveToToday(ids) {
   });
 }
 
+/** Save a task (new or edited). Returns its id. */
 export function saveTask(data) {
+  let id = data.id;
   update((s) => {
     const existing = data.id && s.tasks.find((t) => t.id === data.id);
     if (existing) {
       Object.assign(existing, data, { updatedAt: Date.now() });
+      if ('attachments' in data && !data.attachments?.length) delete existing.attachments;
     } else {
       const maxOrder = s.tasks.reduce((m, t) => Math.max(m, t.order || 0), 0);
+      id = uid();
       s.tasks.push({
         notes: '', time: null, duration: null, priority: 0, category: null, reminder: null,
         recur: { type: 'none', days: [], interval: 2 }, done: false, doneDates: {}, exceptions: [],
-        createdAt: Date.now(), ...data, id: uid(), order: maxOrder + 1,
+        createdAt: Date.now(), ...data, id, order: maxOrder + 1,
       });
+      if (!data.attachments?.length) delete s.tasks[s.tasks.length - 1].attachments;
     }
   });
+  return id;
+}
+
+/** Photos of a deleted task are removed once Undo is no longer possible (unless it came back). */
+function deleteFilesLater(taskId, ids) {
+  if (!ids.length) return;
+  setTimeout(() => {
+    if (getState().tasks.some((x) => x.id === taskId)) return; // restored with Undo
+    deleteFiles(ids).catch(() => { /* startup clean-up will catch it */ });
+  }, 8000);
 }
 
 /** Delete a task. For recurring tasks ask: this day only vs the whole series. Returns true if deleted. */
@@ -124,6 +143,7 @@ export async function deleteTask(id, k) {
   const snapshot = JSON.parse(JSON.stringify(t));
   const index = st.tasks.indexOf(t);
   update((s) => { s.tasks = s.tasks.filter((x) => x.id !== id); });
+  deleteFilesLater(id, (t.attachments || []).map((a) => a.id));
   toast(`Deleted “${t.title}”`, {
     action: 'Undo',
     onAction: () => update((s) => { s.tasks.splice(Math.min(index, s.tasks.length), 0, snapshot); }),
@@ -172,7 +192,15 @@ export function duplicateTask(id) {
   if (!t) return;
   const copy = { ...JSON.parse(JSON.stringify(t)), id: uid(), done: false, doneDates: {}, createdAt: Date.now(), updatedAt: Date.now(), order: (t.order || 0) + 0.5 };
   delete copy.missedDates; // a copy starts clean, not missed
+  delete copy.completedAt; delete copy.doneAt;
+  delete copy.attachments; // photos are copied under new ids below
   update((s) => { s.tasks.push(copy); });
+  if (t.attachments?.length) {
+    const pid = getActiveProfile()?.id;
+    copyFiles(t.attachments, copy.id, pid).then((list) => {
+      if (list.length) update((s) => { const x = s.tasks.find((y) => y.id === copy.id); if (x) x.attachments = list; });
+    }).catch(() => toast('The copy was made, but its photos couldn’t be copied.', { force: true }));
+  }
   toast(`Duplicated “${t.title}”`, { action: 'Undo', onAction: () => update((s) => { s.tasks = s.tasks.filter((x) => x.id !== copy.id); }) });
 }
 

@@ -15,7 +15,8 @@ export function renderStats() {
   const today = todayKey();
   const habits = activeHabits(st);
   const root = h('div.view.view-stats');
-  root.append(h('header.page-head', h('div.page-head-text', h('p.eyebrow', 'Your progress'), h('h1.page-title', 'Stats'))));
+  root.append(h('header.page-head', h('div.page-head-text', h('p.eyebrow', 'Your progress'), h('h1.page-title', 'Stats')),
+    h('div.head-actions', h('a.link-btn.completed-link', { href: '#completed' }, 'View completed tasks'))));
 
   // Overview
   const tp = dayProgress(st, today);
