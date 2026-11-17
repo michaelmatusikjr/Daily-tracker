@@ -29,7 +29,7 @@ function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
   }
   if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
   if (hb.target) sub.push(`by ${fmtTime(hb.target, fmt)}`);
-  const warnBadge = (hb.reminder || habitWarnAt(st, hb) !== null) && !canFire();
+  const warnBadge = habitWarnAt(st, hb) !== null && !canFire();
   const li = h(`li.habit-row${timed ? '.timed' : ''}${isWeekly(hb) ? '.weekly' : ''}${weekMet ? '.week-done' : ''}`, { dataset: { id: hb.id, kind: 'habit' }, style: { '--c': hb.color } },
     timed ? h('span.task-time', h('span', fmtTime(hb.target, fmt)), h('small', 'by')) : null,
     h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },

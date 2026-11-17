@@ -98,13 +98,13 @@ async function openTaskFormWithTime(p) {
     const { ctx, p } = await open(browser, { init: notifStub('granted', 'granted'), data: base() });
     await p.click('a[data-tab="habits"]'); await p.click('.fab'); await p.waitForTimeout(300);
     await p.fill('.sheet .habit-name-row input', 'Stretch');
-    await p.fill('.sheet input[type=time]:not([aria-label="Complete by"])', '07:30');
-    await p.locator('.sheet input[type=time]:not([aria-label="Complete by"])').dispatchEvent('change'); await p.waitForTimeout(300);
+    await p.click('.sheet button:has-text("By a time")'); await p.waitForTimeout(200);
+    await p.selectOption('.sheet .field:has-text("Warn me before") select', '15'); await p.waitForTimeout(300);
     assert((await stored(p)).settings.notifications === true && (await p.locator('.toast').textContent()).includes('Notifications turned on'), 'R2 granted but off → switched on with toast');
     await ctx.close();
   }
   {
-    const data = base({ tasks: [{ id: 't', title: 'Dentist', date: '2026-11-20', time: '15:00', reminder: 10 }], habits: [{ id: 'h', name: 'Stretch', reminder: '07:30', createdAt: '2026-11-01' }] });
+    const data = base({ tasks: [{ id: 't', title: 'Dentist', date: '2026-11-20', time: '15:00', reminder: 10 }], habits: [{ id: 'h', name: 'Stretch', target: '08:00', warn: 30, createdAt: '2026-11-01' }] });
     const { ctx, p } = await open(browser, { init: notifStub('denied', 'denied'), data });
     assert(await p.locator('.habit-row .warn-badge').count() === 1, 'R3 blocked: habit badge');
     await openTaskFormWithTime(p);

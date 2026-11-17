@@ -111,11 +111,32 @@ export async function fetchForecast(lat, lon) {
   return out;
 }
 
-/** City search (Open-Meteo geocoding). Returns [{ name, detail, lat, lon }]; throws on a network problem. */
+const ZIP_URL = 'https://api.zippopotam.us/us/';
+const validCoord = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+
+/** US ZIP lookup (zippopotam.us). [] when the ZIP is unknown (HTTP 404); throws on other problems. */
+async function searchZip(zip) {
+  let j;
+  try { j = await getJson(ZIP_URL + zip); } catch (e) { if (e && e.message === 'HTTP 404') return []; throw e; }
+  const list = Array.isArray(j?.places) ? j.places : [];
+  return list.filter((p) => p && typeof p['place name'] === 'string' && p['place name'] && validCoord(Number(p.latitude), Number(p.longitude)))
+    .slice(0, 5).map((p) => ({
+      name: p['place name'].slice(0, 80),
+      detail: ([typeof p['state abbreviation'] === 'string' ? p['state abbreviation'] : '', 'US'].filter(Boolean).join(', ') + ' ' + zip).slice(0, 80),
+      lat: round2(Number(p.latitude)), lon: round2(Number(p.longitude)),
+    }));
+}
+
+/** City or US ZIP search (zippopotam.us / Open-Meteo geocoding). Returns [{ name, detail, lat, lon }]; throws on a network problem. */
 export async function searchPlaces(text) {
   const name = String(text || '').trim().slice(0, 80);
   if (!name) return [];
+  const zm = /^(\d{5})(-\d{4})?$/.exec(name);
+  if (zm) {
+    try { return await searchZip(zm[1]); } catch { /* network problem: fall back to the name search below */ }
+  }
   const q = new URLSearchParams({ name, count: '5', language: 'en', format: 'json' });
+  if (zm) q.set('countryCode', 'US');
   const j = await getJson(`${SEARCH_URL}?${q}`);
   const list = Array.isArray(j?.results) ? j.results : [];
   return list.filter((r) => r && typeof r.name === 'string' && Number.isFinite(r.latitude) && Number.isFinite(r.longitude) && Math.abs(r.latitude) <= 90 && Math.abs(r.longitude) <= 180)
@@ -126,8 +147,11 @@ export async function searchPlaces(text) {
     }));
 }
 
+const round3 = (n) => Math.round(n * 1000) / 1000;
+const nameKeyOf = (lat, lon) => `${round3(lat).toFixed(3)},${round3(lon).toFixed(3)}`;
+/** City name only: ~100 m precision so the name doesn't land in the neighbouring city. */
 async function reverseName(lat, lon) {
-  const q = new URLSearchParams({ latitude: String(round2(lat)), longitude: String(round2(lon)), localityLanguage: 'en' });
+  const q = new URLSearchParams({ latitude: String(round3(lat)), longitude: String(round3(lon)), localityLanguage: 'en' });
   const j = await getJson(`${REVERSE_URL}?${q}`);
   const n = [j?.city, j?.locality].find((x) => typeof x === 'string' && x.trim());
   return n ? n.trim().slice(0, 80) : '';
@@ -137,7 +161,7 @@ async function reverseName(lat, lon) {
 const failedAt = new Map(); // key → time of the last failed attempt (memory only)
 let geoDenied = false;
 
-function geolocate() {
+function geolocate(fresh = false) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(Object.assign(new Error('unsupported'), { code: 0 })); return; }
     // The browser's own timeout may only start once permission is answered, so also give up ourselves.
@@ -145,20 +169,21 @@ function geolocate() {
     navigator.geolocation.getCurrentPosition(
       (p) => { clearTimeout(guard); resolve({ lat: p.coords.latitude, lon: p.coords.longitude }); },
       (e) => { clearTimeout(guard); reject(e); },
-      { enableHighAccuracy: false, timeout: TIMEOUT_MS, maximumAge: 15 * 60 * 1000 });
+      { enableHighAccuracy: fresh, timeout: TIMEOUT_MS, maximumAge: fresh ? 0 : 15 * 60 * 1000 });
   });
 }
 
 /** Resolve the device position (rounded) and its city name; remembered per device. */
-async function refreshPosition() {
+async function refreshPosition(fresh = false) {
   try {
-    const p = await geolocate();
+    const p = await geolocate(fresh);
     geoDenied = false;
     const lat = round2(p.lat), lon = round2(p.lon);
+    const nameKey = nameKeyOf(p.lat, p.lon);
     const old = readPos();
-    let name = old && keyOf(old.lat, old.lon) === keyOf(lat, lon) ? old.name || '' : '';
-    if (!name) { try { name = await reverseName(lat, lon); } catch { name = ''; } }
-    lsWrite(POS_KEY, { lat, lon, name, at: Date.now() });
+    let name = old && old.nameKey === nameKey ? old.name || '' : '';
+    if (!name) { try { name = await reverseName(p.lat, p.lon); } catch { name = old && keyOf(old.lat, old.lon) === keyOf(lat, lon) ? old.name || '' : ''; } }
+    lsWrite(POS_KEY, { lat, lon, name, nameKey: name ? nameKey : '', at: Date.now() });
     return true;
   } catch (e) {
     // Denied (code 1) forgets the remembered position; any other failure (unsupported, unavailable, timeout)
@@ -213,7 +238,7 @@ export function weatherFor(w, dateKey, today = todayKey()) {
 export function ensureFresh(w) {
   try {
     const t = resolveTarget(w);
-    if (t.kind === 'need-city') return;
+    if (t.kind === 'need-city' || inFlight.has('force')) return;
     if (t.kind === 'locating' || (t.kind === 'current' && positionDue())) {
       if (inFlight.has('pos') || recentlyFailed('pos')) return;
       const p = refreshPosition().then((ok) => {
@@ -240,6 +265,40 @@ export function ensureFresh(w) {
     }).finally(() => inFlight.delete(key));
     inFlight.set(key, p);
   } catch { /* weather must never break the app */ }
+}
+
+/**
+ * Forced refresh (pull-to-refresh, app coming back to the foreground): for "current location" re-reads the
+ * position (no cached fix, high accuracy), then fetches the forecast even if the cache is fresh.
+ * Resolves when done; repeated calls while one is running share it.
+ */
+export function refreshWeather(w) {
+  if (inFlight.has('force')) return inFlight.get('force');
+  const p = (async () => {
+    try {
+      failedAt.clear();
+      let t = resolveTarget(w);
+      if (t.kind === 'need-city') { geoDenied = false; t = resolveTarget(w); }
+      if (t.kind === 'current' || t.kind === 'locating') {
+        const ok = await refreshPosition(true);
+        if (!ok) failedAt.set('pos', Date.now());
+        listener();
+        t = resolveTarget(w);
+      }
+      if (t.kind !== 'saved' && t.kind !== 'current') return;
+      const key = keyOf(t.lat, t.lon);
+      try {
+        const f = await fetchForecast(t.lat, t.lon);
+        const cache = readCache();
+        cache[key] = { fetchedAt: Date.now(), tz: f.tz, days: f.days };
+        writeCache(cache);
+        failedAt.delete(key);
+      } catch { failedAt.set(key, Date.now()); }
+      listener();
+    } catch { /* weather must never break the app */ }
+  })().finally(() => inFlight.delete('force'));
+  inFlight.set('force', p);
+  return p;
 }
 
 function recentlyFailed(key) { const t = failedAt.get(key); return !!t && Date.now() - t < RETRY_MS; }

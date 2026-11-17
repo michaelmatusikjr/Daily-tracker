@@ -191,7 +191,7 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
     }
     for (const hb of activeHabits(st)) {
       const warnAt = habitWarnAt(st, hb);
-      if (!hb.reminder && warnAt === null) continue;
+      if (warnAt === null) continue;
       const type = hb.schedule?.type;
       const start = /^\d{4}-\d{2}-\d{2}$/.test(hb.createdAt || '') && hb.createdAt < today ? hb.createdAt : today;
       const recur = type === 'days' ? { type: 'weekly', start, days: [...(hb.schedule.days || [])] } : { type: 'daily', start };
@@ -203,14 +203,6 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
       if (type === 'perWeek' && weekCount(st, hb, today) >= (hb.schedule.times || 1)) {
         const ws = startOfWeek(today, st.settings.weekStart ?? 1);
         for (let i = 0; i < 7; i++) { const k = addDays(ws, i); if (k >= today) skip.push(k); }
-      }
-      if (hb.reminder) {
-        rules.push({
-          id: safeId(`${profile.id}:h:${hb.id}`).slice(0, 128), kind: 'habit',
-          ...text(habitText(hb), 'Time for your habit'),
-          url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:h:${hb.id}:{date}`.slice(0, 128),
-          time: hb.reminder, offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
-        });
       }
       // "N minutes left" warning: one more habit rule at target − warn, with the same done/missed skips.
       if (warnAt !== null) {

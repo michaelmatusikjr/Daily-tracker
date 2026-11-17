@@ -71,7 +71,7 @@ async function open(browser, { data = base(), second = null, geo = true, forecas
 }
 const go = (p, hash) => p.evaluate((x) => { location.hash = x; }, hash).then(() => p.waitForTimeout(350));
 const stored = (p, id = 'p') => p.evaluate((i) => JSON.parse(localStorage.getItem('dailyTracker:data:' + i)), id);
-const line = (p) => p.locator('.weather-line').first().textContent().catch(() => null);
+const line = (p) => p.locator('.weather-slot').first().textContent().catch(() => null);
 const next = async (p, n) => { for (let i = 0; i < n; i++) await p.click('button[aria-label="Next day"]'); await p.waitForTimeout(350); };
 const prev = async (p, n) => { for (let i = 0; i < n; i++) await p.click('button[aria-label="Previous day"]'); await p.waitForTimeout(350); };
 const undo = async (p) => { await p.click('#toasts .toast-action'); await p.waitForTimeout(250); };
@@ -86,10 +86,10 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     let t = await line(p);
     assert(t && t.includes('Springfield') && t.includes('⛅') && t.includes('72° / 51°') && t.includes('💧 20%'), 'A1 today: pill + "⛅ 72° / 51° · 💧 20%": ' + t);
     assert(await p.locator('.weather-slot + .progress-card, .week-strip + .weather-slot').count() >= 1, 'A2 the line sits directly under the week strip');
-    assert(await p.locator('.weather-line button').count() === 1 && await p.locator('.wx-text button, .wx-text a').count() === 0, 'A3 only the location pill is interactive');
+    assert(await p.locator('.weather-line button').count() === 1 && await p.locator('.wx-temps button, .wx-pop button').count() === 0, 'A3 only the location pill is interactive');
     assert(net.forecast.length === 1 && /latitude=39\.78&/.test(net.forecast[0]) && /longitude=-89\.65&/.test(net.forecast[0]), 'A4 forecast request uses coordinates rounded to 2 decimals: ' + net.forecast[0]);
     assert(/timezone=auto/.test(net.forecast[0]) && /forecast_days=8/.test(net.forecast[0]) && /precipitation_probability_max/.test(net.forecast[0]) && /weather_code/.test(net.forecast[0]), 'A5 request asks for daily max/min/precip/code, timezone=auto, 8 days');
-    assert(net.reverse.length === 1 && /latitude=39\.78&/.test(net.reverse[0]) && /longitude=-89\.65(&|$)/.test(net.reverse[0]) && !/39\.781/.test(net.reverse[0]), 'A6 reverse geocoding also gets rounded coordinates: ' + net.reverse[0]);
+    assert(net.reverse.length === 1 && /latitude=39\.781&/.test(net.reverse[0]) && /longitude=-89\.655(&|$)/.test(net.reverse[0]), 'A6 reverse geocoding (city name only) gets 3-decimal coordinates: ' + net.reverse[0]);
     await next(p, 3);
     t = await line(p);
     assert(t && t.includes('🌧️') && t.includes('26° / ') === false && t.includes('💧 30%'), 'A7 +3 days shows that day (rain, 30%): ' + t);
@@ -110,7 +110,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     // Resume after >30 min refreshes
     await p.clock.fastForward(31 * 60 * 1000);
     await p.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await p.waitForTimeout(600);
-    assert(net.forecast.length === 2, 'A15 resuming after 30+ minutes refetches: ' + net.forecast.length);
+    assert(net.forecast.length >= 2, 'A15 resuming after 30+ minutes refetches: ' + net.forecast.length);
     await ctx.close();
   }
 
@@ -120,7 +120,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     assert((await line(p)).includes('72° / 51°'), 'B1 default °F');
     await go(p, '#settings');
     const sect = await p.locator('.set-group:has-text("Temperature")').textContent();
-    assert(/Approximate location \(about 1 km\) is sent to the weather service\./.test(sect), 'B3 privacy note next to the units option');
+    assert(/Approximate location is sent to the weather service \(about 1 km for the forecast, about 100 m to look up the city name\)\./.test(sect), 'B3 privacy note next to the units option');
     await p.click('.set-group:has-text("Temperature") [role=radio]:has-text("°C")'); await p.waitForTimeout(300);
     assert((await stored(p)).settings.weather.units === 'C', 'B4 °C saved per profile');
     await go(p, '#today');
@@ -133,13 +133,13 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
   {
     const { ctx, p, net } = await open(browser, { geo: false });
     const pillText = await p.locator('.wx-pill').textContent();
-    assert(pillText.trim() === 'Add a city' && await p.locator('.wx-text').count() === 0, 'C1 denied: pill says "Add a city": ' + pillText);
+    assert(pillText.trim() === 'Add a city' && await p.locator('.wx-temps').count() === 0, 'C1 denied: pill says "Add a city": ' + pillText);
     assert(net.forecast.length === 0, 'C2 no forecast request without a location');
     await p.click('.wx-pill'); await p.waitForTimeout(350);
     assert((await p.textContent('.sheet-title')) === 'Add location', 'C3 the pill opens the picker');
     await p.fill('.sheet input[type=search]', 'zzz'); await p.click('.sheet .btn.primary:has-text("Search")'); await p.waitForTimeout(500);
     const empty = await p.textContent('.wx-note');
-    assert(/ZIP/.test(empty) && /city name/i.test(empty), 'C4 empty results mention ZIP codes and suggest a city name: ' + empty);
+    assert(/No matches\. Check the spelling or ZIP code\./.test(empty), 'C4 empty results: spelling / ZIP note: ' + empty);
     await p.fill('.sheet input[type=search]', 'Springfield'); await p.click('.sheet .btn.primary:has-text("Search")'); await p.waitForTimeout(500);
     const rs = await p.$$eval('.wx-result', (r) => r.map((x) => x.textContent.trim()));
     assert(rs.length === 2 && rs[0].includes('Springfield') && rs[0].includes('Illinois'), 'C5 results listed: ' + rs.join(' / '));
@@ -222,7 +222,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     // Offline with nothing cached: just the pill, nothing else
     const { ctx, p } = await open(browser, { forecast: 'abort' });
     await p.waitForTimeout(400);
-    assert(await p.locator('.wx-pill').count() === 1 && await p.locator('.wx-text').count() === 0 && await p.locator('.progress-card').count() === 1, 'F4 no cache + offline: no forecast text, Today fine');
+    assert(await p.locator('.wx-pill').count() === 1 && await p.locator('.wx-temps').count() === 0 && await p.locator('.progress-card').count() === 1, 'F4 no cache + offline: no forecast text, Today fine');
     await ctx.close();
   }
 
@@ -230,7 +230,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
   for (const mode of ['fail', 'hang']) {
     const { ctx, p } = await open(browser, { forecast: mode });
     if (mode === 'hang') { await p.clock.runFor(9000); await p.waitForTimeout(300); }
-    assert(await p.locator('.progress-card').count() === 1 && await p.locator('.wx-text').count() === 0, `G1 forecast ${mode}: Today renders, no forecast text`);
+    assert(await p.locator('.progress-card').count() === 1 && await p.locator('.wx-temps').count() === 0, `G1 forecast ${mode}: Today renders, no forecast text`);
     await p.click('button[aria-label="Next day"]'); await p.waitForTimeout(300);
     assert(await p.locator('.view-today').count() === 1, `G2 forecast ${mode}: navigating still works`);
     await ctx.close();
@@ -244,7 +244,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     await c2.addInitScript((d) => { if (!localStorage.getItem('dailyTracker:profiles')) { localStorage.setItem('dailyTracker:profiles', JSON.stringify({ version: 1, activeId: 'p', profiles: [{ id: 'p', name: 'Me', avatar: { type: 'emoji', emoji: '', color: '#6366f1' } }] })); localStorage.setItem('dailyTracker:data:p', d); } }, JSON.stringify(base()));
     const p2 = await c2.newPage(); p2.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
     await p2.clock.install({ time: NOW }); await p2.goto(APP); await p2.waitForTimeout(600);
-    assert(await p2.locator('.progress-card').count() === 1 && await p2.locator('.wx-text').count() === 0, 'G3 malformed forecast JSON is ignored');
+    assert(await p2.locator('.progress-card').count() === 1 && await p2.locator('.wx-temps').count() === 0, 'G3 malformed forecast JSON is ignored');
     await c2.close();
   }
 

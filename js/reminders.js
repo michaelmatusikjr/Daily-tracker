@@ -72,7 +72,7 @@ export async function ensureReminderPermission() {
 export function activeReminders(state = getState()) {
   const today = todayKey();
   const tasks = state.tasks.filter((t) => ((t.reminder !== null && t.time) || (!t.time && t.reminderAt)) && (isRecurring(t) || (!t.done && t.date >= today)));
-  const habits = state.habits.filter((h) => (h.reminder || habitWarnAt(state, h) !== null) && !h.archived);
+  const habits = state.habits.filter((h) => habitWarnAt(state, h) !== null && !h.archived);
   return { tasks, habits, total: tasks.length + habits.length };
 }
 

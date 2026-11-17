@@ -14,7 +14,7 @@ const seed = () => ({
   version: 4, settings: { onboarded: true, theme: 'light', weekStart: 1, notifications: true, timeFormat: '24' },
   tasks: [task('t1', 'Buy milk'), task('t2', 'Water plants', { date: '2026-11-01', time: '19:00', reminder: 0, recur: { type: 'daily', days: [], interval: 2 } }),
     task('t3', 'Old errand', { date: '2026-11-15' }), task('t4', 'Call bank', { date: TOMORROW })],
-  habits: [habit('h1', 'Morning prayer', { timeOfDay: 'morning', reminder: '23:30' }), habit('h2', 'Water', { emoji: '💧', goal: { type: 'count', target: 8, unit: 'glasses' } }), habit('h3', 'Read', { emoji: '📚' })],
+  habits: [habit('h1', 'Morning prayer', { timeOfDay: 'morning', target: '23:45', warn: 15 }), habit('h2', 'Water', { emoji: '💧', goal: { type: 'count', target: 8, unit: 'glasses' } }), habit('h3', 'Read', { emoji: '📚' })],
   logs: { h1: { ...logs }, h2: { [TODAY]: 3 } }, journal: {}, exercises: [], workouts: [],
 });
 
@@ -118,9 +118,9 @@ const openMissed = async (p) => { if ((await p.getAttribute('.missed-section .co
     const N = await import('./js/notify.js'); const P = await import('./js/push.js');
     const occ = N.reminderOccurrences(Date.now() - 3600000, Date.now() + 3 * 86400000).map((o) => o.key);
     const { rules } = P.buildRules({ hideText: false });
-    return { occ, h1: rules.find((r) => r.id === 'p:h:h1')?.skipDates, t2: rules.find((r) => r.id === 'p:t:t2')?.skipDates };
+    return { occ, h1: rules.find((r) => r.id === 'p:hw:h1')?.skipDates, t2: rules.find((r) => r.id === 'p:t:t2')?.skipDates };
   });
-  assert(!rem.occ.includes(`p:h:h1:${TODAY}`) && !rem.occ.includes(`p:t:t2:${TODAY}`) && rem.occ.includes(`p:h:h1:${TOMORROW}`) && rem.occ.includes(`p:t:t2:${TOMORROW}`), 'R1 local timers skip the missed day only');
+  assert(!rem.occ.includes(`p:hw:h1:${TODAY}`) && !rem.occ.includes(`p:t:t2:${TODAY}`) && rem.occ.includes(`p:hw:h1:${TOMORROW}`) && rem.occ.includes(`p:t:t2:${TOMORROW}`), 'R1 local timers skip the missed day only');
   assert(rem.h1.includes(TODAY) && rem.t2.includes(TODAY) && !rem.h1.includes(TOMORROW), 'R2 push rules: missed day in skipDates');
   await ctx.close();
 

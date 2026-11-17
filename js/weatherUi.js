@@ -30,12 +30,14 @@ function fillWeather(slot) {
     onclick: () => (info.needCity && !w.locations.length ? openAddLocation() : openLocationMenu()),
   }, icon('pin', { size: 14 }), h('span.wx-name', info.pill), icon('chevronsUpDown', { size: 14, cls: 'wx-chev' }));
   const kids = [pill];
+  let note = null;
   if (f) {
     const upd = info.stale && info.updatedAt ? ` · updated ${fmtTime(new Date(info.updatedAt).toTimeString().slice(0, 5), st.settings.timeFormat)}` : '';
-    const pop = f.pop === null ? '' : ` · 💧 ${f.pop}%`;
-    kids.push(h('span.wx-text', { title: f.label }, `${f.emoji} ${f.hi}° / ${f.lo}°${pop}`, upd ? h('span.wx-stale', upd) : null));
+    kids.push(h('span.wx-temps', { title: f.label }, `${f.emoji} ${f.hi}° / ${f.lo}°`));
+    if (f.pop !== null) kids.push(h('span.wx-pop', `💧 ${f.pop}%`));
+    if (upd) note = h('p.wx-stale-note', upd.replace(/^ · /, ''));
   }
-  slot.replaceChildren(h(`div.weather-line${info.stale ? '.stale' : ''}`, ...kids));
+  slot.replaceChildren(...[h(`div.weather-line${info.stale ? '.stale' : ''}`, ...kids), note].filter(Boolean));
 }
 
 // Late results update only the weather line (no full re-render), and only if Today is still showing that date.
@@ -65,7 +67,7 @@ function openLocationMenu() {
 
 // ---------- add location ----------
 export function openAddLocation() {
-  const input = h('input.input', { type: 'search', placeholder: 'City name (or ZIP)', 'aria-label': 'Search for a city', autofocus: true, autocomplete: 'off', maxlength: 80, enterkeyhint: 'search' });
+  const input = h('input.input', { type: 'search', placeholder: 'City or ZIP code', 'aria-label': 'Search for a city', autofocus: true, autocomplete: 'off', maxlength: 80, enterkeyhint: 'search' });
   const results = h('ul.wx-results', { 'aria-live': 'polite' });
   const note = h('p.hint-line.wx-note');
   let seq = 0, timer;
@@ -79,7 +81,7 @@ export function openAddLocation() {
     try {
       const found = await searchPlaces(q);
       if (mine !== seq) return;
-      if (!found.length) { say('No matches. Try a city name, since ZIP codes may not be found.'); return; }
+      if (!found.length) { say('No matches. Check the spelling or ZIP code.'); return; }
       say('');
       results.replaceChildren(...found.map((p) => h('li', h('button.menu-item.wx-result', { type: 'button', onclick: () => pick(p) },
         icon('pin', { size: 20 }), h('span', p.name, p.detail ? h('small', p.detail) : null)))));

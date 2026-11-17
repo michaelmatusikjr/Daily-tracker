@@ -5,7 +5,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
 const errs = [];
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
 const data = { version: 4, settings: { onboarded: true, theme: 'light', weekStart: 1, notifications: true }, tasks: [{ id: 't1', title: 'Dentist', date: today, time: '23:59', reminder: 0, recur: { type: 'none' } }],
-  habits: [{ id: 'h1', name: 'Read', emoji: '📚', color: '#0ea5e9', goal: { type: 'check', target: 1 }, schedule: { type: 'daily', days: [] }, reminder: '21:00', createdAt: '2026-11-01' }], logs: {}, journal: {}, exercises: [], workouts: [] };
+  habits: [{ id: 'h1', name: 'Read', emoji: '📚', color: '#0ea5e9', goal: { type: 'check', target: 1 }, schedule: { type: 'daily', days: [] }, reminder: null, target: '21:30', createdAt: '2026-11-01' }], logs: {}, journal: {}, exercises: [], workouts: [] };
 let healthy = true;
 
 async function open(browser, push) {

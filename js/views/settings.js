@@ -67,7 +67,7 @@ export function renderSettings() {
   // Weather line on Today
   root.append(group('Weather',
     row('Temperature', null, segmented([{ value: 'F', label: '°F' }, { value: 'C', label: '°C' }], set.weather.units, (v) => setWeatherUnits(v), { label: 'Temperature unit', small: true })),
-    h('p.set-desc.pad', 'Approximate location (about 1 km) is sent to the weather service. Change the location from the pin on Today’s weather line.')));
+    h('p.set-desc.pad', 'Approximate location is sent to the weather service (about 1 km for the forecast, about 100 m to look up the city name). Change the location from the pin on Today’s weather line.')));
 
   // Workouts: units + optional habit link
   const checkHabits = st.habits.filter((x) => !x.archived && x.goal.type === 'check');

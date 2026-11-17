@@ -129,9 +129,9 @@ const rules = (p) => p.evaluate(async (today) => (await import('./js/push.js')).
     const r = await rules(p);
     const byId = Object.fromEntries(r.map((x) => [x.id.split(':').slice(1).join(':'), x]));
     assert(byId['hw:h1']?.time === '07:30' && byId['hw:h1'].title === '30 minutes left to floss' && byId['hw:h1'].body === 'Complete by 8 AM', 'R1 default 30 min → 07:30 "30 minutes left to floss"');
-    assert(byId['hw:h2']?.time === '08:00' && byId['hw:h2'].title === '1 hour left to stretch' && byId['h:h2']?.time === '07:00', 'R2 own 60 min → "1 hour left", and the normal reminder still exists');
+    assert(byId['hw:h2']?.time === '08:00' && byId['hw:h2'].title === '1 hour left to stretch' && !byId['h:h2'], 'R2 own 60 min → "1 hour left"; a legacy time-of-day reminder is ignored');
     assert(!byId['hw:h3'] && !byId['hw:h4'], 'R3 warn none / before midnight → no rule');
-    assert(!byId['hw:h5'] && byId['h:h5']?.time === '06:00', 'R4 Anytime habit keeps its reminder only');
+    assert(!byId['hw:h5'] && !byId['h:h5'], 'R4 Anytime habit with a legacy reminder: no rules');
     assert(byId['hw:h1'].skipDates.includes(TODAY), 'R5 done today → warning skipped for today (skipDates)');
     assert(byId['hw:h1'].kind === 'habit' && byId['hw:h1'].offsetDays === 0 && byId['hw:h1'].recur.type === 'daily' && /^\.\/#open\/habit\//.test(byId['hw:h1'].url) && byId['hw:h1'].tag.includes('hw:h1'), 'R6 rule shape reuses the habit rule');
     assert(byId['hw:h6']?.skipDates.includes('2026-11-19') && byId['hw:h6'].skipDates.includes('2026-11-22'), 'R7 weekly habit with target met: rest of the week skipped');

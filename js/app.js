@@ -26,6 +26,8 @@ import { openTaskView } from './taskView.js';
 import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
 import { initNoZoom } from './noZoom.js';
+import { initPullRefresh } from './pullRefresh.js';
+import { refreshWeather } from './weather.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today' },
@@ -236,6 +238,12 @@ function init() {
   applyTheme(getState().settings);
   buildNav();
   document.body.append(fab);
+  // Forced weather refresh (fresh position + forecast) when the selected location is "current".
+  const forceWeather = (always = false) => {
+    const w = getState().settings.weather;
+    if (getState().settings.onboarded && w && (always || w.selected === 'current')) refreshWeather(w);
+  };
+  forceWeather(); // once per app launch, before the first render so its own refresh doesn't double up
   render();
   syncTheme(); // the first render may have switched profile (cold launch from a notification)
   let scheduleTimer;
@@ -270,9 +278,14 @@ function init() {
     if (rollover()) reschedule();
     if (parseRoute().name === 'today' && !document.body.classList.contains('sheet-open') && !document.activeElement?.matches?.('textarea, input')) render();
   }, 60000);
+  initPullRefresh({
+    isActive: () => parseRoute().name === 'today',
+    onRefresh: async () => { await refreshWeather(getState().settings.weather); if (parseRoute().name === 'today' && !isSheetOpen()) render(); },
+  });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     rollover();
+    forceWeather(); // first, so the render below doesn't start a second forecast request
     if (!document.body.classList.contains('sheet-open')) render();
     reschedule();
   });

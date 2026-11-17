@@ -73,7 +73,6 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
       for (const hb of activeHabits(st)) {
         if (!isDueOn(st, hb, k) || habitDone(st, hb, k) || hb.missed?.[k]) continue;
         const stillDue = (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && !habitDone(s2, x, k) && !x.missed?.[k]; };
-        if (hb.reminder) add(`h:${hb.id}:${k}`, dateAt(k, hb.reminder).getTime(), habitText(hb), 'Time for your habit', k, stillDue);
         // "N minutes left": at target minus the warning, only while it isn't done.
         const wa = habitWarnAt(st, hb);
         if (wa !== null) {

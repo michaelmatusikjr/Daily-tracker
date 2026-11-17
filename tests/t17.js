@@ -241,8 +241,8 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
         task('o1', 'One-off', { date: add(today, 20), time: '10:00', reminder: 0 }),
         task('o2', 'No reminder', { date: add(today, 1), time: '10:00' }),
       ],
-      habits: [habit('h1', 'Water', { reminder: '20:58' }), habit('h2', 'Gym', { reminder: '06:45', schedule: { type: 'days', days: [2, 5] } }),
-        habit('h3', 'Run', { reminder: '07:10', schedule: { type: 'perWeek', times: 1 } })],
+      habits: [habit('h1', 'Water', { target: '21:00', warn: 2 }), habit('h2', 'Gym', { target: '07:00', warn: 15, schedule: { type: 'days', days: [2, 5] } }),
+        habit('h3', 'Run', { target: '07:30', warn: 20, schedule: { type: 'perWeek', times: 1 } })],
       logs: { h1: { [today]: 1 }, h3: { [today]: 1 } },
     });
     const pB = data({ tasks: [task('b1', 'Bob task', { date: add(today, 1), time: '09:00', reminder: 0 })] });
@@ -266,11 +266,11 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
       const habitsOnlyToday = (k) => !k.startsWith('a:h:'); // habits: client skips future done weeks differently (perWeek), compare tasks fully
       const sv = res.server.filter(habitsOnlyToday), cl = res.client.filter(habitsOnlyToday);
       assert(res.zone === tz && sv.length > 60 && JSON.stringify(sv) === JSON.stringify(cl), `P1 ${tz}: server recurrence = app recurrence for 45 days (${sv.length} task occurrences)` + (JSON.stringify(sv) === JSON.stringify(cl) ? '' : ' diff: ' + JSON.stringify([sv.filter((x) => !cl.includes(x)).slice(0, 3), cl.filter((x) => !sv.includes(x)).slice(0, 3)])));
-      const h1 = res.server.filter((x) => x.startsWith('a:h:h1:')), h1c = res.client.filter((x) => x.startsWith('a:h:h1:'));
-      assert(JSON.stringify(h1) === JSON.stringify(h1c) && !h1.some((x) => x.startsWith(`a:h:h1:${today}@`)), `P2 ${tz}: daily habit matches, done today skipped`);
-      const gym = res.server.filter((x) => x.startsWith('a:h:h2:')), gymc = res.client.filter((x) => x.startsWith('a:h:h2:'));
+      const h1 = res.server.filter((x) => x.startsWith('a:hw:h1:')), h1c = res.client.filter((x) => x.startsWith('a:hw:h1:'));
+      assert(JSON.stringify(h1) === JSON.stringify(h1c) && !h1.some((x) => x.startsWith(`a:hw:h1:${today}@`)), `P2 ${tz}: daily habit matches, done today skipped`);
+      const gym = res.server.filter((x) => x.startsWith('a:hw:h2:')), gymc = res.client.filter((x) => x.startsWith('a:hw:h2:'));
       assert(gym.length >= 12 && JSON.stringify(gym) === JSON.stringify(gymc), `P3 ${tz}: weekday habit matches`);
-      const run = res.rules.find((x) => x.id === 'a:h:h3');
+      const run = res.rules.find((x) => x.id === 'a:hw:h3');
       assert(run.recur.type === 'daily' && run.skipDates.includes(today), `P4 ${tz}: per-week habit met this week → rest of week in skipDates`);
       const night = res.rules.find((x) => x.id === 'a:t:r6');
       assert(night.time === '23:40' && night.offsetDays === -1, `P5 ${tz}: lead crossing midnight → 23:40 the day before`);

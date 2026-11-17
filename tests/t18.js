@@ -6,7 +6,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
 const errs = [];
 const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
 const habit = (id, name, o = {}) => ({ id, name, emoji: '💧', color: '#0ea5e9', goal: { type: 'check', target: 1, unit: '' }, schedule: { type: 'daily', days: [] }, timeOfDay: 'anytime', reminder: null, archived: false, order: 1, createdAt: '2026-01-01', ...o });
-const seed = () => ({ version: 4, settings: { onboarded: true, theme: 'light', weekStart: 1, notifications: true, workoutHabit: { habitId: null, filter: 'any' } }, tasks: [], habits: [habit('h1', 'Water'), habit('h2', 'Stretch', { emoji: '🧘', reminder: '23:59' })], logs: { h2: { [today]: 1 } }, journal: {}, exercises: [], workouts: [] });
+const seed = () => ({ version: 4, settings: { onboarded: true, theme: 'light', weekStart: 1, notifications: true, workoutHabit: { habitId: null, filter: 'any' } }, tasks: [], habits: [habit('h1', 'Water'), habit('h2', 'Stretch', { emoji: '🧘', target: '23:59', warn: 5 })], logs: { h2: { [today]: 1 } }, journal: {}, exercises: [], workouts: [] });
 
 async function open(browser, { width = 390, dark = false, data = seed() } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 820 }, serviceWorkers: 'block', colorScheme: dark ? 'dark' : 'light' });
@@ -127,11 +127,11 @@ const openForm = async (p, id) => {
   assert(opts.includes('Stretch') && opts.includes('🦊 Water'), 'R8 workout-link select: text only (image icons left out)');
   const titles = await p.evaluate(async () => {
     const N = await import('./js/notify.js'); const P = await import('./js/push.js');
-    const occ = N.reminderOccurrences(Date.now() - 86400000, Date.now() + 3 * 86400000).filter((o) => o.key.includes(':h:h2:')).map((o) => o.title);
-    const rules = P.buildRules({ hideText: false }).rules.filter((r) => r.id.includes(':h:h2')).map((r) => JSON.stringify(r));
+    const occ = N.reminderOccurrences(Date.now() - 86400000, Date.now() + 3 * 86400000).filter((o) => o.key.includes(':hw:h2:')).map((o) => o.title);
+    const rules = P.buildRules({ hideText: false }).rules.filter((r) => r.id.includes(':hw:h2')).map((r) => JSON.stringify(r));
     return { occ, rules };
   });
-  assert(titles.occ.length && titles.occ.every((t) => t === 'Stretch') && titles.rules.every((r) => r.includes('"title":"Stretch"') && !r.includes('data:image')), 'R9 notifications/push: text title only, no image in payloads');
+  assert(titles.occ.length && titles.occ.every((t) => /stretch/i.test(t)) && titles.rules.every((r) => /"title":"[^"]*stretch/i.test(r) && !r.includes('data:image')), 'R9 notifications/push: text title only, no image in payloads');
 
   // ===== 5. Export / import =====
   const exp = await p.evaluate(async () => JSON.stringify((await import('./js/store.js')).exportPayload()));

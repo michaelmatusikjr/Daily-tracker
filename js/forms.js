@@ -644,7 +644,6 @@ export function openHabitForm(habit) {
   // Stored: warn undefined = follow the default; a number of minutes; 0 = explicitly none.
   const warn = select(warnOptions, Number.isInteger(d.warn) ? (d.warn > 0 ? String(d.warn) : 'none') : 'default');
   const warnField = field('Warn me before', warn, 'Alerts you “N minutes left” if it isn’t done yet.');
-  const reminderLabelHint = 'Optional.';
   const syncBy = () => { byRow.hidden = !d.target; warnField.hidden = !d.target; };
   const by = segmented([{ value: 'anytime', label: 'Anytime' }, { value: 'by', label: 'By a time' }],
     d.target ? 'by' : 'anytime', (v) => {
@@ -654,12 +653,7 @@ export function openHabitForm(habit) {
   byTime.addEventListener('input', () => { if (/^\d{2}:\d{2}$/.test(byTime.value)) d.target = byTime.value; habitNotice.refresh(); });
   const warnActive = () => d.target && warn.value !== 'none' && (warn.value !== 'default' || defWarn > 0);
 
-  const reminder = h('input.input', { type: 'time', value: d.reminder || '' });
-  const habitNotice = reminderNotice(() => /^\d{2}:\d{2}$/.test(reminder.value) || !!warnActive());
-  reminder.addEventListener('change', () => {
-    habitNotice.refresh();
-    if (reminder.value) ensureReminderPermission().then(habitNotice.refresh);
-  });
+  const habitNotice = reminderNotice(() => !!warnActive());
   warn.addEventListener('change', () => {
     habitNotice.refresh();
     if (warnActive()) ensureReminderPermission().then(habitNotice.refresh);
@@ -674,7 +668,6 @@ export function openHabitForm(habit) {
     groupField('Goal', h('div', goal, countRow), 'Count goals: tap to add one, tap − to remove one.'),
     groupField('Complete by', h('div', by, byRow)),
     warnField,
-    field('Reminder', reminder, reminderLabelHint),
     habitNotice.el,
     err);
   syncSched(); syncGoal(); syncBy();
@@ -689,9 +682,9 @@ export function openHabitForm(habit) {
       target: d.target || null,
       // undefined = follow the profile default, 0 = none, else minutes (only with a target).
       warn: d.target && warn.value !== 'default' ? (warn.value === 'none' ? 0 : Number(warn.value)) : undefined,
-      reminder: /^\d{2}:\d{2}$/.test(reminder.value) ? reminder.value : null,
+      reminder: null, // habits no longer have a time-of-day reminder (only the "N minutes left" warning)
     };
-    if ((data.reminder || (data.target && warnActive())) && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
+    if ((data.target && warnActive()) && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
     if (!isNew) data.id = habit.id;
     saveHabit(data);
     sheet.close();
