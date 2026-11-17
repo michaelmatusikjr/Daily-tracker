@@ -35,6 +35,85 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** small–medium.
 - **Added:** 2026-11-16
 
+### 9. Move the "Completed" link to the Calendar tab
+- **What:** remove "Completed ›" from the progress card on Today, and put the entry point somewhere on the Calendar tab, e.g. a "Completed tasks" button in the Calendar header. The Stats link can stay or go with the Stats tab (see #14).
+- **Size:** small.
+- **Added:** 2026-11-17
+
+### 10. Bug: tapping a notification for another profile
+- **What:** tapping a notification that belongs to a different profile sometimes doesn't switch to that profile. Once it did switch, but the accent colour stayed the old profile's.
+- **Fix:** the switch must always happen, and must apply that profile's theme and accent, both when the app is already open and when it's launched from the notification.
+- **Type:** bug.
+- **Size:** small.
+- **Added:** 2026-11-17
+
+### 11. Default task time and default alert per profile
+- **What:** each profile can set a default task time (e.g. 6:00 AM) and a default alert (e.g. "at time of event").
+- **Example:** with those defaults, adding "Dentist tomorrow" gives a task at 6:00 AM tomorrow with an alert at 6:00 AM, with no extra steps.
+- **Open details:**
+  - Whether the default applies to every new task, or only when no time is typed or picked. Likely the latter, and "Anytime" can still be chosen.
+  - Whether quick add follows it too. Likely yes.
+- **Size:** small–medium.
+- **Added:** 2026-11-17
+
+### 12. Bug: reminder doesn't fire again after moving a task later
+- **What:** if a task's reminder has already gone off and the task's time is changed to later, the new reminder never comes.
+- **Fix:** changing the time (or date) re-arms the reminder for the new time, both in the app's own timers and on the push server, which currently remembers "already sent for that day".
+- **Type:** bug.
+- **Size:** small.
+- **Added:** 2026-11-17
+
+### 13. Remove the encouragement text on Today's top card
+- **What:** remove "More than halfway there" and any similar message that appears on the progress card at the top of Today.
+- **Size:** tiny.
+- **Added:** 2026-11-17
+
+### 14. Journal tab and reorganised tabs
+- **What:**
+  - **Journal on Today:**
+    - Remove the journal box at the bottom of Today; new entries are added from the **+** button.
+    - On previous days that have an entry, Today shows it read-only. Nothing shows if there's no entry.
+    - Entries can be edited or deleted with a long-press.
+  - **New Journal tab** replaces the Stats tab, listing all entries, newest first. Probably searchable, like Completed.
+  - **Habits tab** gets two tabs: **Active habits** and **Stats** (the habit stats move here). Remove the "+" at the top; the bottom "+" is enough.
+  - **Workouts tab** gets two tabs: **Workouts** and **Stats** (the workout stats and progress table). Remove the "Log workout" button at the top; the bottom "+" is enough.
+- **Open details:**
+  - Where the remaining general stats go: today's %, tasks, the 7/30-day chart. Perhaps the top of Calendar, or the Habits › Stats tab.
+  - Whether the journal mood picker stays.
+- **Size:** medium–large.
+- **Added:** 2026-11-17
+
+### 15. No zooming or selecting UI
+- **What:**
+  - Disable pinch/double-tap zoom everywhere except the full-screen photo viewer.
+  - Make buttons, labels and lists unselectable. Only editable text (inputs, notes being edited) can be selected.
+- **Note:** iPhone Safari ignores the usual "no zoom" setting, so this is done with touch handling instead. It also removes zoom as an accessibility aid; text sizes should stay comfortable.
+- **Size:** small.
+- **Added:** 2026-11-17
+
+### 16. Crop and adjust the profile photo
+- **What:** when setting a profile photo, show a crop step: drag to position, pinch or slider to zoom, in a round preview, before saving.
+- **Optional:** simple brightness/rotate adjustments.
+- **Size:** small–medium.
+- **Added:** 2026-11-17
+
+### 17. Habit target time, and a "time running out" reminder
+- **What:**
+  - **Target time:** each habit gets a "complete by" time (e.g. "Work out before 8:00 AM") or **Anytime**. This replaces the Morning/Afternoon/Evening grouping.
+  - **Reminder for a habit with a target time:** an "X minutes before target" setting. Example: floss before 8:00 AM with a 30-minute warning gives "30 minutes left to floss" at 7:30 AM, **only if it isn't done yet**.
+  - **Anytime habits** keep a normal reminder at any chosen time.
+- **Notes:**
+  - Existing Morning/Afternoon/Evening habits need a sensible conversion, or Anytime plus a prompt.
+  - The push server already skips reminders once a habit is marked done and synced.
+- **Size:** medium.
+- **Added:** 2026-11-17
+
+### 18. Habits in the schedule alongside tasks
+- **What:** on Today, habits with a target time appear in the timeline with the timed tasks, at their target time. Anytime habits join the Anytime list with untimed tasks, and both can be dragged to reorder together.
+- **Depends on:** #17.
+- **Size:** medium.
+- **Added:** 2026-11-17
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
