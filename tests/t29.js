@@ -94,6 +94,27 @@ const names = (p, sel) => p.locator(sel).evaluateAll((els) => els.map((e) => (e.
     assert(await p.locator('.missed-list:has-text("Skipped")').count() === 1, 'R9 missed habit stays in the collapsed Missed section');
     await ctx.close();
   }
+  // Reordering one day must not scramble another day's order (todayOrder is global per item)
+  {
+    const { ctx, p } = await open(browser, base({}));
+    const res = await p.evaluate(async () => {
+      const { reorderToday } = await import('./js/actions.js');
+      const { getState } = await import('./js/store.js');
+      const { sortAnytime } = await import('./js/logic.js');
+      // Drive the real action on real state: create five tasks, then reorder two overlapping lists.
+      const { saveTask } = await import('./js/actions.js');
+      const ids = {};
+      for (const n of ['a', 'b', 'c', 'd', 'e']) { saveTask({ title: n, date: '2026-11-18' }); }
+      const tasks = getState().tasks.filter((t) => ['a', 'b', 'c', 'd', 'e'].includes(t.title));
+      for (const t of tasks) ids[t.title] = t.id;
+      reorderToday(['a', 'b', 'c'].map((n) => ids[n]));
+      reorderToday(['d', 'c', 'e'].map((n) => ids[n]));
+      const view = (names) => sortAnytime(getState().tasks.filter((t) => names.includes(t.title)).map((t) => ({ kind: 'task', item: t }))).map((x) => x.item.title).join('');
+      return [view(['a', 'b', 'c']), view(['c', 'd', 'e'])];
+    });
+    assert(res[0] === 'abc' && res[1] === 'dce', 'O1 reordering one day keeps another day\'s order (' + res.join(' / ') + ')');
+    await ctx.close();
+  }
   // Now line after everything / before everything
   {
     const d2 = JSON.parse(JSON.stringify(data));

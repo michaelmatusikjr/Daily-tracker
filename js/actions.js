@@ -224,10 +224,33 @@ export function reorderToday(ids) {
     }
   });
   const st = getState();
-  const known = new Set([...st.tasks, ...st.habits].map((x) => x.id));
+  const all = [...st.tasks, ...st.habits];
+  const known = new Set(all.map((x) => x.id));
+  const visible = ids.filter((id, i) => known.has(id) && ids.indexOf(id) === i);
+  const vis = new Set(visible);
+  // `todayOrder` is one global number per item, but each day shows a different subset. So merge the
+  // dragged day's order into the existing global sequence instead of renumbering only the visible
+  // items (which would make other days' orders collide). Visible items that already had a rank
+  // reuse their slots in that sequence, in their new order; any others follow the last slot.
+  const seq = all.filter((x) => Number.isFinite(x.todayOrder))
+    .sort((a, b) => a.todayOrder - b.todayOrder || (a.order || 0) - (b.order || 0)).map((x) => x.id);
+  const slots = seq.map((id, i) => (vis.has(id) ? i : -1)).filter((i) => i >= 0);
+  const out = seq.filter((id) => !vis.has(id));
+  const placed = [];
+  slots.forEach((slot, n) => { if (n < visible.length) placed.push([slot, visible[n]]); });
+  const rest = visible.slice(slots.length);
+  const merged = [];
+  let o = 0;
+  for (let i = 0; i < seq.length; i++) {
+    const hit = placed.find(([slot]) => slot === i);
+    if (hit) merged.push(hit[1]);
+    else if (!vis.has(seq[i])) merged.push(out[o++]);
+    if (i === (slots.length ? slots[slots.length - 1] : -1)) merged.push(...rest);
+  }
+  if (!slots.length) merged.push(...rest);
   const next = {};
-  ids.filter((id) => known.has(id)).forEach((id, i) => { next[id] = i; });
-  for (const x of [...st.tasks, ...st.habits]) if (x.id in next) prev[x.id] = Number.isFinite(x.todayOrder) ? x.todayOrder : null;
+  merged.forEach((id, i) => { next[id] = i; });
+  for (const x of all) if (x.id in next) prev[x.id] = Number.isFinite(x.todayOrder) ? x.todayOrder : null;
   write(next);
   toast('Order updated', { action: 'Undo', onAction: () => write(prev) });
 }
