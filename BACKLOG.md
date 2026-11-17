@@ -114,6 +114,14 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** medium.
 - **Added:** 2026-11-17
 
+### 19. Photo import edge case (from v1.9.1 QA)
+- **What:** if a crafted backup's photo has to be renamed and a later photo then fails to save (storage full), the imported task can keep pointing at the old id. That id belongs to another profile, so deleting the task could delete that profile's photo.
+- **Fix:** `importFiles` returns the rename list even when it stops early, and the caller always rewrites task references before reporting the error.
+- **Note:** this can't happen with the app's own backups.
+- **Type:** bug (low).
+- **Size:** tiny.
+- **Added:** 2026-11-17
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
