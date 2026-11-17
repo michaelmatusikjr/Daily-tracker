@@ -20,6 +20,16 @@ export function initNoZoom() {
   document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) block(e); }, { passive: false });
   // Trackpad pinch / ctrl + wheel on desktop browsers.
   document.addEventListener('wheel', (e) => { if (e.ctrlKey) block(e); }, { passive: false });
+  // Safety net: if the page ever ends up zoomed in (e.g. after a pinch inside a sheet such as the photo
+  // cropper), snap it back, unless the photo viewer is open (that one may zoom on purpose).
+  const vv = window.visualViewport;
+  if (vv) {
+    let cooling = false;
+    vv.addEventListener('resize', () => {
+      if (cooling || vv.scale <= 1.02 || document.body.classList.contains('viewer-open') || document.querySelector('.photo-viewer')) return;
+      cooling = true; resetZoom(); setTimeout(() => { cooling = false; }, 600);
+    });
+  }
   // Double-tap on blank, non-interactive areas. (Buttons and rows are excluded: swallowing their
   // second tap would drop a real action, and `touch-action: manipulation` already prevents the zoom there.)
   let lastEnd = 0;
@@ -40,5 +50,5 @@ export function resetZoom() {
   if (origViewport === null) origViewport = meta.getAttribute('content'); // remembered once, even if called twice quickly
   const orig = origViewport;
   meta.setAttribute('content', orig + ', maximum-scale=1, minimum-scale=1');
-  setTimeout(() => meta.setAttribute('content', orig), 120);
+  setTimeout(() => meta.setAttribute('content', orig), 250);
 }
