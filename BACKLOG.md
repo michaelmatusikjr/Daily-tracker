@@ -46,18 +46,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Location pill:** the location on the weather line is a tappable pill with an up/down chevron icon (⌃ over ⌄) showing it can be changed. This is the only interactive part of the weather line.
   - **The dropdown** lists "Current location" plus saved locations; select one, add a new one (search by city/ZIP), or delete one. The choice is remembered per profile.
 
-### 11. Default task time and default alert per profile
-- **What:** each profile can set a default task time (e.g. 6:00 AM) and a default alert (e.g. "at time of event").
-- **Example:** with those defaults, adding "Dentist tomorrow" gives a task at 6:00 AM tomorrow with an alert at 6:00 AM, with no extra steps.
-- **Decided (2026-11-17):**
-  - **New tasks:** they stay Anytime unless a time is chosen.
-  - **Anytime tasks:** get a default reminder at **6:00 AM** on their day. The time is a per-profile setting, default 6:00 AM.
-  - **Tasks with a time:** get a default reminder **at the time of the event**. It can be removed or changed per task.
-  - Applies to quick add too.
-- **Size:** small–medium.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-
 ### 14. Journal tab and reorganised tabs
 - **What:**
   - **Journal on Today:**
@@ -73,32 +61,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** keep the 5-emoji mood picker with journal entries.
-
-### 17. Habit target time, and a "time running out" reminder
-- **What:**
-  - **Target time:** each habit gets a "complete by" time (e.g. "Work out before 8:00 AM") or **Anytime**. This replaces the Morning/Afternoon/Evening grouping.
-  - **Reminder for a habit with a target time:** an "X minutes before target" setting. Example: floss before 8:00 AM with a 30-minute warning gives "30 minutes left to floss" at 7:30 AM, **only if it isn't done yet**.
-  - **Anytime habits** keep a normal reminder at any chosen time.
-- **Notes:**
-  - Existing Morning/Afternoon/Evening habits need a sensible conversion, or Anytime plus a prompt.
-  - The push server already skips reminders once a habit is marked done and synced.
-- **Size:** medium.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-- **Decided (2026-11-17):**
-  - **Converting existing habits:** Morning → by 12:00 PM, Afternoon → by 5:00 PM, Evening → by 9:00 PM.
-  - **"Time running out" warning:**
-    - The default is **30 minutes before** the target.
-    - The default can be changed or turned off in Settings.
-    - Each habit can also change or remove its own warning.
-
-### 18. Habits in the schedule alongside tasks
-- **What:** on Today, habits with a target time appear in the timeline with the timed tasks, at their target time. Anytime habits join the Anytime list with untimed tasks, and both can be dragged to reorder together.
-- **Depends on:** #17.
-- **Size:** medium.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-- **Decided (2026-11-17):** a habit sits in the timeline at its target time, shown like "Floss · by 8:00 AM".
 
 ## Done
 
@@ -248,3 +210,44 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Shipped:** v1.10.0 (2026-11-17)
+
+### 11. Default task time and default alert per profile
+- **What:** each profile can set a default task time (e.g. 6:00 AM) and a default alert (e.g. "at time of event").
+- **Example:** with those defaults, adding "Dentist tomorrow" gives a task at 6:00 AM tomorrow with an alert at 6:00 AM, with no extra steps.
+- **Decided (2026-11-17):**
+  - **New tasks:** they stay Anytime unless a time is chosen.
+  - **Anytime tasks:** get a default reminder at **6:00 AM** on their day. The time is a per-profile setting, default 6:00 AM.
+  - **Tasks with a time:** get a default reminder **at the time of the event**. It can be removed or changed per task.
+  - Applies to quick add too.
+- **Size:** small–medium.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Shipped:** v1.11.0 (2026-11-17)
+
+### 17. Habit target time, and a "time running out" reminder
+- **What:**
+  - **Target time:** each habit gets a "complete by" time (e.g. "Work out before 8:00 AM") or **Anytime**. This replaces the Morning/Afternoon/Evening grouping.
+  - **Reminder for a habit with a target time:** an "X minutes before target" setting. Example: floss before 8:00 AM with a 30-minute warning gives "30 minutes left to floss" at 7:30 AM, **only if it isn't done yet**.
+  - **Anytime habits** keep a normal reminder at any chosen time.
+- **Notes:**
+  - Existing Morning/Afternoon/Evening habits need a sensible conversion, or Anytime plus a prompt.
+  - The push server already skips reminders once a habit is marked done and synced.
+- **Size:** medium.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Decided (2026-11-17):**
+  - **Converting existing habits:** Morning → by 12:00 PM, Afternoon → by 5:00 PM, Evening → by 9:00 PM.
+  - **"Time running out" warning:**
+    - The default is **30 minutes before** the target.
+    - The default can be changed or turned off in Settings.
+    - Each habit can also change or remove its own warning.
+- **Shipped:** v1.11.0 (2026-11-17)
+
+### 18. Habits in the schedule alongside tasks
+- **What:** on Today, habits with a target time appear in the timeline with the timed tasks, at their target time. Anytime habits join the Anytime list with untimed tasks, and both can be dragged to reorder together.
+- **Depends on:** #17.
+- **Size:** medium.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Decided (2026-11-17):** a habit sits in the timeline at its target time, shown like "Floss · by 8:00 AM".
+- **Shipped:** v1.11.0 (2026-11-17)
