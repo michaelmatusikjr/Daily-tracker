@@ -16,6 +16,12 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Storage limits:** photos and Genmoji icons count against free-tier limits. These are fine for one household.
 - **Size:** large (the biggest item here).
 - **Added:** 2026-11-16
+- **Decided (2026-11-17):**
+  - **Sign-in:** a **passkey** (Face ID / Touch ID), with a **username + password as backup** sign-in. Store passwords only as a strong salted hash (e.g. PBKDF2 via WebCrypto on the Worker) and rate-limit attempts.
+  - **One account holds all profiles** (a household account).
+  - **End-to-end encryption on:** only the user's devices can read the data. The password can unlock the encryption key, plus a one-time **recovery key** to save, so the data isn't lost if every device is lost.
+  - **Photos sync too:** task photos and habit image icons.
+  - **Devices:** all of them (iPhone, iPad, computers), so test across Safari, Chrome and Firefox.
 
 ### 4. Weather line on Today
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central)
@@ -34,12 +40,18 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - °F/°C and units would follow a setting.
 - **Size:** small–medium.
 - **Added:** 2026-11-16
+- **Decided (2026-11-17):**
+  - **Units:** °F by default, changeable in Settings (°F/°C).
+  - **Location:** the phone's location by default. If permission is denied, prompt to add a city.
+  - **Location pill:** the location on the weather line is a tappable pill with an up/down chevron icon (⌃ over ⌄) showing it can be changed. This is the only interactive part of the weather line.
+  - **The dropdown** lists "Current location" plus saved locations; select one, add a new one (search by city/ZIP), or delete one. The choice is remembered per profile.
 
 ### 9. Move the "Completed" link to the Calendar tab
 - **What:** remove "Completed ›" from the progress card on Today, and put the entry point somewhere on the Calendar tab, e.g. a "Completed tasks" button in the Calendar header. The Stats link can stay or go with the Stats tab (see #14).
 - **Size:** small.
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Decided (2026-11-17):** a "Completed tasks" button at the top of the Calendar tab.
 
 ### 10. Bug: tapping a notification for another profile
 - **What:** tapping a notification that belongs to a different profile sometimes doesn't switch to that profile. Once it did switch, but the accent colour stayed the old profile's.
@@ -89,6 +101,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** medium–large.
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update
+- **Decided (2026-11-17):** keep the 5-emoji mood picker with journal entries.
 
 ### 15. No zooming or selecting UI
 - **What:**
@@ -106,6 +119,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** small–medium.
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Decided (2026-11-17):** crop (drag + zoom) and rotate; no brightness.
 
 ### 17. Habit target time, and a "time running out" reminder
 - **What:**
@@ -118,6 +132,12 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** medium.
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Decided (2026-11-17):**
+  - **Converting existing habits:** Morning → by 12:00 PM, Afternoon → by 5:00 PM, Evening → by 9:00 PM.
+  - **"Time running out" warning:**
+    - The default is **30 minutes before** the target.
+    - The default can be changed or turned off in Settings.
+    - Each habit can also change or remove its own warning.
 
 ### 18. Habits in the schedule alongside tasks
 - **What:** on Today, habits with a target time appear in the timeline with the timed tasks, at their target time. Anytime habits join the Anytime list with untimed tasks, and both can be dragged to reorder together.
@@ -125,6 +145,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** medium.
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Decided (2026-11-17):** a habit sits in the timeline at its target time, shown like "Floss · by 8:00 AM".
 
 ### 19. Photo import edge case (from v1.9.1 QA)
 - **What:** if a crafted backup's photo has to be renamed and a later photo then fails to save (storage full), the imported task can keep pointing at the old id. That id belongs to another profile, so deleting the task could delete that profile's photo.
