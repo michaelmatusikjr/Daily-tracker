@@ -2,6 +2,7 @@ import { h, segmented, toast, confirmDialog, iconBtn, choose } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState, update, replaceState, exportPayload, validateImport, defaultState, APP_VERSION, isStorageOk, getActiveProfile, getProfiles, addProfile, replaceAllProfiles, unreadableProfiles, mutateProfileData } from '../store.js';
 import { avatarEl, openProfileEditor, openProfileMenu } from '../profiles.js';
+import { pruneWeatherCache } from '../weather.js';
 import { ctx } from '../ctx.js';
 import { ACCENTS } from '../theme.js';
 import { todayKey } from '../dates.js';
@@ -392,5 +393,6 @@ async function resetAll() {
   deleteProfileFiles(pid); // its photos go too
   ctx.setDate(todayKey());
   toast(`${name}’s data was reset`);
+  pruneWeatherCache();
   afterDataRemoved(); // turns closed-app reminders off when nothing needs them any more
 }

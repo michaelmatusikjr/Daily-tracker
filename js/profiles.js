@@ -6,6 +6,7 @@ import { getProfiles, getActiveProfile, switchProfile, addProfile, updateProfile
 import { ctx } from './ctx.js';
 import { afterDataRemoved } from './push.js';
 import { deleteProfileFiles } from './attachments.js';
+import { pruneWeatherCache } from './weather.js';
 
 const AVATAR_EMOJIS = ['', '😀', '😎', '🦊', '🐼', '🐱', '🐶', '🦁', '🐸', '🌻', '⭐', '🚀', '⚽', '🎧', '🌈', '🍀'];
 
@@ -103,7 +104,7 @@ export function openProfileMenu() {
 async function confirmDeleteProfile(p) {
   if (!(await confirmDialog(`Delete ${p.name}?`, `All of ${p.name}’s tasks, habits, workouts, journal and settings will be removed from this device.`, { ok: 'Continue', danger: true }))) return;
   if (!(await confirmDialog('Are you absolutely sure?', 'This cannot be undone. Export a backup first if you might need it.', { ok: `Delete ${p.name}`, danger: true }))) return;
-  if (deleteProfile(p.id)) { toast(`Deleted ${p.name}. Switched to ${getActiveProfile().name}`); deleteProfileFiles(p.id); afterDataRemoved(); }
+  if (deleteProfile(p.id)) { toast(`Deleted ${p.name}. Switched to ${getActiveProfile().name}`); deleteProfileFiles(p.id); pruneWeatherCache(); afterDataRemoved(); }
 }
 
 // ---------------- Profile editor ----------------

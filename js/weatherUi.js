@@ -21,7 +21,8 @@ function fillWeather(slot) {
   const k = slot.dataset.date;
   const info = weatherFor(w, k);
   if (!info) { slot.replaceChildren(); return; }
-  ensureFresh(w); // async; fires the listener (below) when something new arrived
+  // Not while the welcome screen is up: the location prompt shouldn't appear before the user has seen the app.
+  if (st.settings.onboarded) ensureFresh(w); // async; fires the listener (below) when something new arrived
   const f = info.forecast;
   const pill = h('button.wx-pill', {
     type: 'button', 'aria-haspopup': 'dialog', 'aria-label': info.needCity ? 'Add a city for the weather' : `Weather location: ${info.pill}. Change`,

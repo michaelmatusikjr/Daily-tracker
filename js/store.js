@@ -114,7 +114,8 @@ export function normWeather(w) {
     seen.add(id);
     out.locations.push({ id, name, lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100 });
   }
-  out.selected = typeof w.selected === 'string' && out.locations.some((l) => l.id === w.selected) ? w.selected : 'current';
+  const sel = str(w.selected, 40);
+  out.selected = out.locations.some((l) => l.id === sel) ? sel : 'current';
   return out;
 }
 

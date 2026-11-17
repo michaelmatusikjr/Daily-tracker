@@ -299,6 +299,73 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     await ctx.close();
   }
 
+  // ===== QA fixes (v1.12.0): onboarding, very old cache, pruning, hung geolocation, long ids =====
+  {
+    // J1: nothing is requested (and no location prompt) while the welcome screen is up; weather starts after Skip
+    const { ctx, p, net } = await open(browser, { data: base({ onboarded: false }) });
+    await p.waitForTimeout(500);
+    assert(await p.locator('.onboarding').count() === 1 && net.forecast.length === 0 && net.reverse.length === 0, 'J1 no weather requests behind the onboarding screen');
+    await p.click('.ob-skip'); await p.waitForTimeout(700);
+    assert(net.forecast.length === 1 && !!(await line(p)), 'J2 weather loads once onboarding is dismissed: ' + (await line(p)));
+    await ctx.close();
+  }
+  {
+    // J3: a forecast older than 24 h is not shown at all (the pill stays)
+    const old = NOW.getTime() - 26 * 3600 * 1000;
+    const cache = { '39.78,-89.65': { fetchedAt: old, tz: 'America/Chicago', days: Object.fromEntries(DAYS.map((k) => [k, { hi: 22.2, lo: 10.6, pop: 20, code: 2 }])) } };
+    const init = { 'dailyTracker:weatherCache': JSON.stringify(cache), 'dailyTracker:weatherPos': JSON.stringify({ lat: 39.78, lon: -89.65, name: 'Springfield', at: NOW.getTime() }) };
+    const { ctx, p } = await open(browser, { forecast: 'abort', init });
+    await p.waitForTimeout(500);
+    const t = await line(p);
+    assert(t && t.includes('Springfield') && !t.includes('72°'), 'J3 26 h old forecast hidden, pill kept: ' + t);
+    await ctx.close();
+  }
+  {
+    // J4: pruning keeps the current position and remaining profiles' saved cities only
+    const data = base({ weather: { units: 'F', selected: 'current', locations: [saved('a', 'Keep', 10, 20)] } });
+    const day = { fetchedAt: NOW.getTime(), tz: '', days: { [TODAY]: { hi: 1, lo: 0, pop: 0, code: 0 } } };
+    const init = {
+      'dailyTracker:weatherCache': JSON.stringify({ '10.00,20.00': day, '39.78,-89.65': day, '1.00,2.00': day }),
+      'dailyTracker:weatherPos': JSON.stringify({ lat: 39.78, lon: -89.65, name: 'Springfield', at: NOW.getTime() }),
+    };
+    const { ctx, p } = await open(browser, { data, init, forecast: 'hang' });
+    const keys = await p.evaluate(async () => { const m = await import('./js/weather.js'); m.pruneWeatherCache(); return Object.keys(JSON.parse(localStorage.getItem('dailyTracker:weatherCache'))).sort(); });
+    assert(keys.join('|') === '10.00,20.00|39.78,-89.65', 'J4 prune drops cached places nobody uses: ' + keys.join('|'));
+    await ctx.close();
+  }
+  {
+    // J5: a geolocation prompt nobody answers gives up after ~10 s and offers "Add a city"
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    const net = { forecast: [], search: [], reverse: [] };
+    await mock(ctx, net, {});
+    await ctx.addInitScript(([d]) => {
+      Object.defineProperty(navigator, 'geolocation', { value: { getCurrentPosition() { /* never answers */ } }, configurable: true });
+      if (localStorage.getItem('dailyTracker:profiles')) return;
+      localStorage.setItem('dailyTracker:profiles', JSON.stringify({ version: 1, activeId: 'p', profiles: [{ id: 'p', name: 'Me', avatar: { type: 'emoji', emoji: '', color: '#6366f1' } }] }));
+      localStorage.setItem('dailyTracker:data:p', d);
+      localStorage.setItem('dailyTracker:tips', '{"settingsMoved":true,"itemMenu":true}');
+    }, [JSON.stringify(base())]);
+    const p = await ctx.newPage();
+    await p.clock.install({ time: NOW });
+    p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
+    await p.goto(APP); await p.waitForTimeout(500);
+    assert(/Current location/.test((await line(p)) || ''), 'J5a while waiting for an answer the pill reads "Current location"');
+    await p.clock.runFor(11000); await p.waitForTimeout(300);
+    assert(/Add a city/.test((await line(p)) || ''), 'J5b after the guard timeout the pill offers "Add a city": ' + (await line(p)));
+    await ctx.close();
+  }
+  {
+    // J6: an over-long saved id keeps its selection after import normalisation
+    const { ctx, p } = await open(browser, { geo: false });
+    const sel = await p.evaluate(async () => {
+      const m = await import('./js/store.js');
+      const id = 'x'.repeat(60);
+      return m.normWeather({ units: 'F', selected: id, locations: [{ id, name: 'Long', lat: 1, lon: 2 }] }).selected;
+    });
+    assert(sel === 'x'.repeat(40), 'J6 selected follows the truncated id instead of silently falling back');
+    await ctx.close();
+  }
+
   // ===== Service worker leaves the weather APIs alone; no CSP in the way =====
   {
     const sw = fs.readFileSync(__dirname + '/../sw.js', 'utf8');

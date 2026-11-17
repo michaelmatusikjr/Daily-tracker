@@ -3,6 +3,7 @@
 // Nothing here blocks rendering: callers read the cache synchronously (weatherFor) and ask for a refresh
 // (ensureFresh), which calls the listener when new data arrives. Every failure is swallowed.
 import { isValidKey, addDays, todayKey } from './dates.js';
+import { getProfiles, readProfileState } from './store.js';
 
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const SEARCH_URL = 'https://geocoding-api.open-meteo.com/v1/search';
@@ -10,6 +11,7 @@ const REVERSE_URL = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
 const CACHE_KEY = 'dailyTracker:weatherCache';
 const POS_KEY = 'dailyTracker:weatherPos';
 export const FRESH_MS = 30 * 60 * 1000;
+export const MAX_AGE_MS = 24 * 60 * 60 * 1000; // an older cached forecast is not shown at all
 const TIMEOUT_MS = 8000;
 const RETRY_MS = 5 * 60 * 1000; // after a failure, don't try the same thing again for a while
 const MAX_ENTRIES = 12;
@@ -34,6 +36,26 @@ const readPos = () => {
   const p = lsRead(POS_KEY);
   return p && Number.isFinite(p.lat) && Number.isFinite(p.lon) ? p : null;
 };
+
+/**
+ * After a profile is deleted or reset: keep cached forecasts only for the current position and the saved
+ * cities of the profiles that remain, so searched-for places don't linger on the device.
+ */
+export function pruneWeatherCache() {
+  try {
+    const keep = new Set();
+    const pos = readPos();
+    if (pos) keep.add(keyOf(pos.lat, pos.lon));
+    for (const p of getProfiles()) {
+      const d = readProfileState(p.id);
+      for (const l of d?.settings?.weather?.locations || []) keep.add(keyOf(l.lat, l.lon));
+    }
+    const cache = readCache();
+    const out = {};
+    for (const k of Object.keys(cache)) if (keep.has(k)) out[k] = cache[k];
+    lsWrite(CACHE_KEY, out);
+  } catch { /* ignore */ }
+}
 
 // ---------- weather codes ----------
 /** WMO weather code → [emoji, label]. */
@@ -118,9 +140,11 @@ let geoDenied = false;
 function geolocate() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) { reject(Object.assign(new Error('unsupported'), { code: 0 })); return; }
+    // The browser's own timeout may only start once permission is answered, so also give up ourselves.
+    const guard = setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 3 })), TIMEOUT_MS + 2000);
     navigator.geolocation.getCurrentPosition(
-      (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
-      (e) => reject(e),
+      (p) => { clearTimeout(guard); resolve({ lat: p.coords.latitude, lon: p.coords.longitude }); },
+      (e) => { clearTimeout(guard); reject(e); },
       { enableHighAccuracy: false, timeout: TIMEOUT_MS, maximumAge: 15 * 60 * 1000 });
   });
 }
@@ -173,7 +197,7 @@ export function weatherFor(w, dateKey, today = todayKey()) {
   const pill = t.name || 'Current location';
   if (t.kind === 'locating') return { pill, needCity: false, forecast: null, stale: false, updatedAt: null };
   const entry = readCache()[keyOf(t.lat, t.lon)];
-  const day = entry && entry.days && entry.days[dateKey];
+  const day = entry && entry.days && Date.now() - (entry.fetchedAt || 0) <= MAX_AGE_MS && entry.days[dateKey];
   if (!day) return { pill, needCity: false, forecast: null, stale: false, updatedAt: null };
   const [emoji, label] = describeCode(day.code);
   const age = Date.now() - (entry.fetchedAt || 0);
