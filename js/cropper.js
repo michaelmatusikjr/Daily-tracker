@@ -2,6 +2,7 @@
 // position, pinch / mouse wheel / slider to zoom, a rotate-90° button, and Save / Cancel.
 // Resolves with a square JPEG data URL (or null when cancelled). Used for profile photos and
 // habit photo icons. No brightness or other adjustments.
+import { resetZoom } from './noZoom.js';
 import { h, openSheet } from './ui.js';
 import { icon } from './icons.js';
 
@@ -161,7 +162,7 @@ export async function openCropper(file, { size = 192, quality = 0.8, title = 'Ad
       h('button.btn.ghost.cropper-cancel', { type: 'button', onclick: () => sheet.close() }, 'Cancel'),
       h('button.btn.primary.cropper-save', { type: 'button', onclick: save }, 'Save'),
     ];
-    const sheet = openSheet({ title, content, footer, cls: 'cropper-sheet', onClose: () => finish(null) });
+    const sheet = openSheet({ title, content, footer, cls: 'cropper-sheet', onClose: () => { finish(null); resetZoom(); } });
     requestAnimationFrame(() => { draw(); requestAnimationFrame(draw); });
     if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => draw()).observe(stage);
   });

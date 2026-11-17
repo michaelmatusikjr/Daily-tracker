@@ -187,6 +187,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** crop (drag + zoom) and rotate; no brightness.
+- **Follow-up (v1.10.1, 2026-11-17):** after the cropper closed, the app could stay slightly zoomed in on iPhone. The cropper now resets the zoom on close, and a safety net snaps the page back whenever it is zoomed outside the photo viewer.
 - **Shipped:** v1.10.0 (2026-11-17)
 
 ### 19. Photo import edge case (from v1.9.1 QA)
