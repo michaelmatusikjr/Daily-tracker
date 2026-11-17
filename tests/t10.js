@@ -2,6 +2,19 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const SP = __dirname;
+// Fixture files (the repo doesn't ship them): a non-image and a 240x160 gradient PNG.
+const FX = require('fs').mkdtempSync(require('os').tmpdir() + '/dt-t10-');
+require('fs').writeFileSync(FX + '/notimage.txt', 'just text');
+{
+  const zlib = require('zlib'); const W = 240, H = 160;
+  const raw = Buffer.alloc((W * 3 + 1) * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const o = y * (W * 3 + 1) + 1 + x * 3; raw[o - (x === 0 ? 1 : 0) * 0] = x; raw[o + 1] = y; raw[o + 2] = 128; }
+  const crcT = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crcT[n] = c >>> 0; }
+  const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (t, d) => { const l = Buffer.alloc(4); l.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const cr = Buffer.alloc(4); cr.writeUInt32BE(crc(td)); return Buffer.concat([l, td, cr]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(W, 0); ihdr.writeUInt32BE(H, 4); ihdr[8] = 8; ihdr[9] = 2;
+  require('fs').writeFileSync(FX + '/photo.png', Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]));
+}
 const URL = 'http://127.0.0.1:8080/';
 const LEGACY = 'dailyTracker:data';
 const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode = 1; } else console.log('ok: ' + m); };
@@ -130,9 +143,10 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert(JSON.stringify(await S(p, () => window.__n)) === '["Sam: Dentist"]', 'P6 reminders fire for all profiles, prefixed with profile name');
     // Photo avatar
     await p.click('.avatar-btn'); await p.click('.menu-item:has-text("Edit Alex")'); await p.waitForTimeout(250);
-    await p.setInputFiles('.sheet input[type=file]', SP + '/notimage.txt'); await p.waitForTimeout(300);
+    await p.setInputFiles('.sheet input[type=file]', FX + '/notimage.txt'); await p.waitForTimeout(300);
     assert((await p.textContent('.sheet .form-error')).includes('isn’t an image'), 'P3 non-image rejected gracefully');
-    await p.setInputFiles('.sheet input[type=file]', SP + '/photo.png'); await p.waitForTimeout(600);
+    await p.setInputFiles('.sheet input[type=file]', FX + '/photo.png'); await p.waitForTimeout(600);
+    await p.click('.cropper-sheet .cropper-save'); await p.waitForTimeout(400); // crop step (details in t27)
     await p.click('.sheet-foot .btn.primary'); await p.waitForTimeout(300);
     const av = (await idx(p)).profiles.find((x) => x.name === 'Alex').avatar;
     assert(av.type === 'photo' && av.data.startsWith('data:image/jpeg;base64,') && av.data.length < 150000, 'P3 photo stored as small JPEG data URL');

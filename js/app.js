@@ -24,6 +24,7 @@ import { showMenu, habitMenu } from './itemMenu.js';
 import { openTaskView } from './taskView.js';
 import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
+import { initNoZoom } from './noZoom.js';
 
 const TABS = [
   { id: 'today', label: 'Today', icon: 'today' },
@@ -63,8 +64,8 @@ function buildNav() {
  * Today on that date, highlight the item and open its action menu. The hash is replaced with
  * "#today" first, so back/reload don't trigger it again.
  */
-function openDeepLink() {
-  const m = /^#open\/(task|habit)\/([^/]+)\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/.exec(location.hash);
+function openDeepLink(hash = location.hash) {
+  const m = /^#open\/(task|habit)\/([^/]+)\/([^/]+)\/(\d{4}-\d{2}-\d{2})$/.exec(hash);
   try { history.replaceState(null, '', '#today'); } catch { /* ignore */ }
   closeAllSheets();
   let kind, pid, id, date;
@@ -86,6 +87,7 @@ function openDeepLink() {
   }
   if (getActiveProfile()?.id !== pid) {
     switchProfile(pid); // re-renders with fresh view state
+    syncTheme(); // always that profile's theme + accent (also on a cold launch, before subscribe() runs)
     toast(`Switched to ${profile.name}`, { force: true });
   }
   ctx.ui.date = date;
@@ -103,6 +105,14 @@ function openDeepLink() {
   if (kind === 'task') { setTimeout(() => openTaskView(id, date), row ? 350 : 0); return; }
   const menu = habitMenu(id, date);
   if (menu) setTimeout(() => showMenu(menu.title, menu.items, { mode: 'touch' }), row ? 350 : 0);
+}
+
+/** Apply the active profile's theme + accent (no-op when unchanged). */
+let lastSettingsSig = null;
+function syncTheme() {
+  const st = getState();
+  applyTheme(st.settings);
+  lastSettingsSig = JSON.stringify(st.settings);
 }
 
 function render() {
@@ -219,21 +229,22 @@ ctx.go = (route) => {
 };
 
 function init() {
+  initNoZoom();
   load();
   applyTheme(getState().settings);
   buildNav();
   document.body.append(fab);
   render();
-  let lastSettings = JSON.stringify(getState().settings);
+  syncTheme(); // the first render may have switched profile (cold launch from a notification)
   let scheduleTimer;
   subscribe((st, info = {}) => {
     const sNow = JSON.stringify(st.settings);
-    if (sNow !== lastSettings) { applyTheme(st.settings); lastSettings = sNow; }
+    if (sNow !== lastSettingsSig) { applyTheme(st.settings); lastSettingsSig = sNow; }
     if (info.profileSwitched) {
       // Fresh view state for the other person.
       closeAllSheets();
       Object.assign(ctx.ui, { date: todayKey(), calMonth: monthStart(todayKey()), detailMonth: null, habitsReorder: false, showArchived: false, journalOpen: null, workoutFilter: 'all', workoutDays: 30 });
-      applyTheme(st.settings); lastSettings = sNow;
+      applyTheme(st.settings); lastSettingsSig = sNow;
     }
     render();
     clearTimeout(scheduleTimer);
@@ -307,7 +318,11 @@ function init() {
     if (e.data?.type === 'APP_UPDATED' && e.data.version && e.data.version !== APP_VERSION_STR) safeReload(e.data.version);
     // A tapped reminder notification: show its day in this window.
     if (e.data?.type === 'OPEN_URL' && typeof e.data.url === 'string') {
-      try { const u = new URL(e.data.url, location.href); if (u.origin === location.origin && u.hash) { closeAllSheets(); location.hash = u.hash; } } catch { /* ignore */ }
+      try { const u = new URL(e.data.url, location.href); if (u.origin === location.origin && u.hash) {
+        closeAllSheets();
+        // Handle a reminder link directly (a hashchange can be missed when the hash is unchanged).
+        if (u.hash.startsWith('#open/')) { try { history.replaceState(null, '', u.hash); } catch { /* ignore */ } openDeepLink(u.hash); } else location.hash = u.hash;
+      } } catch { /* ignore */ }
     }
   });
   onPushChange(() => { if (parseRoute().name === 'settings' && !isSheetOpen()) render(); });

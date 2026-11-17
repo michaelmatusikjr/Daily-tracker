@@ -18,9 +18,82 @@ export function validIcon(icon) {
 }
 export const hasImageIcon = (hb) => hb?.icon?.type === 'image' && !!hb.icon.data;
 
+// Photo icons fill the whole icon (cover, centred); Genmoji/stickers with transparency stay fully visible.
+// New photos are stored as opaque square JPEGs (see the cropper). Icons stored by older versions are
+// PNGs trimmed to their visible box, so a photo has transparent bars; those are detected and filled at
+// render time (the stored data is never changed). Results are cached per stored image.
+const photoCache = new Map(); // stored data URL -> { photo: boolean, src?: string }
+const isJpeg = (u) => u.startsWith('data:image/jpeg');
+
+/**
+ * Is this stored PNG a photo (an opaque rectangle inside transparent bars) rather than a sticker?
+ * Photo: inside the visible bounding box (almost) every pixel is opaque. Returns { photo, src } where
+ * src is the bars-free centred square (opaque JPEG data URL) for photos.
+ */
+export async function analyseStoredIcon(data) {
+  const img = await new Promise((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('decode')); i.src = data; });
+  const W = img.naturalWidth, H = img.naturalHeight;
+  if (!W || !H) return { photo: false };
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(img, 0, 0);
+  const px = x.getImageData(0, 0, W, H).data;
+  let x0 = W, y0 = H, x1 = -1, y1 = -1, opaque = 0;
+  for (let y = 0; y < H; y++) for (let xx = 0; xx < W; xx++) {
+    const a = px[(y * W + xx) * 4 + 3];
+    if (a > 8) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (a >= 250) opaque++;
+  }
+  if (x1 < 0) return { photo: false };
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+  // Opaque pixels inside the box / box area (opaque pixels all lie inside the box).
+  if (opaque / (bw * bh) < 0.97) return { photo: false };
+  const side = Math.min(bw, bh);
+  const out = document.createElement('canvas');
+  out.width = out.height = ICON_SIZE;
+  const o = out.getContext('2d');
+  o.imageSmoothingQuality = 'high';
+  o.drawImage(c, x0 + (bw - side) / 2, y0 + (bh - side) / 2, side, side, 0, 0, ICON_SIZE, ICON_SIZE);
+  return { photo: true, src: out.toDataURL('image/jpeg', 0.9) };
+}
+
+function applyPhoto(img, r) {
+  if (!r.photo) return;
+  img.classList.add('photo');
+  if (r.src) img.src = r.src;
+}
+
 /** Icon content for a bubble/heading: <img alt=""> or the emoji text. */
 export function habitIcon(hb) {
-  return hasImageIcon(hb) ? h('img.habit-img', { src: hb.icon.data, alt: '', draggable: 'false' }) : hb.emoji;
+  if (!hasImageIcon(hb)) return hb.emoji;
+  const data = hb.icon.data;
+  const img = h('img.habit-img', { src: data, alt: '', draggable: 'false' });
+  if (isJpeg(data)) { img.classList.add('photo'); return img; }
+  const hit = photoCache.get(data);
+  if (hit) applyPhoto(img, hit);
+  else {
+    photoCache.set(data, { photo: false }); // placeholder while analysing (and on failure)
+    analyseStoredIcon(data).then((r) => { photoCache.set(data, r); applyPhoto(img, r); document.querySelectorAll('img.habit-img').forEach((el) => { if (el !== img && el.getAttribute('src') === data) applyPhoto(el, r); }); }).catch(() => {});
+  }
+  return img;
+}
+
+/** Does this image have real transparency (a sticker / Genmoji) rather than being an opaque photo? */
+export async function hasTransparency(blob) {
+  const img = await decode(blob);
+  try {
+    const k = Math.min(1, 128 / Math.max(img.w, img.h));
+    const W = Math.max(1, Math.round(img.w * k)), H = Math.max(1, Math.round(img.h * k));
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img.src, 0, 0, W, H);
+    const px = x.getImageData(0, 0, W, H).data;
+    let clear = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] < 250) clear++;
+    return clear / (W * H) > 0.02;
+  } finally { img.done(); }
 }
 /** Plain-text label (selects, notifications, toasts): image icons are left out. */
 export const habitText = (hb) => (hasImageIcon(hb) ? hb.name : `${hb.emoji} ${hb.name}`);

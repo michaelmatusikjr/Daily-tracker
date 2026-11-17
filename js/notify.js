@@ -88,12 +88,14 @@ export function reschedule() {
   const now = Date.now();
   const fired = loadFired();
   for (const r of reminderOccurrences(now - 60000, now + 36 * 3600000)) {
-    if (fired[r.key]) continue;
+    // Keyed to the scheduled fire time too: moving the task later (or earlier) re-arms its reminder.
+    const fk = `${r.key}@${r.at}`;
+    if (fired[fk]) continue;
     // Re-read the profile's data when the timer fires, so completed items don't notify.
     timers.push(setTimeout(() => {
       const s2 = readProfileState(r.profileId);
-      if (!s2 || !s2.settings.notifications || !r.stillDue(s2) || loadFired()[r.key]) return;
-      markFired(r.key);
+      if (!s2 || !s2.settings.notifications || !r.stillDue(s2) || loadFired()[fk]) return;
+      markFired(fk);
       // Same tag and deep link as the pushed copy of this occurrence.
       if (hideTextOn()) showNotification(HIDDEN_TITLE, HIDDEN_BODY, r.key, r.url);
       else showNotification(r.title, r.body, r.key, r.url);

@@ -101,23 +101,14 @@ export function renderToday() {
 
   // ---- Progress card ----
   const pctLabel = Math.round(prog.pct * 100) + '%';
-  let mood = 'Plan something small. Tap + to add.';
-  if (prog.total) {
-    if (prog.pct === 1) mood = 'All done. Enjoy the rest of your day!';
-    else if (prog.pct >= 0.5) mood = 'More than halfway there. Keep going!';
-    else if (prog.done) mood = 'Nice start. One thing at a time.';
-    else mood = isToday ? 'Fresh start. Pick one thing to begin.' : k > today ? 'Planned ahead. Nice.' : 'Nothing was checked off.';
-  }
   const ringAnim = ctx.anim.has('ring');
   root.append(h(`section.card.progress-card${ringAnim ? '.celebrate' : ''}`, { 'aria-label': 'Day progress' },
     ring(prog.pct, { size: 84, stroke: 9, label: pctLabel, cls: 'day-ring' }),
     h('div.progress-text',
       h('p.progress-big', prog.total ? `${prog.done} of ${prog.total} done` : 'A clear day'),
-      h('p.progress-sub', mood),
       prog.total ? h('p.progress-break',
         h('span', icon('check', { size: 13 }), `${prog.tasks.done}/${prog.tasks.total} tasks`),
-        h('span', icon('habits', { size: 13 }), `${prog.habits.done}/${prog.habits.total} habits`)) : null,
-      h('a.link-btn.completed-link', { href: '#completed' }, 'Completed ›'))));
+        h('span', icon('habits', { size: 13 }), `${prog.habits.done}/${prog.habits.total} habits`)) : null)));
 
   // ---- Overdue (rollover) ----
   if (isToday) {

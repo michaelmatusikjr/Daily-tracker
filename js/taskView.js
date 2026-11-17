@@ -11,6 +11,7 @@ import { taskMenu, showMenu } from './itemMenu.js';
 import { timeRange, reminderWarnBadge } from './views/widgets.js';
 import { canFire } from './reminders.js';
 import { fileUrl } from './attachments.js';
+import { resetZoom } from './noZoom.js';
 
 /** Notes → text nodes and safe links (http/https only, opened in a new tab). Never innerHTML. */
 export function linkify(text) {
@@ -82,7 +83,7 @@ export function openPhotoViewer(title, list, start = 0) {
     if (u) { img.src = u; img.hidden = false; missing.hidden = true; } else { img.removeAttribute('src'); img.hidden = true; missing.hidden = false; }
   };
   const go = (d) => { const j = i + d; if (j >= 0 && j < list.length) { i = j; show(); } };
-  const close = () => { closed = true; document.removeEventListener('keydown', onKey, true); root.remove(); if (url) URL.revokeObjectURL(url); url = null; document.body.classList.remove('viewer-open'); prevFocus?.focus?.({ preventScroll: true }); };
+  const close = () => { closed = true; document.removeEventListener('keydown', onKey, true); root.remove(); if (url) URL.revokeObjectURL(url); url = null; document.body.classList.remove('viewer-open'); resetZoom(); prevFocus?.focus?.({ preventScroll: true }); };
   const onKey = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }

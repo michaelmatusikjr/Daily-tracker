@@ -46,21 +46,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Location pill:** the location on the weather line is a tappable pill with an up/down chevron icon (⌃ over ⌄) showing it can be changed. This is the only interactive part of the weather line.
   - **The dropdown** lists "Current location" plus saved locations; select one, add a new one (search by city/ZIP), or delete one. The choice is remembered per profile.
 
-### 9. Move the "Completed" link to the Calendar tab
-- **What:** remove "Completed ›" from the progress card on Today, and put the entry point somewhere on the Calendar tab, e.g. a "Completed tasks" button in the Calendar header. The Stats link can stay or go with the Stats tab (see #14).
-- **Size:** small.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-- **Decided (2026-11-17):** a "Completed tasks" button at the top of the Calendar tab.
-
-### 10. Bug: tapping a notification for another profile
-- **What:** tapping a notification that belongs to a different profile sometimes doesn't switch to that profile. Once it did switch, but the accent colour stayed the old profile's.
-- **Fix:** the switch must always happen, and must apply that profile's theme and accent, both when the app is already open and when it's launched from the notification.
-- **Type:** bug.
-- **Size:** small.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-
 ### 11. Default task time and default alert per profile
 - **What:** each profile can set a default task time (e.g. 6:00 AM) and a default alert (e.g. "at time of event").
 - **Example:** with those defaults, adding "Dentist tomorrow" gives a task at 6:00 AM tomorrow with an alert at 6:00 AM, with no extra steps.
@@ -70,20 +55,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Tasks with a time:** get a default reminder **at the time of the event**. It can be removed or changed per task.
   - Applies to quick add too.
 - **Size:** small–medium.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-
-### 12. Bug: reminder doesn't fire again after moving a task later
-- **What:** if a task's reminder has already gone off and the task's time is changed to later, the new reminder never comes.
-- **Fix:** changing the time (or date) re-arms the reminder for the new time, both in the app's own timers and on the push server, which currently remembers "already sent for that day".
-- **Type:** bug.
-- **Size:** small.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-
-### 13. Remove the encouragement text on Today's top card
-- **What:** remove "More than halfway there" and any similar message that appears on the progress card at the top of Today.
-- **Size:** tiny.
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
@@ -102,24 +73,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** keep the 5-emoji mood picker with journal entries.
-
-### 15. No zooming or selecting UI
-- **What:**
-  - Disable pinch/double-tap zoom everywhere except the full-screen photo viewer.
-  - Make buttons, labels and lists unselectable. Only editable text (inputs, notes being edited) can be selected.
-- **Note:** iPhone Safari ignores the usual "no zoom" setting, so this is done with touch handling instead. It also removes zoom as an accessibility aid; text sizes should stay comfortable.
-- **Decided (2026-11-17):** OK to block zoom via touch handling, accepting the accessibility trade-off.
-- **Size:** small.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-
-### 16. Crop and adjust the profile photo
-- **What:** when setting a profile photo, show a crop step: drag to position, pinch or slider to zoom, in a round preview, before saving.
-- **Optional:** simple brightness/rotate adjustments.
-- **Size:** small–medium.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-- **Decided (2026-11-17):** crop (drag + zoom) and rotate; no brightness.
 
 ### 17. Habit target time, and a "time running out" reminder
 - **What:**
@@ -146,26 +99,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-17
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** a habit sits in the timeline at its target time, shown like "Floss · by 8:00 AM".
-
-### 19. Photo import edge case (from v1.9.1 QA)
-- **What:** if a crafted backup's photo has to be renamed and a later photo then fails to save (storage full), the imported task can keep pointing at the old id. That id belongs to another profile, so deleting the task could delete that profile's photo.
-- **Fix:** `importFiles` returns the rename list even when it stops early, and the caller always rewrites task references before reporting the error.
-- **Note:** this can't happen with the app's own backups.
-- **Type:** bug (low).
-- **Size:** tiny.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
-
-### 20. Habit photo icons fill the whole icon
-- **What:**
-  - Habit image icons that are photos fill the entire rounded square. They scale so the shorter side matches the square, with the overflow cropped (centred), and no letterbox bars.
-- **Details:**
-  - **New photos:** cropped to a square when picked, using the same crop/zoom/rotate step as the profile photo (#16) so the user can position it.
-  - **Genmoji/stickers with transparency:** stay fully visible (not cropped).
-  - **Existing photo icons:** they were stored with transparent bars. Trim the bars and fill the square automatically (may look slightly softer); re-picking gives full sharpness.
-- **Size:** small.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ## Done
 
@@ -240,3 +173,78 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Focus after delete:** after deleting a task from the View task screen, keyboard focus should go to the next item instead of getting lost.
 - **Size:** small.
 - **Added:** 2026-11-16
+
+### 9. Move the "Completed" link to the Calendar tab
+- **What:** remove "Completed ›" from the progress card on Today, and put the entry point somewhere on the Calendar tab, e.g. a "Completed tasks" button in the Calendar header. The Stats link can stay or go with the Stats tab (see #14).
+- **Size:** small.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Decided (2026-11-17):** a "Completed tasks" button at the top of the Calendar tab.
+- **Shipped:** v1.10.0 (2026-11-17)
+
+### 10. Bug: tapping a notification for another profile
+- **What:** tapping a notification that belongs to a different profile sometimes doesn't switch to that profile. Once it did switch, but the accent colour stayed the old profile's.
+- **Fix:** the switch must always happen, and must apply that profile's theme and accent, both when the app is already open and when it's launched from the notification.
+- **Type:** bug.
+- **Size:** small.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Shipped:** v1.10.0 (2026-11-17)
+
+### 12. Bug: reminder doesn't fire again after moving a task later
+- **What:** if a task's reminder has already gone off and the task's time is changed to later, the new reminder never comes.
+- **Fix:** changing the time (or date) re-arms the reminder for the new time, both in the app's own timers and on the push server, which currently remembers "already sent for that day".
+- **Type:** bug.
+- **Size:** small.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Shipped:** v1.10.0 (2026-11-17)
+
+### 13. Remove the encouragement text on Today's top card
+- **What:** remove "More than halfway there" and any similar message that appears on the progress card at the top of Today.
+- **Size:** tiny.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Shipped:** v1.10.0 (2026-11-17)
+
+### 15. No zooming or selecting UI
+- **What:**
+  - Disable pinch/double-tap zoom everywhere except the full-screen photo viewer.
+  - Make buttons, labels and lists unselectable. Only editable text (inputs, notes being edited) can be selected.
+- **Note:** iPhone Safari ignores the usual "no zoom" setting, so this is done with touch handling instead. It also removes zoom as an accessibility aid; text sizes should stay comfortable.
+- **Decided (2026-11-17):** OK to block zoom via touch handling, accepting the accessibility trade-off.
+- **Size:** small.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Shipped:** v1.10.0 (2026-11-17)
+
+### 16. Crop and adjust the profile photo
+- **What:** when setting a profile photo, show a crop step: drag to position, pinch or slider to zoom, in a round preview, before saving.
+- **Optional:** simple brightness/rotate adjustments.
+- **Size:** small–medium.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Decided (2026-11-17):** crop (drag + zoom) and rotate; no brightness.
+- **Shipped:** v1.10.0 (2026-11-17)
+
+### 19. Photo import edge case (from v1.9.1 QA)
+- **What:** if a crafted backup's photo has to be renamed and a later photo then fails to save (storage full), the imported task can keep pointing at the old id. That id belongs to another profile, so deleting the task could delete that profile's photo.
+- **Fix:** `importFiles` returns the rename list even when it stops early, and the caller always rewrites task references before reporting the error.
+- **Note:** this can't happen with the app's own backups.
+- **Type:** bug (low).
+- **Size:** tiny.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Shipped:** v1.10.0 (2026-11-17)
+
+### 20. Habit photo icons fill the whole icon
+- **What:**
+  - Habit image icons that are photos fill the entire rounded square. They scale so the shorter side matches the square, with the overflow cropped (centred), and no letterbox bars.
+- **Details:**
+  - **New photos:** cropped to a square when picked, using the same crop/zoom/rotate step as the profile photo (#16) so the user can position it.
+  - **Genmoji/stickers with transparency:** stay fully visible (not cropped).
+  - **Existing photo icons:** they were stored with transparent bars. Trim the bars and fill the square automatically (may look slightly softer); re-picking gives full sharpness.
+- **Size:** small.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
+- **Shipped:** v1.10.0 (2026-11-17)

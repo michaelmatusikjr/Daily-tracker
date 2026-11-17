@@ -10,7 +10,8 @@ import { openWorkoutForm } from './workoutForm.js';
 import { reminderStatus, reminderProblem, ensureReminderPermission } from './reminders.js';
 import { closeAllSheets } from './ui.js';
 import { dow, fmtTime, fmtDuration, relativeLabel, weekdayLabels, isValidKey, todayKey } from './dates.js';
-import { habitIcon, processIcon, validIcon } from './habitIcon.js';
+import { habitIcon, processIcon, validIcon, blobFromSrc, hasTransparency, ICON_MAX_BYTES } from './habitIcon.js';
+import { openCropper } from './cropper.js';
 import { pushCoversReminders, onPushChange } from './push.js';
 import { getActiveProfile } from './store.js';
 import { addPhoto, fileUrl, deleteFiles, assignFiles, MAX_PER_TASK } from './attachments.js';
@@ -499,7 +500,16 @@ export function openHabitForm(habit) {
   const useImage = async (src, label = 'Image') => {
     iconStatus.textContent = 'Processing…';
     try {
-      d.icon = { type: 'image', data: await processIcon(src) };
+      const blob = typeof src === 'string' ? await blobFromSrc(src) : src;
+      if (await hasTransparency(blob)) {
+        // Genmoji / sticker: keep it fully visible (trimmed to its shape, never cropped).
+        d.icon = { type: 'image', data: await processIcon(blob) };
+      } else {
+        // A photo: position it with the crop step; it then fills the whole icon.
+        const data = await openCropper(blob, { size: 160, quality: 0.85, title: 'Adjust icon', shape: 'square', maxBytes: ICON_MAX_BYTES });
+        if (!data) { iconStatus.textContent = 'No image chosen.'; return; }
+        d.icon = { type: 'image', data };
+      }
       renderEmojis();
       iconStatus.textContent = `${label} set as the icon.`;
     } catch (e) {

@@ -1,6 +1,7 @@
 // Profile UI: avatar, profile menu, profile editor, first-open intro and photo processing.
 import { h, openSheet, toast, confirmDialog } from './ui.js';
 import { icon } from './icons.js';
+import { openCropper } from './cropper.js';
 import { getProfiles, getActiveProfile, switchProfile, addProfile, updateProfile, deleteProfile, PROFILE_COLORS } from './store.js';
 import { ctx } from './ctx.js';
 import { afterDataRemoved } from './push.js';
@@ -138,7 +139,10 @@ export function openProfileEditor(profile, { intro = false, onDone = null } = {}
     if (!f) return;
     err.textContent = '';
     try {
-      avatar = { type: 'photo', data: await processPhoto(f) };
+      // Crop step: drag / zoom / rotate in a round preview; the result is a 192px square JPEG.
+      const data = await openCropper(f, { size: 192, quality: 0.8, title: 'Adjust photo', shape: 'round', maxBytes: 100000 });
+      if (!data) return; // cancelled: keep the current avatar
+      avatar = { type: 'photo', data };
       renderChoices(); renderPreview();
     } catch (e) { err.textContent = e.message || 'That image couldn’t be used.'; }
   });

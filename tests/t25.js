@@ -222,8 +222,9 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
       task('a6', 'Last year', { date: '2025-12-30', done: true }),
     ] });
     const { ctx, p } = await open(browser, { data });
-    await p.click('.completed-link'); await p.waitForTimeout(400);
-    assert(await p.evaluate(() => location.hash) === '#completed', 'H1 reachable from Today');
+    assert(await p.locator('.progress-card .completed-link').count() === 0, 'H1a no Completed link on Today’s progress card');
+    await go(p, '#calendar'); await p.click('.cal-completed-btn'); await p.waitForTimeout(400);
+    assert(await p.evaluate(() => location.hash) === '#completed', 'H1 reachable from Calendar');
     const count = () => p.textContent('.completed-count');
     const titles = () => p.$$eval('.completed-title', (e) => e.map((x) => x.textContent));
     assert((await count()) === '7 completed', 'H2 one row per completed occurrence (3 repeating + 4 one-off): ' + await count());

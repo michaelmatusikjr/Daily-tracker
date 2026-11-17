@@ -89,12 +89,13 @@ const openForm = async (p, id) => {
   // ===== 3. File picker (+ size cap, non-image) =====
   const big = await makePng(p, { w: 1600, h: 1200, noise: true, type: 'image/jpeg' });
   await p.setInputFiles('.icon-image-panel input[type=file]', { name: 'photo.jpg', mimeType: 'image/jpeg', buffer: Buffer.from(big.split(',')[1], 'base64') });
+  await p.waitForSelector('.cropper-sheet .cropper-save'); await p.click('.cropper-sheet .cropper-save'); // photos get the crop step (t27)
   await p.waitForTimeout(800);
   assert((await p.textContent('.icon-status')).includes('Image set'), 'C1 “Choose image…” file picker → icon');
   await p.click('.sheet-foot .btn.primary'); await p.waitForTimeout(300);
   ic = (await stored(p)).habits.find((x) => x.id === 'h1').icon;
   info = await inspect(p, ic.data);
-  assert(info.png && info.bytes <= 40 * 1024 && info.w <= 96, `C2 noisy photo capped: ${info.bytes} bytes at ${info.w}px (≤ 40 KB, downscaled if needed)`);
+  assert(ic.data.startsWith('data:image/jpeg') && info.bytes <= 40 * 1024 && info.w === 160, `C2 noisy photo cropped to a 160px square JPEG, ${info.bytes} bytes (≤ 40 KB)`);
   await openForm(p, 'h1');
   await p.setInputFiles('.icon-image-panel input[type=file]', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
   await p.waitForTimeout(300);
@@ -146,7 +147,7 @@ const openForm = async (p, id) => {
       { id: 'noemoji', name: 'n', icon: { type: 'image', data: 'nope' } },
     ] });
     return r.data.habits.map((x) => [x.id, x.icon ? x.icon.data.slice(0, 15) : null, x.emoji]);
-  }, ic ? ic.data : disc);
+  }, disc);
   assert(JSON.stringify(imp) === JSON.stringify([['ok', 'data:image/png;', '🎯'], ['jpeg', 'data:image/jpeg', '🎯'], ['toobig', null, '🎯'], ['svg', null, '🎯'], ['gif', null, '🎯'], ['junk', null, '🎯'], ['noemoji', null, '✅']]), 'X2 import: PNG/JPEG ≤ 60 KB kept; too big / SVG / GIF / junk → default emoji: ' + JSON.stringify(imp));
   await ctx.close();
 

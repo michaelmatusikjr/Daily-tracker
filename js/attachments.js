@@ -210,7 +210,8 @@ const b64Bytes = (u) => Math.floor((u.length - u.indexOf(',') - 1) * 3 / 4);
 export async function importFiles(list, profileIdFor) {
   const stored = new Set();
   const renamed = new Map();
-  if (!Array.isArray(list)) return Object.assign(stored, { stored, renamed });
+  let error = null;
+  if (!Array.isArray(list)) return Object.assign(stored, { stored, renamed, error });
   for (const f of list.slice(0, 5000)) {
     if (!f || typeof f.id !== 'string' || !/^[\w-]{1,60}$/.test(f.id) || typeof f.data !== 'string') continue;
     const m = DATA_RE.exec(f.data);
@@ -227,10 +228,13 @@ export async function importFiles(list, profileIdFor) {
       await putFile({ id, profileId, taskId: typeof f.taskId === 'string' ? f.taskId : null, blob, thumbBlob, type: m[1], w: dim(f.w), h: dim(f.h), size: blob.size, createdAt: Number(f.createdAt) || Date.now() });
       stored.add(id);
     } catch (e) {
-      throw new Error(storageMessage(e));
+      // Stop here, but still hand back what was renamed so far: the caller must repoint those tasks
+      // (otherwise they would keep the old id, which belongs to another profile's photo).
+      error = new Error(storageMessage(e));
+      break;
     }
   }
-  return Object.assign(stored, { stored, renamed });
+  return Object.assign(stored, { stored, renamed, error });
 }
 
 /** Give a backup's photos fresh ids (for a profile that's being created or replaced). Mutates both. */

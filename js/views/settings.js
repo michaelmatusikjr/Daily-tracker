@@ -291,11 +291,12 @@ async function importFile(input) {
     const restorePhotos = async (profileIdFor) => {
       if (!Array.isArray(raw?.attachments) || !raw.attachments.length) return;
       try {
-        const { stored, renamed } = await importFiles(raw.attachments, profileIdFor);
+        const { stored, renamed, error } = await importFiles(raw.attachments, profileIdFor);
         // Files that had to get a new id (the old one belonged to another profile): update the tasks.
         const byProfile = new Map();
         for (const [oldId, r] of renamed) (byProfile.get(r.profileId) || byProfile.set(r.profileId, new Map()).get(r.profileId)).set(oldId, r.id);
         for (const [pid, map] of byProfile) mutateProfileData(pid, (s) => { for (const t of s.tasks) for (const a of t.attachments || []) if (map.has(a.id)) a.id = map.get(a.id); });
+        if (error) throw error; // after the references are fixed, so nothing keeps pointing at another profile's photo
         const n = stored.size;
         if (n) toast(`Backup imported with ${n} photo${n === 1 ? '' : 's'}`, { force: true });
       }

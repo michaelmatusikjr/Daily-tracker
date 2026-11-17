@@ -3,6 +3,7 @@ import { getState } from '../store.js';
 import { hasWorkoutOn } from '../workouts.js';
 import { attachMenu, dayMenu } from '../itemMenu.js';
 import { ctx } from '../ctx.js';
+import { icon } from '../icons.js';
 import { dayProgress, tasksOn, isTaskDone, moodEmoji, PRIORITIES } from '../logic.js';
 import { todayKey, addDays, addMonths, startOfWeek, monthStart, daysInMonth, fmtMonthYear, fmtDateLong, weekdayLabels } from '../dates.js';
 
@@ -24,6 +25,8 @@ export function renderCalendar() {
       m !== monthStart(today) ? h('button.chip-btn', { type: 'button', onclick: () => { ctx.ui.calMonth = monthStart(today); ctx.rerender(); } }, 'Today') : null,
       iconBtn('chevronLeft', 'Previous month', () => setM(-1)),
       iconBtn('chevronRight', 'Next month', () => setM(1)))));
+
+  root.append(h('div.cal-top-actions', h('a.btn.secondary.small.cal-completed-btn', { href: '#completed' }, icon('check', { size: 16 }), 'Completed tasks')));
 
   const names = weekdayLabels('short');
   const grid = h('div.cal-grid', { role: 'grid', 'aria-label': fmtMonthYear(m) });
