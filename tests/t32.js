@@ -375,7 +375,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const html = fs.readFileSync(__dirname + '/../index.html', 'utf8');
     assert(!/Content-Security-Policy/i.test(html), 'I4 no CSP that would block the three API hosts');
     const ver = /VERSION = '([^']+)'/.exec(sw)[1], appv = /APP_VERSION = '([^']+)'/.exec(fs.readFileSync(__dirname + '/../js/store.js', 'utf8'))[1];
-    assert(ver === '1.12.0' && appv === '1.12.0', 'I5 versions bumped together: ' + ver + ' / ' + appv);
+    assert(ver === '1.12.1' && appv === '1.12.1', 'I5 versions bumped together: ' + ver + ' / ' + appv);
   }
 
   await browser.close();
