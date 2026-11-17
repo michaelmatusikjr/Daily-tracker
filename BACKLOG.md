@@ -39,6 +39,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **What:** remove "Completed ›" from the progress card on Today, and put the entry point somewhere on the Calendar tab, e.g. a "Completed tasks" button in the Calendar header. The Stats link can stay or go with the Stats tab (see #14).
 - **Size:** small.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 10. Bug: tapping a notification for another profile
 - **What:** tapping a notification that belongs to a different profile sometimes doesn't switch to that profile. Once it did switch, but the accent colour stayed the old profile's.
@@ -46,15 +47,19 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Type:** bug.
 - **Size:** small.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 11. Default task time and default alert per profile
 - **What:** each profile can set a default task time (e.g. 6:00 AM) and a default alert (e.g. "at time of event").
 - **Example:** with those defaults, adding "Dentist tomorrow" gives a task at 6:00 AM tomorrow with an alert at 6:00 AM, with no extra steps.
-- **Open details:**
-  - Whether the default applies to every new task, or only when no time is typed or picked. Likely the latter, and "Anytime" can still be chosen.
-  - Whether quick add follows it too. Likely yes.
+- **Decided (2026-11-17):**
+  - **New tasks:** they stay Anytime unless a time is chosen.
+  - **Anytime tasks:** get a default reminder at **6:00 AM** on their day. The time is a per-profile setting, default 6:00 AM.
+  - **Tasks with a time:** get a default reminder **at the time of the event**. It can be removed or changed per task.
+  - Applies to quick add too.
 - **Size:** small–medium.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 12. Bug: reminder doesn't fire again after moving a task later
 - **What:** if a task's reminder has already gone off and the task's time is changed to later, the new reminder never comes.
@@ -62,11 +67,13 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Type:** bug.
 - **Size:** small.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 13. Remove the encouragement text on Today's top card
 - **What:** remove "More than halfway there" and any similar message that appears on the progress card at the top of Today.
 - **Size:** tiny.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 14. Journal tab and reorganised tabs
 - **What:**
@@ -77,25 +84,28 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **New Journal tab** replaces the Stats tab, listing all entries, newest first. Probably searchable, like Completed.
   - **Habits tab** gets two tabs: **Active habits** and **Stats** (the habit stats move here). Remove the "+" at the top; the bottom "+" is enough.
   - **Workouts tab** gets two tabs: **Workouts** and **Stats** (the workout stats and progress table). Remove the "Log workout" button at the top; the bottom "+" is enough.
-- **Open details:**
-  - Where the remaining general stats go: today's %, tasks, the 7/30-day chart. Perhaps the top of Calendar, or the Habits › Stats tab.
-  - Whether the journal mood picker stays.
+- **Decided (2026-11-17):** the remaining general stats (today's %, task counts, 7/30-day chart, etc.) are **removed**, not moved.
+- **Open detail:** whether the journal mood picker stays (assume yes unless told otherwise).
 - **Size:** medium–large.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update
 
 ### 15. No zooming or selecting UI
 - **What:**
   - Disable pinch/double-tap zoom everywhere except the full-screen photo viewer.
   - Make buttons, labels and lists unselectable. Only editable text (inputs, notes being edited) can be selected.
 - **Note:** iPhone Safari ignores the usual "no zoom" setting, so this is done with touch handling instead. It also removes zoom as an accessibility aid; text sizes should stay comfortable.
+- **Decided (2026-11-17):** OK to block zoom via touch handling, accepting the accessibility trade-off.
 - **Size:** small.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 16. Crop and adjust the profile photo
 - **What:** when setting a profile photo, show a crop step: drag to position, pinch or slider to zoom, in a round preview, before saving.
 - **Optional:** simple brightness/rotate adjustments.
 - **Size:** small–medium.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 17. Habit target time, and a "time running out" reminder
 - **What:**
@@ -107,12 +117,14 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - The push server already skips reminders once a habit is marked done and synced.
 - **Size:** medium.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 18. Habits in the schedule alongside tasks
 - **What:** on Today, habits with a target time appear in the timeline with the timed tasks, at their target time. Anytime habits join the Anytime list with untimed tasks, and both can be dragged to reorder together.
 - **Depends on:** #17.
 - **Size:** medium.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ### 19. Photo import edge case (from v1.9.1 QA)
 - **What:** if a crafted backup's photo has to be renamed and a later photo then fails to save (storage full), the imported task can keep pointing at the old id. That id belongs to another profile, so deleting the task could delete that profile's photo.
@@ -121,6 +133,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Type:** bug (low).
 - **Size:** tiny.
 - **Added:** 2026-11-17
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
 
 ## Done
 
