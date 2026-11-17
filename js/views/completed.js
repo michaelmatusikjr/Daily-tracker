@@ -55,9 +55,10 @@ export function filterEntries(entries, f, state, today = todayKey()) {
   const q = fold(f.q.trim());
   const bounds = rangeBounds(f, today, state.settings.weekStart);
   const cats = new Set(f.cats), prios = new Set(f.prios);
+  const known = new Set((state.categories || []).map((c) => c.id)); // a deleted category counts as "No category"
   return entries.filter(({ t, day }) => {
     if (bounds && (day < bounds[0] || day > bounds[1])) return false;
-    if (cats.size && !cats.has(t.category || '__none')) return false;
+    if (cats.size && !cats.has(t.category && known.has(t.category) ? t.category : '__none')) return false;
     if (prios.size && !prios.has(t.priority || 0)) return false;
     if (f.type === 'one' && isRecurring(t)) return false;
     if (f.type === 'repeat' && !isRecurring(t)) return false;
@@ -144,7 +145,7 @@ export function renderCompleted() {
         if (c) meta.push(h('span.cat', { style: { '--c': c.color } }, c.name));
         if (t.priority) meta.push(h('span.meta', { style: { color: PRIORITIES[t.priority].color } }, icon('flag', { size: 13 }), PRIORITIES[t.priority].label));
         if (t.attachments?.length) meta.push(h('span.meta.clip', '📎', String(t.attachments.length)));
-        return h('li', h('button.completed-row', { type: 'button', onclick: () => openTaskView(t.id, k), 'aria-label': `${t.title}, completed. Open` },
+        return h('li', { dataset: { key: `${t.id}|${k}` } }, h('button.completed-row', { type: 'button', onclick: () => openTaskView(t.id, k), 'aria-label': `${t.title}, completed. Open` },
           h('span.completed-check', { 'aria-hidden': 'true' }, icon('check', { size: 14 })),
           h('span.completed-text', h('span.completed-title', t.title), meta.length ? h('span.task-meta', meta) : null)));
       })))));

@@ -67,19 +67,22 @@ export function openPhotoViewer(title, list, start = 0) {
   const prevFocus = document.activeElement;
   const img = h('img.pv-img', { alt: '' });
   const counter = h('p.pv-count', { 'aria-live': 'polite' });
-  let url = null;
+  let url = null, token = 0, closed = false;
   const show = async () => {
+    const my = ++token;
     const n = list.length;
     img.alt = `${title} – photo ${i + 1} of ${n}`;
     counter.textContent = `${i + 1} / ${n}`;
     prevBtn.disabled = i === 0; nextBtn.disabled = i === n - 1;
     const u = await fileUrl(list[i].id, 'full');
+    // A newer show() (fast navigation) or a close happened meanwhile: drop this result.
+    if (my !== token || closed) { if (u) URL.revokeObjectURL(u); return; }
     if (url) URL.revokeObjectURL(url);
     url = u;
     if (u) { img.src = u; img.hidden = false; missing.hidden = true; } else { img.removeAttribute('src'); img.hidden = true; missing.hidden = false; }
   };
   const go = (d) => { const j = i + d; if (j >= 0 && j < list.length) { i = j; show(); } };
-  const close = () => { document.removeEventListener('keydown', onKey, true); root.remove(); if (url) URL.revokeObjectURL(url); document.body.classList.remove('viewer-open'); prevFocus?.focus?.({ preventScroll: true }); };
+  const close = () => { closed = true; document.removeEventListener('keydown', onKey, true); root.remove(); if (url) URL.revokeObjectURL(url); url = null; document.body.classList.remove('viewer-open'); prevFocus?.focus?.({ preventScroll: true }); };
   const onKey = (e) => {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
@@ -118,7 +121,8 @@ export function openTaskView(id, k = null) {
   if (isRecurring(t) && !occursOn(t, k)) { toast('That occurrence was skipped or moved.'); return null; }
   const body = h('div.task-view');
   // Rows on screen when the view opened (to move focus sensibly if this task disappears).
-  const rowOrder = [...document.querySelectorAll('.task[data-id]')].map((e) => e.dataset.id);
+  // (Today's task rows, or the Completed list's rows keyed "id|date".)
+  const rowOrder = [...document.querySelectorAll('.task[data-id], .completed-list li[data-key]')].map((e) => e.dataset.key || e.dataset.id);
   let deletingHere = false;
   const render = () => {
     const st = getState();
@@ -185,12 +189,13 @@ export function openTaskView(id, k = null) {
       // The row that opened the view may have been re-rendered (e.g. after an edit): focus its replacement.
       const a = document.activeElement;
       if (a && a !== document.body && !sheet.panel.contains(a)) return;
-      const rowBtn = (tid) => document.querySelector(`.task[data-id="${CSS.escape(tid)}"] .task-main`);
-      let target = rowBtn(id);
+      const rowBtn = (key) => document.querySelector(`.task[data-id="${CSS.escape(key)}"] .task-main, .completed-list li[data-key="${CSS.escape(key)}"] .completed-row`);
+      const selfKey = rowOrder.includes(`${id}|${k}`) ? `${id}|${k}` : id;
+      let target = rowBtn(selfKey);
       if (!target) {
         // The task (or this occurrence) is gone, e.g. deleted from here: go to the next row, else the
         // previous one, else the list's heading, so keyboard focus never drops to <body>.
-        const i = rowOrder.indexOf(id);
+        const i = rowOrder.indexOf(selfKey);
         const next = rowOrder.slice(i + 1).map(rowBtn).find(Boolean) || rowOrder.slice(0, Math.max(0, i)).reverse().map(rowBtn).find(Boolean);
         target = next || document.querySelector('main .section-title, main h1');
         if (target && !next && !target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');

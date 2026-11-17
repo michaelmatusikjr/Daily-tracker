@@ -2,7 +2,7 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.9.0';
+export const APP_VERSION = '1.9.1';
 export const SCHEMA_VERSION = 4;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
@@ -150,11 +150,12 @@ function dateTimes(v) {
   for (const [k, val] of Object.entries(v).slice(0, 20000)) if (isValidKey(k) && Number.isFinite(val) && val > 0) out[k] = val;
   return Object.keys(out).length ? out : null;
 }
+const dim = (v) => (Number.isFinite(v) ? Math.min(10000, Math.max(0, Math.round(v))) : 0);
 /** [{ id, w, h, type }] (at most 6, image types only); null when empty. */
 function attachmentList(v) {
   if (!Array.isArray(v)) return null;
   const out = v.filter((a) => isObj(a) && typeof a.id === 'string' && /^[\w-]{1,60}$/.test(a.id) && ['image/jpeg', 'image/png', 'image/webp'].includes(a.type))
-    .slice(0, 6).map((a) => ({ id: a.id, w: Number.isFinite(a.w) ? Math.round(a.w) : 0, h: Number.isFinite(a.h) ? Math.round(a.h) : 0, type: a.type }));
+    .slice(0, 6).map((a) => ({ id: a.id, w: dim(a.w), h: dim(a.h), type: a.type }));
   return out.length ? out : null;
 }
 
@@ -603,6 +604,15 @@ export function deleteProfile(id) {
   pruneBackups(id, 0);
   if (wasActive) { loadProfileData(index.activeId); emit({ profileSwitched: true }); } else emit({ profileChanged: true });
   return true;
+}
+
+/** Change any profile's data (the active one through update()). Returns false if it can't be read or saved. */
+export function mutateProfileData(id, fn) {
+  if (id === index.activeId) { update(fn); return true; }
+  const st = readProfileState(id);
+  if (!st) return false;
+  fn(st);
+  return lsSet(dataKey(id), JSON.stringify(st));
 }
 
 /** Read-only state of any profile (the active one from memory). Unreadable data → null. */

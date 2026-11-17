@@ -201,10 +201,16 @@ export async function exportSize(ids) {
 }
 const DATA_RE = /^data:(image\/(?:jpeg|png|webp));base64,[A-Za-z0-9+/]+={0,2}$/;
 const b64Bytes = (u) => Math.floor((u.length - u.indexOf(',') - 1) * 3 / 4);
-/** Validate and store imported files. idMap maps an old profile id to the profile they now belong to. Returns the stored ids. */
+/**
+ * Validate and store imported files (profileIdFor maps a backup profile id to its profile here).
+ * An id already used by a file of a different profile is never overwritten or shared: the file
+ * gets a new id instead. Returns { stored: Set of ids, renamed: Map(oldId → { id, profileId }) };
+ * the caller rewrites task references for renamed ones (see rewriteRefs).
+ */
 export async function importFiles(list, profileIdFor) {
   const stored = new Set();
-  if (!Array.isArray(list)) return stored;
+  const renamed = new Map();
+  if (!Array.isArray(list)) return Object.assign(stored, { stored, renamed });
   for (const f of list.slice(0, 5000)) {
     if (!f || typeof f.id !== 'string' || !/^[\w-]{1,60}$/.test(f.id) || typeof f.data !== 'string') continue;
     const m = DATA_RE.exec(f.data);
@@ -213,11 +219,24 @@ export async function importFiles(list, profileIdFor) {
     try {
       const blob = await dataUrlToBlob(f.data);
       const thumbBlob = thumbOk ? await dataUrlToBlob(f.thumb) : null;
-      await putFile({ id: f.id, profileId: profileIdFor(f.profileId), taskId: typeof f.taskId === 'string' ? f.taskId : null, blob, thumbBlob, type: m[1], w: Number(f.w) || 0, h: Number(f.h) || 0, size: blob.size, createdAt: Number(f.createdAt) || Date.now() });
-      stored.add(f.id);
+      const profileId = profileIdFor(f.profileId);
+      let id = f.id;
+      const existing = await getFile(id);
+      if (existing && existing.profileId !== profileId) { id = 'f' + uid(); renamed.set(f.id, { id, profileId }); }
+      const dim = (v) => Math.min(10000, Math.max(0, Math.round(Number(v) || 0)));
+      await putFile({ id, profileId, taskId: typeof f.taskId === 'string' ? f.taskId : null, blob, thumbBlob, type: m[1], w: dim(f.w), h: dim(f.h), size: blob.size, createdAt: Number(f.createdAt) || Date.now() });
+      stored.add(id);
     } catch (e) {
       throw new Error(storageMessage(e));
     }
   }
-  return stored;
+  return Object.assign(stored, { stored, renamed });
+}
+
+/** Give a backup's photos fresh ids (for a profile that's being created or replaced). Mutates both. */
+export function reIdPhotos(data, list) {
+  if (!Array.isArray(list)) return list;
+  const map = new Map();
+  for (const t of data.tasks || []) for (const a of t.attachments || []) { if (!map.has(a.id)) map.set(a.id, 'f' + uid()); a.id = map.get(a.id); }
+  return list.filter((f) => f && map.has(f.id)).map((f) => ({ ...f, id: map.get(f.id) }));
 }

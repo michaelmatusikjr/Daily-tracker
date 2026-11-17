@@ -1,6 +1,6 @@
 import { h, segmented, toast, confirmDialog, iconBtn, choose } from '../ui.js';
 import { icon } from '../icons.js';
-import { getState, update, replaceState, exportPayload, validateImport, defaultState, APP_VERSION, isStorageOk, getActiveProfile, getProfiles, addProfile, replaceAllProfiles, unreadableProfiles } from '../store.js';
+import { getState, update, replaceState, exportPayload, validateImport, defaultState, APP_VERSION, isStorageOk, getActiveProfile, getProfiles, addProfile, replaceAllProfiles, unreadableProfiles, mutateProfileData } from '../store.js';
 import { avatarEl, openProfileEditor, openProfileMenu } from '../profiles.js';
 import { ctx } from '../ctx.js';
 import { ACCENTS } from '../theme.js';
@@ -13,7 +13,7 @@ import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '.
 import { setWorkoutHabit } from '../actions.js';
 import { habitText } from '../habitIcon.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
-import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteProfileFiles } from '../attachments.js';
+import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
 
@@ -290,7 +290,15 @@ async function importFile(input) {
     // Photos (optional): stored in IndexedDB once the data import succeeded. Old backups have none.
     const restorePhotos = async (profileIdFor) => {
       if (!Array.isArray(raw?.attachments) || !raw.attachments.length) return;
-      try { const n = (await importFiles(raw.attachments, profileIdFor)).size; if (n) toast(`Backup imported with ${n} photo${n === 1 ? '' : 's'}`, { force: true }); }
+      try {
+        const { stored, renamed } = await importFiles(raw.attachments, profileIdFor);
+        // Files that had to get a new id (the old one belonged to another profile): update the tasks.
+        const byProfile = new Map();
+        for (const [oldId, r] of renamed) (byProfile.get(r.profileId) || byProfile.set(r.profileId, new Map()).get(r.profileId)).set(oldId, r.id);
+        for (const [pid, map] of byProfile) mutateProfileData(pid, (s) => { for (const t of s.tasks) for (const a of t.attachments || []) if (map.has(a.id)) a.id = map.get(a.id); });
+        const n = stored.size;
+        if (n) toast(`Backup imported with ${n} photo${n === 1 ? '' : 's'}`, { force: true });
+      }
       catch (e) { toast(`Backup imported, but photos couldn’t be restored: ${e.message}`, { force: true, duration: 7000 }); }
     };
     const counts = (d) => `${d.tasks.length} tasks, ${d.habits.length} habits and ${d.workouts.length} workouts`;
@@ -328,14 +336,14 @@ async function importFile(input) {
       { value: 'replace', label: `Replace ${profile.name}’s data`, style: 'danger' },
       { value: null, label: 'Cancel', style: 'ghost' },
     ]);
-    if (choice === 'replace') { replaceState(data); toast('Backup imported'); await restorePhotos(() => getActiveProfile().id); }
+    if (choice === 'replace') {
+      // Same as "add": fresh photo ids, so this profile never shares files with another one.
+      if (Array.isArray(raw?.attachments)) raw.attachments = reIdPhotos(data, raw.attachments);
+      replaceState(data); toast('Backup imported'); await restorePhotos(() => getActiveProfile().id);
+    }
     if (choice === 'add') {
       // New ids for the photos, so the copy never shares files with an existing profile.
-      if (Array.isArray(raw?.attachments)) {
-        const map = new Map();
-        for (const t of data.tasks) for (const a of t.attachments || []) { if (!map.has(a.id)) map.set(a.id, 'f' + Math.random().toString(36).slice(2) + Date.now().toString(36)); a.id = map.get(a.id); }
-        raw.attachments = raw.attachments.filter((f) => f && map.has(f.id)).map((f) => ({ ...f, id: map.get(f.id) }));
-      }
+      if (Array.isArray(raw?.attachments)) raw.attachments = reIdPhotos(data, raw.attachments);
       const newId = addProfile({ name: 'Imported', data });
       if (newId) { toast('Backup added as profile “Imported” – rename it from the profile menu'); await restorePhotos(() => (typeof newId === 'string' ? newId : getActiveProfile().id)); }
       else toast('Couldn’t import – this device’s storage is full', { force: true });
