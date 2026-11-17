@@ -69,6 +69,26 @@ A calm, offline-first **daily planner + habit tracker** that runs entirely in yo
 - **Exercise** (manage list and filter chips): Edit · View history · Archive · Delete (offers Archive instead when it has history).
 - **Calendar day:** Open day · Add task on this day · Log workout on this day (not for future days).
 
+**Photos on tasks:** in the task form, **Add photo** (camera or library on phones) or drag/paste images on desktop, up to 6 per task.
+- **Processing:** photos are shrunk on the device (orientation fixed, at most 1600 px, JPEG; PNG kept only for small transparent images), with a small thumbnail.
+- **Storage:** they're kept in the browser's on-device database (IndexedDB), not with the rest of the data. The task only stores a reference, so photos also work offline.
+- **Viewing:** View task shows the thumbnails. Tap one for a full-screen viewer (arrows or swipe, pinch to zoom, Esc to close). Rows show 📎 with the count.
+- **Removing:** in the form, × removes a photo when you save; Cancel keeps it.
+- **Lifecycle:**
+  - Deleting a task removes its photos once Undo is no longer possible.
+  - Duplicate copies them.
+  - Deleting or resetting a profile removes its photos.
+  - Unused photos are cleaned up at start-up after a day.
+- **Settings › Your data** shows how much space this profile's photos use.
+- **Export** can include photos ("Include photos", on by default, with the approximate size); backups get bigger. Import restores them (JPEG/PNG/WebP only, size-capped). Older backups without photos still import.
+
+**Completed history** (`#completed`, from "Completed ›" on Today and "View completed tasks" in Stats):
+- One row per completed task occurrence (each completed day of a repeating task counts separately), newest first and grouped by completion date. Completion times are recorded from 1.9.0; older completions use the task's date.
+- **Search** covers titles and notes; it ignores case and accents.
+- **Filters:** category (including "No category"), date range (this week / month / last 30 days / this year / all / custom), priority, type (one-off or repeating) and "Has photos". Filters last for the session, per profile, and "Clear filters" resets them.
+- Long histories load page by page.
+- Tapping a row opens View task for that occurrence, where you can mark it not done.
+
 **View task:** tapping a task anywhere (Today's timeline, Anytime, the overdue list, the Missed list), or tapping a task's reminder notification, opens a read-only **View task** sheet.
 - It shows the date, time range and repeat rule (and which occurrence you're looking at), priority, category, reminder (with a warning if notifications can't appear), and notes with clickable http(s) links.
 - It flags the task if it's overdue or marked missed.
