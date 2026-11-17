@@ -35,39 +35,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** small–medium.
 - **Added:** 2026-11-16
 
-### 6. Image attachments on tasks
-- **Status:** in progress (v1.9.0), started 2026-11-16
-- **What:** attach one or more photos or images to a task, shown on the View task screen; tap one to see it full size.
-- **Feasible:** yes.
-- **Notes:**
-  - **Storage:** images can't go in the app's current storage (localStorage, about 5 MB shared by all profiles). They'd be stored in the browser's larger on-device database (IndexedDB), shrunk on the phone first (e.g. up to ~1600 px, JPEG).
-  - **Backups:** Export/Import would need to include the images, so backup files get bigger.
-  - **Sync:** item #2 would have to upload them too.
-  - **Clean-up:** deleting a task deletes its images, unless Undo is used.
-- **Size:** medium.
-- **Added:** 2026-11-16
-
-### 7. Completed tasks history
-- **Status:** in progress (v1.9.0), started 2026-11-16
-- **What:** a place to see every completed task, searchable, and filterable by category, date (range), priority and so on.
-- **Feasible:** yes; all the data is already stored.
-- **Open details:**
-  - **Location:** probably a "Completed" entry reachable from Today and from Stats.
-  - **Repeating tasks:** each completed occurrence appears as its own row.
-  - **Actions:** tapping a row opens View task, so you can un-complete it.
-- **Size:** small–medium.
-- **Added:** 2026-11-16
-
-### 8. Reminder-note polish (from v1.8.1 QA and user feedback)
-- **Status:** in progress (v1.9.0), started 2026-11-16
-- **What:**
-  - **No positive message:** never say "Reminders arrive even when the app is closed". Only show a note when reminders will **not** arrive while the app is closed: push off or unhealthy, notifications blocked, or iOS not installed to the Home Screen.
-  - **Blocked notifications:** the habit form currently contradicts the "notifications blocked" note; the reach check must also require notification permission.
-  - **No duplicate line** in the habit form.
-  - **Focus after delete:** after deleting a task from the View task screen, keyboard focus should go to the next item instead of getting lost.
-- **Size:** small.
-- **Added:** 2026-11-16
-
 ## Done
 
 ### 1. Mark a habit or task as "missed"
@@ -108,3 +75,36 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** small–medium.
 - **Added:** 2026-11-16
 - **Shipped:** v1.8.0 (2026-11-16)
+
+### 6. Image attachments on tasks
+- **Shipped:** v1.9.0 (2026-11-17)
+- **What:** attach one or more photos or images to a task, shown on the View task screen; tap one to see it full size.
+- **Feasible:** yes.
+- **Notes:**
+  - **Storage:** images can't go in the app's current storage (localStorage, about 5 MB shared by all profiles). They'd be stored in the browser's larger on-device database (IndexedDB), shrunk on the phone first (e.g. up to ~1600 px, JPEG).
+  - **Backups:** Export/Import would need to include the images, so backup files get bigger.
+  - **Sync:** item #2 would have to upload them too.
+  - **Clean-up:** deleting a task deletes its images, unless Undo is used.
+- **Size:** medium.
+- **Added:** 2026-11-16
+
+### 7. Completed tasks history
+- **Shipped:** v1.9.0 (2026-11-17)
+- **What:** a place to see every completed task, searchable, and filterable by category, date (range), priority and so on.
+- **Feasible:** yes; all the data is already stored.
+- **Open details:**
+  - **Location:** probably a "Completed" entry reachable from Today and from Stats.
+  - **Repeating tasks:** each completed occurrence appears as its own row.
+  - **Actions:** tapping a row opens View task, so you can un-complete it.
+- **Size:** small–medium.
+- **Added:** 2026-11-16
+
+### 8. Reminder-note polish (from v1.8.1 QA and user feedback)
+- **Shipped:** v1.9.0 (2026-11-17)
+- **What:**
+  - **No positive message:** never say "Reminders arrive even when the app is closed". Only show a note when reminders will **not** arrive while the app is closed: push off or unhealthy, notifications blocked, or iOS not installed to the Home Screen.
+  - **Blocked notifications:** the habit form currently contradicts the "notifications blocked" note; the reach check must also require notification permission.
+  - **No duplicate line** in the habit form.
+  - **Focus after delete:** after deleting a task from the View task screen, keyboard focus should go to the next item instead of getting lost.
+- **Size:** small.
+- **Added:** 2026-11-16
