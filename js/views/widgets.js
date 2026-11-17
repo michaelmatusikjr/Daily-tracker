@@ -95,7 +95,7 @@ export function taskRow(t, k, { draggable = false, showDate = false, nowMin = nu
   else if (t.duration) meta.push(h('span.meta', { title: 'Estimated duration' }, icon('clock', { size: 13 }), fmtDuration(t.duration)));
   if (cat) meta.push(h('span.cat', { style: { '--c': cat.color } }, cat.name));
   if (isRecurring(t)) meta.push(h('span.meta', { title: 'Repeats' }, icon('repeat', { size: 13 }), recurrenceLabel(t, weekdayLabels('short'))));
-  if (t.reminder !== null && t.time) {
+  if ((t.reminder !== null && t.time) || (!t.time && t.reminderAt)) {
     meta.push(canFire() ? h('span.meta', { title: 'Reminder set' }, icon('bell', { size: 13 }), h('span.sr-only', 'Reminder set')) : reminderWarnBadge());
   }
   if (t.notes) meta.push(h('span.meta', { title: 'Has notes' }, icon('note', { size: 13 }), h('span.sr-only', 'Has notes')));

@@ -2,8 +2,8 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.10.0';
-export const SCHEMA_VERSION = 4;
+export const APP_VERSION = '1.11.0';
+export const SCHEMA_VERSION = 5;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
 // Copy of the pre-1.3 data as it was when it was moved, so a later merge can tell what an
@@ -42,6 +42,11 @@ export function defaultSettings() {
     distanceUnit: 'mi',
     // Optional: check off a (checkbox) habit automatically when a matching workout is logged.
     workoutHabit: { habitId: null, filter: 'any' },
+    // Minutes before a habit's "complete by" time to warn "N minutes left" (0 = off). A habit can override it.
+    habitWarnDefault: 30,
+    // Default reminders for new tasks: Anytime tasks remind at anytimeReminderTime on their day;
+    // timed tasks remind at the time of the event. Never changes existing tasks.
+    taskDefaults: { on: true, anytimeReminderTime: '06:00' },
   };
 }
 
@@ -67,7 +72,18 @@ const migrations = {
   2: (data) => { const out = { ...data }; delete out.alarms; delete out.codes; return out; },
   // v3 → v4: workouts (exercises + workout entries) and the optional workout→habit link.
   3: (data) => ({ ...data, exercises: Array.isArray(data.exercises) ? data.exercises : [], workouts: Array.isArray(data.workouts) ? data.workouts : [] }),
+  // v4 → v5: habit `timeOfDay` (anytime/morning/afternoon/evening) becomes `target` ('HH:MM' "complete by", or null = Anytime).
+  4: (data) => ({
+    ...data,
+    habits: (Array.isArray(data.habits) ? data.habits : []).map((hb) => {
+      if (!isObj(hb)) return hb;
+      const { timeOfDay, ...rest } = hb;
+      const target = TIME_RE.test(rest.target) ? rest.target : (TOD_TARGET[timeOfDay] || null);
+      return { ...rest, target };
+    }),
+  }),
 };
+const TOD_TARGET = { morning: '12:00', afternoon: '17:00', evening: '21:00' };
 
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : '');
@@ -87,6 +103,8 @@ function normTask(t, i) {
     priority: [0, 1, 2, 3].includes(t.priority) ? t.priority : 0,
     category: typeof t.category === 'string' ? t.category : null,
     reminder: Number.isFinite(t.reminder) && t.reminder >= 0 ? t.reminder : null,
+    // Reminder time for an Anytime task ('HH:MM' on its day). Only meaningful when there is no start time.
+    reminderAt: !TIME_RE.test(t.time) && TIME_RE.test(t.reminderAt) ? t.reminderAt : null,
     recur: {
       type,
       days: Array.isArray(recur.days) ? recur.days.filter((d) => Number.isInteger(d) && d >= 0 && d < 7) : [],
@@ -103,6 +121,8 @@ function normTask(t, i) {
     // Photos: metadata only (the images live in IndexedDB, see js/attachments.js).
     ...(attachmentList(t.attachments) ? { attachments: attachmentList(t.attachments) } : {}),
     order: Number.isFinite(t.order) ? t.order : i,
+    // Position in Today's shared Anytime list (tasks + habits). Absent until the user drags there.
+    ...(Number.isFinite(t.todayOrder) ? { todayOrder: t.todayOrder } : {}),
     createdAt: Number.isFinite(t.createdAt) ? t.createdAt : Date.now(),
     ...(Number.isFinite(t.updatedAt) ? { updatedAt: t.updatedAt } : {}),
   };
@@ -135,9 +155,14 @@ function normHabit(hb, i) {
       unit: str(goal.unit, 24),
     },
     reminder: TIME_RE.test(hb.reminder) ? hb.reminder : null,
-    timeOfDay: ['anytime', 'morning', 'afternoon', 'evening'].includes(hb.timeOfDay) ? hb.timeOfDay : 'anytime',
+    // "Complete by" time ('HH:MM'), or null = Anytime.
+    target: TIME_RE.test(hb.target) ? hb.target : null,
+    // "Time running out" warning, minutes before the target. Absent = follow the profile default
+    // (settings.habitWarnDefault); a positive integer = that many minutes; 0 = explicitly off.
+    ...(TIME_RE.test(hb.target) && Number.isInteger(hb.warn) && hb.warn >= 0 && hb.warn <= 1439 ? { warn: hb.warn } : {}),
     archived: !!hb.archived,
     order: Number.isFinite(hb.order) ? hb.order : i,
+    ...(Number.isFinite(hb.todayOrder) ? { todayOrder: hb.todayOrder } : {}),
     createdAt: isValidKey(hb.createdAt) ? hb.createdAt : todayKey(),
     ...(Number.isFinite(hb.updatedAt) ? { updatedAt: hb.updatedAt } : {}),
   };
@@ -291,6 +316,13 @@ export function normalize(data) {
   out.settings.onboarded = !!out.settings.onboarded;
   if (![0, 1].includes(out.settings.weekStart)) out.settings.weekStart = 1;
   if (!['12', '24'].includes(out.settings.timeFormat)) out.settings.timeFormat = def.settings.timeFormat;
+  const hw = out.settings.habitWarnDefault;
+  out.settings.habitWarnDefault = Number.isInteger(hw) && hw >= 0 && hw <= 1439 ? hw : def.settings.habitWarnDefault;
+  const td = isObj(out.settings.taskDefaults) ? out.settings.taskDefaults : {};
+  out.settings.taskDefaults = {
+    on: typeof td.on === 'boolean' ? td.on : def.settings.taskDefaults.on,
+    anytimeReminderTime: TIME_RE.test(td.anytimeReminderTime) ? td.anytimeReminderTime : def.settings.taskDefaults.anytimeReminderTime,
+  };
   out.categories = Array.isArray(data.categories)
     ? data.categories.filter((c) => isObj(c) && str(c.name).trim()).map((c) => ({
         id: str(c.id, 40) || uid(), name: str(c.name, 40).trim(), color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : '#64748b',

@@ -109,6 +109,13 @@ export function fmtTime(t, format = '12') {
   return m ? `${h12}:${pad(m)} ${suffix}` : `${h12} ${suffix}`;
 }
 
+/** "30 minutes", "1 hour", "1 hour 30 minutes" (for "N left" wording). */
+export function fmtSpan(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  const part = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  return [h ? part(h, 'hour') : '', m || !h ? part(m, 'minute') : ''].filter(Boolean).join(' ');
+}
+
 export function fmtDuration(min) {
   if (!min) return '';
   const h = Math.floor(min / 60);

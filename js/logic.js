@@ -1,5 +1,5 @@
 // Pure domain logic: recurrence, completion, streaks, stats.
-import { addDays, diffDays, dow, daysInMonth, startOfWeek, todayKey, timeToMin } from './dates.js';
+import { addDays, diffDays, dow, daysInMonth, startOfWeek, todayKey, timeToMin, fmtSpan } from './dates.js';
 
 // ---------- Tasks ----------
 export const isRecurring = (t) => (t.recur?.type || 'none') !== 'none';
@@ -38,6 +38,47 @@ export function splitTasks(tasks) {
   const timed = tasks.filter((t) => t.time).sort((a, b) => a.time.localeCompare(b.time) || a.order - b.order);
   const anytime = tasks.filter((t) => !t.time).sort((a, b) => a.order - b.order);
   return { timed, anytime };
+}
+
+/**
+ * Today's Anytime list holds tasks and habits together. Items the user has dragged there carry a
+ * `todayOrder` (separate from `order`, which the Habits tab and old task ordering keep using);
+ * items without one follow after them: tasks by `order`, then habits by `order`.
+ * `items` are { kind: 'task'|'habit', item }.
+ */
+export function sortAnytime(items) {
+  const rank = (x) => (Number.isFinite(x.item.todayOrder) ? 0 : x.kind === 'task' ? 1 : 2);
+  return [...items].sort((a, b) => rank(a) - rank(b)
+    || (rank(a) === 0 ? a.item.todayOrder - b.item.todayOrder : 0)
+    || (a.item.order || 0) - (b.item.order || 0));
+}
+
+/** "30 minutes left to floss" (first letter lowercased unless the name starts like an acronym). */
+export function warnTitle(hb, left) {
+  const n = hb.name;
+  const lower = n.length > 1 && n[1] === n[1].toUpperCase() && n[1] !== n[1].toLowerCase() ? n : n.charAt(0).toLowerCase() + n.slice(1);
+  return `${fmtSpan(left)} left to ${lower}`;
+}
+
+/** Reminder fields a NEW task gets from the profile's defaults (settings.taskDefaults). */
+export function taskDefaultReminder(state, time) {
+  const td = state.settings?.taskDefaults;
+  if (!td?.on) return { reminder: null, reminderAt: null };
+  return time ? { reminder: 0, reminderAt: null } : { reminder: null, reminderAt: td.anytimeReminderTime || '06:00' };
+}
+
+/** Minutes before the target to warn about a habit (0 = no warning): its own setting, else the profile default. */
+export function habitWarnMinutes(state, h) {
+  if (!h.target) return 0;
+  const w = Number.isInteger(h.warn) ? h.warn : (state.settings?.habitWarnDefault ?? 30);
+  return w > 0 ? w : 0;
+}
+/** When the warning fires, as minutes after midnight; null when none or it would fall before 00:00. */
+export function habitWarnAt(state, h) {
+  const w = habitWarnMinutes(state, h);
+  if (!w) return null;
+  const at = timeToMin(h.target) - w;
+  return at >= 0 ? at : null;
 }
 
 export function overdueTasks(state, today = todayKey()) {

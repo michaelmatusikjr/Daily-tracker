@@ -5,7 +5,7 @@ import { getState, update, uid } from './store.js';
 import { ctx } from './ctx.js';
 import { parseQuick } from './parse.js';
 import { saveTask, deleteTask, saveHabit } from './actions.js';
-import { PRIORITIES } from './logic.js';
+import { PRIORITIES, taskDefaultReminder } from './logic.js';
 import { openWorkoutForm } from './workoutForm.js';
 import { reminderStatus, reminderProblem, ensureReminderPermission } from './reminders.js';
 import { closeAllSheets } from './ui.js';
@@ -206,8 +206,12 @@ export function openQuickAdd() {
     const data = {
       title: p.title.slice(0, 200), date: p.date, time: p.time, duration: p.duration,
       priority: p.priority, category: p.tag ? ensureCategory(p.tag) : null,
+      // Profile defaults: Anytime → reminder at the default time; timed → at the event time.
+      ...taskDefaultReminder(getState(), p.time),
     };
     saveTask(data);
+    // First reminder ever: let the browser ask (never switches notifications back on by itself).
+    if ((data.reminder !== null || data.reminderAt) && reminderStatus() === 'default') ensureReminderPermission();
     sheet.close();
     const where = relativeLabel(p.date);
     toast(`Added to ${where}${p.time ? ' at ' + fmtTime(p.time, st.settings.timeFormat) : ''}`,
@@ -252,8 +256,10 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
   const isNew = !task;
   const d = task ? JSON.parse(JSON.stringify(task)) : {
     title: '', notes: '', date: ctx.ui.date, time: null, duration: null, priority: 0, category: null,
-    reminder: null, recur: { type: 'none', days: [], interval: 2 }, ...defaults,
+    reminder: null, reminderAt: null, recur: { type: 'none', days: [], interval: 2 }, ...defaults,
   };
+  // A new task starts with the profile's default reminder (unless the caller chose one).
+  if (isNew && !('reminder' in defaults) && !('reminderAt' in defaults)) Object.assign(d, taskDefaultReminder(st, d.time));
   if (!d.recur) d.recur = { type: 'none', days: [], interval: 2 };
   // A #tag typed in quick add becomes a category only if the task is actually saved.
   const pendingCat = d.newCategory ? d.newCategory.charAt(0).toUpperCase() + d.newCategory.slice(1, 40) : null;
@@ -264,25 +270,46 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
   const notes = h('textarea.input', { rows: 2, placeholder: 'Notes (optional)', maxlength: 2000 }, d.notes || '');
   const date = h('input.input', { type: 'date', value: d.date, required: true });
   const time = h('input.input', { type: 'time', value: d.time || '' });
-  const clearTime = h('button.btn.ghost.small', { type: 'button', onclick: () => { time.value = ''; syncTime(); } }, 'Clear');
+  const clearTime = h('button.btn.ghost.small', { type: 'button', onclick: () => { time.value = ''; time.dispatchEvent(new Event('input')); } }, 'Clear');
   const duration = select([['', 'No duration'], [15, '15 min'], [30, '30 min'], [45, '45 min'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours']], d.duration || '');
   if (d.duration && ![15, 30, 45, 60, 90, 120, 180, 240].includes(d.duration)) duration.append(h('option', { value: String(d.duration), selected: true }, fmtDuration(d.duration)));
   const reminder = select([['', 'No reminder'], [0, 'At start time'], [5, '5 min before'], [10, '10 min before'], [15, '15 min before'], [30, '30 min before'], [60, '1 hour before']], d.reminder ?? '');
   const reminderField = field('Reminder', reminder);
-  const timeExtras = h('div.grid-2', field('Duration', duration), reminderField);
-  const taskNotice = reminderNotice(() => !!time.value && reminder.value !== '');
+  // Anytime tasks (no start time): remind at a chosen time of day instead of "N min before".
+  const reminderAt = h('input.input', { type: 'time', value: d.reminderAt || '', 'aria-label': 'Reminder time' });
+  const clearAt = h('button.btn.ghost.small', { type: 'button', onclick: () => { reminderAt.value = ''; touched = true; syncTime(); } }, 'None');
+  const reminderAtField = h('div.field', h('label.field-label', { for: 'task-remind-at' }, 'Reminder at ', clearAt), reminderAt);
+  reminderAt.id = 'task-remind-at';
+  const timeExtras = h('div.grid-2', field('Duration', duration), reminderField, reminderAtField);
+  const hasReminder = () => (time.value ? reminder.value !== '' : !!reminderAt.value);
+  const taskNotice = reminderNotice(hasReminder);
+  // Once the user touches a reminder control, picking a time no longer swaps in the default.
+  let touched = false;
   // Choosing a reminder is a user gesture: ask for permission / switch notifications on right away.
-  reminder.addEventListener('change', () => {
-    taskNotice.refresh();
-    if (reminder.value !== '') ensureReminderPermission().then(taskNotice.refresh);
-  });
+  const onRemind = () => {
+    touched = true;
+    syncTime();
+    if (hasReminder()) ensureReminderPermission().then(taskNotice.refresh);
+  };
+  reminder.addEventListener('change', onRemind);
+  reminderAt.addEventListener('change', onRemind);
   function syncTime() {
     const has = !!time.value;
     reminderField.hidden = !has;
+    reminderAtField.hidden = has;
+    clearAt.hidden = !reminderAt.value;
     taskNotice?.refresh();
     clearTime.hidden = !has;
   }
-  time.addEventListener('input', syncTime);
+  time.addEventListener('input', () => {
+    // New task, reminder untouched: keep the profile default in step with Anytime / timed.
+    if (isNew && !touched && !('reminder' in defaults) && !('reminderAt' in defaults)) {
+      const def = taskDefaultReminder(getState(), time.value);
+      reminder.value = def.reminder === null ? '' : String(def.reminder);
+      reminderAt.value = def.reminderAt || '';
+    }
+    syncTime();
+  });
 
   let priority = d.priority || 0;
   const prio = segmented(PRIORITIES.map((p) => ({ value: p.v, label: p.label })), priority, (v) => { priority = v; }, { label: 'Priority', small: true });
@@ -414,6 +441,7 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
       time: hasTime ? time.value : null,
       duration: duration.value ? Number(duration.value) : null,
       reminder: hasTime && reminder.value !== '' ? Number(reminder.value) : null,
+      reminderAt: !hasTime && /^\d{2}:\d{2}$/.test(reminderAt.value) ? reminderAt.value : null,
       priority, category: category === '__new' ? (pendingCat ? ensureCategory(pendingCat) : null) : category,
       recur: { type: recur.type, days: recur.days, interval: Math.max(2, Math.min(365, parseInt(intervalInput.value, 10) || 2)) },
     };
@@ -422,7 +450,7 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
       if (!getState().tasks.some((x) => x.id === task.id)) { sheet.close(); toast('This task was deleted in another window, so the changes weren’t saved.'); return; }
       data.id = task.id;
     }
-    if (data.reminder !== null && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
+    if ((data.reminder !== null || data.reminderAt) && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
     data.attachments = photos.list.map((a) => ({ id: a.id, w: a.w, h: a.h, type: a.type }));
     const savedId = saveTask(data);
     // Photos: point new files at the task; delete the ones removed in this edit.
@@ -454,6 +482,9 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
 }
 
 // ---------------- Habit form ----------------
+/** "30 min", "1 hour", "2 hours" for the warning choices. */
+const fmtWarnShort = (m) => (m % 60 === 0 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} min`);
+
 /** Keep the stored schedule's other fields as they were; only the chosen type's own field changes. */
 function scheduleFor(orig, ui) {
   const out = { ...(orig || {}), type: ui.type };
@@ -468,7 +499,7 @@ export function openHabitForm(habit) {
   const d = habit ? JSON.parse(JSON.stringify(habit)) : {
     name: '', emoji: '✅', color: HABIT_COLORS[Math.floor(Math.random() * HABIT_COLORS.length)],
     schedule: { type: 'daily', days: [1, 2, 3, 4, 5], times: 3 },
-    goal: { type: 'check', target: 8, unit: '' }, timeOfDay: 'anytime', reminder: null,
+    goal: { type: 'check', target: 8, unit: '' }, target: null, reminder: null,
   };
   if (d.goal.type !== 'count') d.goal.target = d.goal.target > 1 ? d.goal.target : 8;
 
@@ -599,16 +630,36 @@ export function openHabitForm(habit) {
     { value: 'check', label: 'Check off' }, { value: 'count', label: 'Count' },
   ], d.goal.type, (v) => { d.goal.type = v; syncGoal(); }, { label: 'Goal' });
 
-  const tod = segmented([
-    { value: 'anytime', label: 'Anytime' }, { value: 'morning', label: 'Morning' },
-    { value: 'afternoon', label: 'Afternoon' }, { value: 'evening', label: 'Evening' },
-  ], d.timeOfDay, (v) => { d.timeOfDay = v; }, { label: 'Time of day', small: true });
+  // Complete by: Anytime, or a target time. A target enables the "N minutes left" warning.
+  const byTime = h('input.input', { type: 'time', value: d.target || '', 'aria-label': 'Complete by' });
+  const byRow = h('div.recur-extra.inline', h('span', 'Complete by'), byTime);
+  const defWarn = getState().settings.habitWarnDefault;
+  const WARNS = [5, 10, 15, 30, 60, 120];
+  const warnOptions = [['default', defWarn > 0 ? `Default (${fmtWarnShort(defWarn)})` : 'Default (none)'],
+    ...[...new Set([...WARNS, ...(Number.isInteger(d.warn) && d.warn > 0 ? [d.warn] : [])])].sort((a, b) => a - b).map((m) => [String(m), fmtWarnShort(m) + ' before']),
+    ['none', 'None']];
+  // Stored: warn undefined = follow the default; a number of minutes; 0 = explicitly none.
+  const warn = select(warnOptions, Number.isInteger(d.warn) ? (d.warn > 0 ? String(d.warn) : 'none') : 'default');
+  const warnField = field('Warn me before', warn, 'Alerts you “N minutes left” if it isn’t done yet.');
+  const reminderLabelHint = 'Optional.';
+  const syncBy = () => { byRow.hidden = !d.target; warnField.hidden = !d.target; };
+  const by = segmented([{ value: 'anytime', label: 'Anytime' }, { value: 'by', label: 'By a time' }],
+    d.target ? 'by' : 'anytime', (v) => {
+      if (v === 'by') { if (!/^\d{2}:\d{2}$/.test(byTime.value)) byTime.value = '09:00'; d.target = byTime.value; } else d.target = null;
+      syncBy(); habitNotice.refresh();
+    }, { label: 'Complete by', small: true });
+  byTime.addEventListener('input', () => { if (/^\d{2}:\d{2}$/.test(byTime.value)) d.target = byTime.value; habitNotice.refresh(); });
+  const warnActive = () => d.target && warn.value !== 'none' && (warn.value !== 'default' || defWarn > 0);
 
   const reminder = h('input.input', { type: 'time', value: d.reminder || '' });
-  const habitNotice = reminderNotice(() => /^\d{2}:\d{2}$/.test(reminder.value));
+  const habitNotice = reminderNotice(() => /^\d{2}:\d{2}$/.test(reminder.value) || !!warnActive());
   reminder.addEventListener('change', () => {
     habitNotice.refresh();
     if (reminder.value) ensureReminderPermission().then(habitNotice.refresh);
+  });
+  warn.addEventListener('change', () => {
+    habitNotice.refresh();
+    if (warnActive()) ensureReminderPermission().then(habitNotice.refresh);
   });
   const err = h('p.form-error', { role: 'alert' });
 
@@ -618,11 +669,12 @@ export function openHabitForm(habit) {
     groupField('Color', colors),
     groupField('Schedule', h('div', sched, daysRow, timesRow)),
     groupField('Goal', h('div', goal, countRow), 'Count goals: tap to add one, tap − to remove one.'),
-    groupField('Time of day', tod),
-    field('Reminder', reminder, 'Optional.'),
+    groupField('Complete by', h('div', by, byRow)),
+    warnField,
+    field('Reminder', reminder, reminderLabelHint),
     habitNotice.el,
     err);
-  syncSched(); syncGoal();
+  syncSched(); syncGoal(); syncBy();
 
   function submit() {
     const n = name.value.trim();
@@ -631,10 +683,12 @@ export function openHabitForm(habit) {
       name: n, emoji: d.emoji || '✅', icon: d.icon ? { type: 'image', data: d.icon.data } : undefined, color: d.color,
       schedule: scheduleFor(habit?.schedule, d.schedule),
       goal: { type: d.goal.type, target: d.goal.type === 'count' ? Math.max(1, Math.min(999, parseInt(target.value, 10) || 1)) : 1, unit: unit.value.trim() },
-      timeOfDay: d.timeOfDay,
+      target: d.target || null,
+      // undefined = follow the profile default, 0 = none, else minutes (only with a target).
+      warn: d.target && warn.value !== 'default' ? (warn.value === 'none' ? 0 : Number(warn.value)) : undefined,
       reminder: /^\d{2}:\d{2}$/.test(reminder.value) ? reminder.value : null,
     };
-    if (data.reminder && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
+    if ((data.reminder || (data.target && warnActive())) && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
     if (!isNew) data.id = habit.id;
     saveHabit(data);
     sheet.close();

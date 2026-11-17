@@ -50,7 +50,7 @@ async function openTaskFormWithTime(p) {
     const rt = JSON.stringify({ lastSeen: 1, snoozes: { a1: { until: 2, count: 1 } }, missed: [{ id: 'a1', at: 1, time: '07:00' }], active: { id: 'a1', occ: 1, alarm: { id: 'a1' } } });
     const { ctx, p } = await open(browser, { data: v2, rt });
     const s = await stored(p);
-    assert(s.version === 4 && !('alarms' in s) && !('codes' in s), 'M1 v2 → v4: alarms and codes dropped from stored state');
+    assert(s.version === 5 && !('alarms' in s) && !('codes' in s), 'M1 v2 → v4: alarms and codes dropped from stored state');
     assert(s.tasks[0].title === 'Keep me' && s.tasks[0].reminder === 10 && s.habits[0].name === 'Water' && s.logs.h1['2026-11-10'] === 3
       && s.journal['2026-11-09'].note === 'good' && s.settings.accent === 'teal' && s.settings.weekStart === 0 && s.settings.timeFormat === '24' && s.categories.length === 1,
     'M1 nothing else lost (tasks, reminder, habits, logs, journal, settings, categories)');
@@ -61,7 +61,7 @@ async function openTaskFormWithTime(p) {
     assert((await p.locator('.page-title').textContent()).includes('Nov'), 'R0 old #alarms link falls back to Today');
     // export has no alarms
     const exp = await p.evaluate(async () => (await import('./js/store.js')).exportPayload());
-    assert(exp.profiles[0].data.version === 4 && !('alarms' in exp.profiles[0].data), 'M3 export has no alarms/codes');
+    assert(exp.profiles[0].data.version === 5 && !('alarms' in exp.profiles[0].data), 'M3 export has no alarms/codes');
     await ctx.close();
   }
   // ---- Imports v1 / v2 / v3, with and without alarms ----
@@ -80,7 +80,7 @@ async function openTaskFormWithTime(p) {
       assert(!/alarm|scan code/i.test(msg) && /\d+ tasks, \d+ habits and \d+ workouts/.test(msg), `I ${name}: confirmation mentions tasks, habits, workouts ("${msg.slice(0, 40)}…")`);
       await p.click('.sheet .btn.danger'); await p.waitForTimeout(300);
       const s = await stored(p);
-      assert(s.version === 4 && !('alarms' in s) && !('codes' in s) && s.tasks[0].title === `From ${name}`, `I ${name}: imported, alarms/codes ignored`);
+      assert(s.version === 5 && !('alarms' in s) && !('codes' in s) && s.tasks[0].title === `From ${name}`, `I ${name}: imported, alarms/codes ignored`);
     }
     await ctx.close();
   }
@@ -98,8 +98,8 @@ async function openTaskFormWithTime(p) {
     const { ctx, p } = await open(browser, { init: notifStub('granted', 'granted'), data: base() });
     await p.click('a[data-tab="habits"]'); await p.click('.fab'); await p.waitForTimeout(300);
     await p.fill('.sheet .habit-name-row input', 'Stretch');
-    await p.fill('.sheet input[type=time]', '07:30');
-    await p.locator('.sheet input[type=time]').dispatchEvent('change'); await p.waitForTimeout(300);
+    await p.fill('.sheet input[type=time]:not([aria-label="Complete by"])', '07:30');
+    await p.locator('.sheet input[type=time]:not([aria-label="Complete by"])').dispatchEvent('change'); await p.waitForTimeout(300);
     assert((await stored(p)).settings.notifications === true && (await p.locator('.toast').textContent()).includes('Notifications turned on'), 'R2 granted but off → switched on with toast');
     await ctx.close();
   }

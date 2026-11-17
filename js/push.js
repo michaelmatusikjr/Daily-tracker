@@ -7,7 +7,7 @@ import { PUSH_SERVER_URL, VAPID_PUBLIC_KEY } from './pushConfig.js';
 import { getProfiles, readProfileState, getState, update } from './store.js';
 import { reschedule } from './notify.js';
 import { todayKey, addDays, timeToMin, minToTime, startOfWeek, fmtTime } from './dates.js';
-import { activeHabits, habitDone, weekCount } from './logic.js';
+import { activeHabits, habitDone, weekCount, habitWarnAt, warnTitle } from './logic.js';
 import { isIOS, isStandalone } from './pwa.js';
 import { blockedHelp } from './reminders.js';
 import { habitText } from './habitIcon.js';
@@ -170,13 +170,15 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
     const prefix = multi ? `${profile.name}: ` : '';
     const text = (title, body) => (hideText ? { title: HIDDEN_TITLE, body: HIDDEN_BODY } : { title: (prefix + title).slice(0, 120), body: body.slice(0, 240) });
     for (const t of st.tasks) {
-      if (!t.time || t.reminder === null || t.reminder === undefined) continue;
+      // A timed task reminds `reminder` minutes before its start; an Anytime one at its reminderAt time of day.
+      const timedRem = !!t.time && t.reminder !== null && t.reminder !== undefined;
+      if (!timedRem && !(!t.time && t.reminderAt)) continue;
       const recur = RECUR.has(t.recur?.type) ? t.recur.type : 'none';
       if (recur === 'none' && (t.done || t.date < from || t.missedDates?.[t.date])) continue;
-      const mins = timeToMin(t.time) - (t.reminder || 0);
+      const mins = timedRem ? timeToMin(t.time) - (t.reminder || 0) : timeToMin(t.reminderAt);
       const r = {
         id: safeId(`${profile.id}:t:${t.id}`).slice(0, 128), kind: 'task',
-        ...text(t.title, t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now'),
+        ...text(t.title, !timedRem ? 'Due today' : t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now'),
         url: deepLink('task', profile.id, t.id), tag: `${profile.id}:t:${t.id}:{date}`.slice(0, 128),
         time: minToTime(((mins % 1440) + 1440) % 1440), offsetDays: Math.floor(mins / 1440),
         recur: recur === 'none' ? { type: 'none' } : { type: recur, start: t.date, ...(recur === 'weekly' ? { days: t.recur.days || [] } : {}), ...(recur === 'interval' ? { interval: Math.max(1, t.recur.interval || 1) } : {}) },
@@ -188,7 +190,8 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
       rules.push(r);
     }
     for (const hb of activeHabits(st)) {
-      if (!hb.reminder) continue;
+      const warnAt = habitWarnAt(st, hb);
+      if (!hb.reminder && warnAt === null) continue;
       const type = hb.schedule?.type;
       const start = /^\d{4}-\d{2}-\d{2}$/.test(hb.createdAt || '') && hb.createdAt < today ? hb.createdAt : today;
       const recur = type === 'days' ? { type: 'weekly', start, days: [...(hb.schedule.days || [])] } : { type: 'daily', start };
@@ -201,12 +204,23 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
         const ws = startOfWeek(today, st.settings.weekStart ?? 1);
         for (let i = 0; i < 7; i++) { const k = addDays(ws, i); if (k >= today) skip.push(k); }
       }
-      rules.push({
-        id: safeId(`${profile.id}:h:${hb.id}`).slice(0, 128), kind: 'habit',
-        ...text(habitText(hb), 'Time for your habit'),
-        url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:h:${hb.id}:{date}`.slice(0, 128),
-        time: hb.reminder, offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
-      });
+      if (hb.reminder) {
+        rules.push({
+          id: safeId(`${profile.id}:h:${hb.id}`).slice(0, 128), kind: 'habit',
+          ...text(habitText(hb), 'Time for your habit'),
+          url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:h:${hb.id}:{date}`.slice(0, 128),
+          time: hb.reminder, offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
+        });
+      }
+      // "N minutes left" warning: one more habit rule at target − warn, with the same done/missed skips.
+      if (warnAt !== null) {
+        rules.push({
+          id: safeId(`${profile.id}:hw:${hb.id}`).slice(0, 128), kind: 'habit',
+          ...text(warnTitle(hb, timeToMin(hb.target) - warnAt), `Complete by ${fmtTime(hb.target, fmt)}`),
+          url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:hw:${hb.id}:{date}`.slice(0, 128),
+          time: minToTime(warnAt), offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
+        });
+      }
     }
   }
   const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } })();

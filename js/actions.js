@@ -107,7 +107,7 @@ export function saveTask(data) {
       const maxOrder = s.tasks.reduce((m, t) => Math.max(m, t.order || 0), 0);
       id = uid();
       s.tasks.push({
-        notes: '', time: null, duration: null, priority: 0, category: null, reminder: null,
+        notes: '', time: null, duration: null, priority: 0, category: null, reminder: null, reminderAt: null,
         recur: { type: 'none', days: [], interval: 2 }, done: false, doneDates: {}, exceptions: [],
         createdAt: Date.now(), ...data, id, order: maxOrder + 1,
       });
@@ -210,6 +210,28 @@ export function reorderTasks(ids) {
   });
 }
 
+/**
+ * Reorder Today's Anytime list, which mixes tasks and habits. Writes `todayOrder` on every item in
+ * the new order, in one update; `order` (used by the Habits tab) is left alone. Undo restores the
+ * previous values.
+ */
+export function reorderToday(ids) {
+  const prev = {};
+  const write = (map) => update((s) => {
+    for (const x of [...s.tasks, ...s.habits]) {
+      if (!(x.id in map)) continue;
+      if (map[x.id] === null) delete x.todayOrder; else x.todayOrder = map[x.id];
+    }
+  });
+  const st = getState();
+  const known = new Set([...st.tasks, ...st.habits].map((x) => x.id));
+  const next = {};
+  ids.filter((id) => known.has(id)).forEach((id, i) => { next[id] = i; });
+  for (const x of [...st.tasks, ...st.habits]) if (x.id in next) prev[x.id] = Number.isFinite(x.todayOrder) ? x.todayOrder : null;
+  write(next);
+  toast('Order updated', { action: 'Undo', onAction: () => write(prev) });
+}
+
 // ---------- Habits ----------
 export function setHabitValue(id, k, v, { silentUndo = false } = {}) {
   if (k > todayKey()) return; // can't complete habits in the future
@@ -271,9 +293,12 @@ export function saveHabit(data) {
   let id = data.id;
   update((s) => {
     const existing = id && s.habits.find((x) => x.id === id);
-    if (existing) Object.assign(existing, data, { updatedAt: Date.now() });
-    else {
+    if (existing) {
+      Object.assign(existing, data, { updatedAt: Date.now() });
+      if (data.warn === undefined) delete existing.warn; // "follow the default"
+    } else {
       id = uid();
+      if (data.warn === undefined) delete data.warn;
       const maxOrder = s.habits.reduce((m, x) => Math.max(m, x.order || 0), 0);
       s.habits.push({ archived: false, createdAt: todayKey(), ...data, id, order: maxOrder + 1 });
     }
@@ -364,10 +389,10 @@ export function setNote(k, note) {
 export function seedExamples() {
   const today = todayKey();
   const examples = [
-    { name: 'Drink water', emoji: '💧', color: '#0ea5e9', goal: { type: 'count', target: 8, unit: 'glasses' }, timeOfDay: 'anytime', schedule: { type: 'daily', days: [], times: 3 } },
-    { name: 'Morning stretch', emoji: '🧘', color: '#8b5cf6', goal: { type: 'check', target: 1, unit: '' }, timeOfDay: 'morning', schedule: { type: 'daily', days: [], times: 3 } },
-    { name: 'Read 20 minutes', emoji: '📚', color: '#f59e0b', goal: { type: 'check', target: 1, unit: '' }, timeOfDay: 'evening', schedule: { type: 'daily', days: [], times: 3 } },
-    { name: 'Workout', emoji: '🏃', color: '#ef4444', goal: { type: 'check', target: 1, unit: '' }, timeOfDay: 'anytime', schedule: { type: 'perWeek', days: [], times: 3 } },
+    { name: 'Drink water', emoji: '💧', color: '#0ea5e9', goal: { type: 'count', target: 8, unit: 'glasses' }, target: null, schedule: { type: 'daily', days: [], times: 3 } },
+    { name: 'Morning stretch', emoji: '🧘', color: '#8b5cf6', goal: { type: 'check', target: 1, unit: '' }, target: '12:00', schedule: { type: 'daily', days: [], times: 3 } },
+    { name: 'Read 20 minutes', emoji: '📚', color: '#f59e0b', goal: { type: 'check', target: 1, unit: '' }, target: '21:00', schedule: { type: 'daily', days: [], times: 3 } },
+    { name: 'Workout', emoji: '🏃', color: '#ef4444', goal: { type: 'check', target: 1, unit: '' }, target: null, schedule: { type: 'perWeek', days: [], times: 3 } },
   ];
   update((s) => {
     let order = s.habits.reduce((m, x) => Math.max(m, x.order || 0), 0);

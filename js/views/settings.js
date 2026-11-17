@@ -140,6 +140,23 @@ export function renderSettings() {
     }, icon('bell', { size: 16 }), 'Send test')) : null,
     ...pushRows()));
 
+  // Defaults for new tasks and habit warnings (per profile)
+  const td = set.taskDefaults || { on: true, anytimeReminderTime: '06:00' };
+  const warnOpts = [[0, 'Off'], [5, '5 min'], [10, '10 min'], [15, '15 min'], [30, '30 min'], [60, '1 hour'], [120, '2 hours']];
+  if (!warnOpts.some(([m]) => m === set.habitWarnDefault)) warnOpts.push([set.habitWarnDefault, `${set.habitWarnDefault} min`]);
+  warnOpts.sort((x, y) => x[0] - y[0]);
+  const warnSel = h('select.input', { 'aria-label': 'Habit warning before the complete-by time', id: 'set-habit-warn', onchange: (e) => setSetting('habitWarnDefault', Number(e.target.value)) },
+    warnOpts.map(([m, l]) => h('option', { value: String(m), selected: m === set.habitWarnDefault }, l)));
+  const anyTime = h('input.input', {
+    type: 'time', id: 'set-anytime-reminder', value: td.anytimeReminderTime, 'aria-label': 'Reminder time for Anytime tasks',
+    onchange: (e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) setSetting('taskDefaults', { ...td, anytimeReminderTime: e.target.value }); else e.target.value = td.anytimeReminderTime; },
+  });
+  root.append(group('Defaults',
+    row('Default reminders for new tasks', 'New tasks get a reminder: Anytime tasks at the time below, timed tasks at the time of the event. You can change or remove it on any task. Existing tasks are not changed.',
+      toggle(td.on, 'Default reminders for new tasks', (on) => setSetting('taskDefaults', { ...td, on }))),
+    td.on ? row('Anytime reminder time', 'When Anytime tasks remind you on their day.', anyTime) : null,
+    row('Habit warning', 'For habits with a “complete by” time: “N minutes left” if it isn’t done yet. Each habit can change or turn off its own.', warnSel)));
+
   // Install
   let installCtl;
   if (isStandalone()) installCtl = row('Install app', 'Installed. You are using the app version.', h('span.badge.ok', icon('check', { size: 14 }), 'Installed'));

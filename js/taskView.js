@@ -4,7 +4,7 @@ import { h, openSheet, toast } from './ui.js';
 import { icon } from './icons.js';
 import { getState, subscribe } from './store.js';
 import { isTaskDone, isTaskMissed, isRecurring, recurrenceLabel, PRIORITIES, occursOn } from './logic.js';
-import { todayKey, relativeLabel, fmtDateShort, fmtDateLong, weekdayLabels } from './dates.js';
+import { todayKey, relativeLabel, fmtDateShort, fmtDateLong, weekdayLabels, fmtTime } from './dates.js';
 import { toggleTask } from './actions.js';
 import { openTaskForm } from './forms.js';
 import { taskMenu, showMenu } from './itemMenu.js';
@@ -144,6 +144,9 @@ export function openTaskView(id, k = null) {
     const details = [];
     if (t.priority) details.push(h('div.tv-line', h('span.tv-prio', { style: { '--prio': prio.color } }, icon('flag', { size: 16 })), h('span', `${prio.label} priority`)));
     if (cat) details.push(h('div.tv-line', icon('tag', { size: 16 }), h('span.cat', { style: { '--c': cat.color } }, cat.name)));
+    if (!t.time && t.reminderAt) {
+      details.push(h('div.tv-line', icon('bell', { size: 16 }), h('span', `Reminder: at ${fmtTime(t.reminderAt, fmt)}`), canFire() ? null : reminderWarnBadge()));
+    }
     if (t.reminder !== null && t.reminder !== undefined && t.time) {
       details.push(h('div.tv-line', icon('bell', { size: 16 }), h('span', `Reminder: ${reminderText(t.reminder)}`), canFire() ? null : reminderWarnBadge()));
     }

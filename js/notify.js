@@ -3,7 +3,7 @@
 // push server (js/push.js) the same occurrences are sent from the server instead.
 import { getProfiles, readProfileState } from './store.js';
 import { todayKey, addDays, dateAt, fmtTime, timeToMin, minToTime } from './dates.js';
-import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone } from './logic.js';
+import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone, habitWarnAt, warnTitle } from './logic.js';
 import { habitText } from './habitIcon.js';
 import { pushCoversReminders, deepLink, hideTextOn, HIDDEN_TITLE, HIDDEN_BODY } from './push.js';
 
@@ -61,17 +61,25 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
     };
     for (const k of days) {
       for (const t of tasksOn(st, k)) {
-        if (!t.time || t.reminder === null || isTaskDone(t, k) || t.missedDates?.[k]) continue;
+        const timedRem = !!t.time && t.reminder !== null;
+        if ((!timedRem && !(!t.time && t.reminderAt)) || isTaskDone(t, k) || t.missedDates?.[k]) continue;
         // Local fire time = task time minus the lead, as wall-clock time (same as the push server).
-        const mins = timeToMin(t.time) - t.reminder;
+        // An Anytime task reminds at its own time of day (reminderAt) on its day.
+        const mins = timedRem ? timeToMin(t.time) - t.reminder : timeToMin(t.reminderAt);
         const at = dateAt(addDays(k, Math.floor(mins / 1440)), minToTime(((mins % 1440) + 1440) % 1440)).getTime();
-        add(`t:${t.id}:${k}`, at, t.title, t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now', k,
+        add(`t:${t.id}:${k}`, at, t.title, !timedRem ? 'Due today' : t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now', k,
           (s2) => { const x = s2.tasks.find((y) => y.id === t.id); return x && !isTaskDone(x, k) && !x.missedDates?.[k]; });
       }
       for (const hb of activeHabits(st)) {
-        if (!hb.reminder || !isDueOn(st, hb, k) || habitDone(st, hb, k) || hb.missed?.[k]) continue;
-        add(`h:${hb.id}:${k}`, dateAt(k, hb.reminder).getTime(), habitText(hb), 'Time for your habit', k,
-          (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && !habitDone(s2, x, k) && !x.missed?.[k]; });
+        if (!isDueOn(st, hb, k) || habitDone(st, hb, k) || hb.missed?.[k]) continue;
+        const stillDue = (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && !habitDone(s2, x, k) && !x.missed?.[k]; };
+        if (hb.reminder) add(`h:${hb.id}:${k}`, dateAt(k, hb.reminder).getTime(), habitText(hb), 'Time for your habit', k, stillDue);
+        // "N minutes left": at target minus the warning, only while it isn't done.
+        const wa = habitWarnAt(st, hb);
+        if (wa !== null) {
+          const left = timeToMin(hb.target) - wa;
+          add(`hw:${hb.id}:${k}`, dateAt(k, minToTime(wa)).getTime(), warnTitle(hb, left), `Complete by ${fmtTime(hb.target, fmt)}`, k, stillDue);
+        }
       }
     }
   }

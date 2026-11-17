@@ -40,6 +40,7 @@ export function renderHabitDetail(id) {
     h('div',
       h('p.progress-big', status),
       h('p.progress-sub', hb.goal.type === 'count' ? 'Tap to add one · hold for more options' : 'Tap to toggle today'),
+      hb.target ? h('p.progress-break', h('span', icon('clock', { size: 13 }), 'Complete by ' + fmtTime(hb.target, st.settings.timeFormat))) : null,
       hb.reminder ? h('p.progress-break', h('span', icon('bell', { size: 13 }), 'Reminder at ' + fmtTime(hb.reminder, st.settings.timeFormat))) : null),
     hb.goal.type === 'count' && v > 0 && !hb.archived ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, today, -1), 'minus-btn') : null);
   attachMenu(hero, () => habitMenu(hb.id, today), hero.querySelector('button'));

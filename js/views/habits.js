@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { getState } from '../store.js';
 import { ctx } from '../ctx.js';
 import { activeHabits, streaks, scheduleLabel, habitVal, habitTarget } from '../logic.js';
-import { todayKey, weekdayLabels } from '../dates.js';
+import { todayKey, weekdayLabels, fmtTime } from '../dates.js';
 import { habitControl, weekDots, streakBadge, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
 import { reorderHabits, setArchived, seedExamples, bumpHabit } from '../actions.js';
@@ -11,7 +11,6 @@ import { openHabitForm } from '../forms.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
 import { habitIcon } from '../habitIcon.js';
 
-const GROUPS = [['morning', 'Morning', '🌅'], ['afternoon', 'Afternoon', '☀️'], ['evening', 'Evening', '🌙'], ['anytime', 'Anytime', '✨']];
 
 const withMenu = (hb, li) => { attachMenu(li, () => habitMenu(hb.id), li.querySelector('.habit-open')); return li; };
 
@@ -45,6 +44,7 @@ export function renderHabits() {
     const v = habitVal(st, hb, today);
     const target = habitTarget(hb);
     const sub = [scheduleLabel(hb, dayNames)];
+    if (hb.target) sub.push(`by ${fmtTime(hb.target, st.settings.timeFormat)}`);
     if (hb.goal.type === 'count') sub.push(`${target}${hb.goal.unit ? ' ' + hb.goal.unit : ''} a day`);
     const li = h('li.habit-card', { dataset: { id: hb.id }, style: { '--c': hb.color } },
       h('div.habit-card-top',
@@ -76,13 +76,17 @@ export function renderHabits() {
       makeSortable(list, { onReorder: (ids) => reorderHabits(ids) });
       root.append(h('p.hint-line', 'Drag the handles (or focus one and use arrow keys) to reorder.'), list);
     } else {
-      const useGroups = habits.some((x) => x.timeOfDay !== 'anytime');
-      for (const [key, label, emo] of GROUPS) {
-        const items = useGroups ? habits.filter((x) => x.timeOfDay === key) : (key === 'anytime' ? habits : []);
+      // Habits with a "complete by" time come first (earliest target first), then Anytime ones.
+      const useGroups = habits.some((x) => x.target);
+      const groups = [
+        ['timed', '⏰ By a set time', habits.filter((x) => x.target).sort((a, b) => a.target.localeCompare(b.target) || a.order - b.order)],
+        ['anytime', '✨ Anytime', habits.filter((x) => !x.target)],
+      ];
+      for (const [, label, items] of groups) {
         if (!items.length) continue;
         const list = h('ul.habit-list');
         items.forEach((hb) => list.append(card(hb)));
-        root.append(h('section.section', useGroups ? sectionHead(`${emo} ${label}`) : null, list));
+        root.append(h('section.section', useGroups ? sectionHead(label) : null, list));
       }
     }
   }
