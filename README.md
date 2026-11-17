@@ -162,7 +162,7 @@ Service workers are allowed on `localhost`. On other hosts they require HTTPS (G
 
 1. Push the repository to GitHub.
 2. Open **Settings → Pages**. Under **Build and deployment**, choose **Deploy from a branch**, then pick your branch and the `/ (root)` folder. Save.
-3. After a minute the app is live at `https://<user>.github.io/Daily-tracker-/`.
+3. After a minute the app is live at `https://<user>.github.io/<repo-name>/` (e.g. `/daily-tracker/`).
 
 All paths are relative, so the app works from any sub-path.
 
