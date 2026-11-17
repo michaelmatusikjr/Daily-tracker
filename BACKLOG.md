@@ -50,7 +50,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **What:** remove "Completed ›" from the progress card on Today, and put the entry point somewhere on the Calendar tab, e.g. a "Completed tasks" button in the Calendar header. The Stats link can stay or go with the Stats tab (see #14).
 - **Size:** small.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** a "Completed tasks" button at the top of the Calendar tab.
 
 ### 10. Bug: tapping a notification for another profile
@@ -59,7 +59,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Type:** bug.
 - **Size:** small.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ### 11. Default task time and default alert per profile
 - **What:** each profile can set a default task time (e.g. 6:00 AM) and a default alert (e.g. "at time of event").
@@ -71,7 +71,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - Applies to quick add too.
 - **Size:** small–medium.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ### 12. Bug: reminder doesn't fire again after moving a task later
 - **What:** if a task's reminder has already gone off and the task's time is changed to later, the new reminder never comes.
@@ -79,13 +79,13 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Type:** bug.
 - **Size:** small.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ### 13. Remove the encouragement text on Today's top card
 - **What:** remove "More than halfway there" and any similar message that appears on the progress card at the top of Today.
 - **Size:** tiny.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ### 14. Journal tab and reorganised tabs
 - **What:**
@@ -100,7 +100,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Open detail:** whether the journal mood picker stays (assume yes unless told otherwise).
 - **Size:** medium–large.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update
+- **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** keep the 5-emoji mood picker with journal entries.
 
 ### 15. No zooming or selecting UI
@@ -111,14 +111,14 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Decided (2026-11-17):** OK to block zoom via touch handling, accepting the accessibility trade-off.
 - **Size:** small.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ### 16. Crop and adjust the profile photo
 - **What:** when setting a profile photo, show a crop step: drag to position, pinch or slider to zoom, in a round preview, before saving.
 - **Optional:** simple brightness/rotate adjustments.
 - **Size:** small–medium.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** crop (drag + zoom) and rotate; no brightness.
 
 ### 17. Habit target time, and a "time running out" reminder
@@ -131,7 +131,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - The push server already skips reminders once a habit is marked done and synced.
 - **Size:** medium.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):**
   - **Converting existing habits:** Morning → by 12:00 PM, Afternoon → by 5:00 PM, Evening → by 9:00 PM.
   - **"Time running out" warning:**
@@ -144,7 +144,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Depends on:** #17.
 - **Size:** medium.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** a habit sits in the timeline at its target time, shown like "Floss · by 8:00 AM".
 
 ### 19. Photo import edge case (from v1.9.1 QA)
@@ -154,7 +154,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Type:** bug (low).
 - **Size:** tiny.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ### 20. Habit photo icons fill the whole icon
 - **What:**
@@ -165,7 +165,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Existing photo icons:** they were stored with transparent bars. Trim the bars and fill the square automatically (may look slightly softer); re-picking gives full sharpness.
 - **Size:** small.
 - **Added:** 2026-11-17
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 
 ## Done
 
