@@ -44,7 +44,7 @@ const noOverflow = (p) => p.evaluate(() => document.documentElement.scrollWidth 
 
 async function logWorkout(p, { name, isNew = false, type = null, lines = null, time = null, dist = null, date = null }) {
   await go(p, '#workouts');
-  await p.click('.log-btn'); await p.waitForTimeout(250);
+  await p.click('.fab'); await p.waitForTimeout(250);
   if (isNew) {
     await p.fill('.ex-search', name); await p.click('.ex-chip.add');
     if (type === 'cardio') await p.click('.sheet .segmented button:has-text("Cardio")');
@@ -77,7 +77,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert(i && i.profiles.length === 1 && i.profiles[0].introPending === true, 'P1 legacy data became the first profile');
     assert(await S(p, () => localStorage.getItem('dailyTracker:data')) === null, 'P1 legacy key moved (removed)');
     const st = await stored(p);
-    assert(st.version === 5 && Array.isArray(st.workouts) && st.tasks[0].title === 'Old task' && st.logs.h1['2026-11-11'] === 1 && st.journal['2026-11-11'].note === 'ok', 'P1 v3→v4 migration keeps everything');
+    assert(st.version === 6 && Array.isArray(st.workouts) && st.tasks[0].title === 'Old task' && st.logs.h1['2026-11-11'] === 1 && st.journal['2026-11-11'].note === 'ok', 'P1 v3→v4 migration keeps everything');
     assert(await S(p, () => document.documentElement.dataset.theme) === 'dark', 'P1 theme kept');
     assert((await p.textContent('.sheet-title')) === 'Who’s this?', 'P1 friendly intro sheet on first open');
     await p.screenshot({ path: SP + '/p-intro.png' });
@@ -112,7 +112,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     await p.click('.sheet-foot .btn.primary'); await p.waitForTimeout(200); // intro → "Me" (empty name)
     await p.evaluate(async () => (await import('./js/store.js')).updateProfile((await import('./js/store.js')).getActiveProfile().id, { name: 'Sam' }));
     const tabs = await p.$$eval('.nav-item', (e) => e.filter((x) => x.offsetParent !== null).map((x) => x.querySelector('.nav-label').textContent));
-    assert(JSON.stringify(tabs) === '["Today","Habits","Workouts","Calendar","Stats"]', 'N tabs: Today, Habits, Workouts, Calendar, Stats');
+    assert(JSON.stringify(tabs) === '["Today","Habits","Workouts","Calendar","Journal"]', 'N tabs: Today, Habits, Workouts, Calendar, Journal');
     assert(await p.locator('.avatar-btn').count() === 1, 'N avatar on Today');
     await go(p, '#habits');
     assert(await p.locator('.avatar-btn').count() === 0, 'N no avatar on other pages');
@@ -205,12 +205,12 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     await p.click('.sheet-foot .btn.ghost'); await p.waitForTimeout(200);
     // Quick add has Workout
     await p.click('.fab'); await p.waitForTimeout(200);
-    assert(JSON.stringify(await p.$$eval('.sheet .segmented button', (b) => b.map((x) => x.textContent))) === '["Task","Habit","Workout"]', 'W0 Quick add offers Workout');
+    assert(JSON.stringify(await p.$$eval('.sheet .segmented button', (b) => b.map((x) => x.textContent))) === '["Task","Habit","Workout","Journal"]', 'W0 Quick add offers Workout');
     await p.click('.sheet .segmented button:has-text("Workout")'); await p.waitForTimeout(300);
     assert((await p.textContent('.sheet-title')) === 'Log workout', 'W0 opens the log form');
     await p.keyboard.press('Escape'); await p.waitForTimeout(300);
     // Validation
-    await go(p, '#workouts'); await p.click('.log-btn'); await p.fill('.ex-search', 'Squats'); await p.click('.ex-chip.add');
+    await go(p, '#workouts'); await p.click('.fab'); await p.fill('.ex-search', 'Squats'); await p.click('.ex-chip.add');
     await p.click('.sheet-foot .btn.primary'); await p.waitForTimeout(150);
     assert((await p.textContent('.sheet .form-error')).includes('Enter a weight'), 'W5 empty entry rejected');
     await p.locator('.wo-line input').nth(0).fill('225');
@@ -220,7 +220,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     await logWorkout(p, { name: 'Squats', isNew: true, lines: [[225, 3, 5]], date: '2026-11-10' });
     assert((await toastText(p)).includes('Logged Squats · 225 lbs · 3 × 5'), 'W1 log new exercise; toast summary');
     // Repeat: pick → prefilled → Save
-    await go(p, '#workouts'); await p.click('.log-btn'); await p.waitForTimeout(200);
+    await go(p, '#workouts'); await p.click('.fab'); await p.waitForTimeout(200);
     const chips = await p.$$eval('.ex-chip', (e) => e.map((x) => x.textContent));
     assert(chips[0] === 'Squats', 'W1 recent exercise offered as a chip');
     await p.click('.ex-chip:has-text("Squats")'); await p.waitForTimeout(150);
@@ -280,9 +280,10 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     // Calendar + stats
     await go(p, '#calendar');
     assert(await p.locator('.cal-workout').count() >= 3, 'W10 💪 calendar markers');
-    await go(p, '#stats');
-    assert((await p.textContent('.stats-workouts')).includes('Workout days') && (await p.textContent('.stats-workouts')).includes('Recent records'), 'W10 Stats workouts section');
+    await go(p, '#workouts'); await p.click('[role=tab]:has-text("Stats")'); await p.waitForTimeout(300);
+    assert((await p.textContent('.view-workouts')).includes('Workout days') && (await p.textContent('.view-workouts')).includes('Recent records'), 'W10 Workouts › Stats section');
     await p.screenshot({ path: SP + '/w-stats.png', fullPage: true });
+    await p.click('[role=tab]:has-text("Workouts")'); await p.waitForTimeout(250);
 
     // ===== Workout → habit link =====
     const hv = async (d) => { const s = await stored(p); return [s.logs.hx?.[d] || 0, !!s.autoHabit.hx?.[d]]; };
@@ -351,7 +352,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     const tag = `${width}${dark ? '-dark' : ''}`;
     const okToday = await noOverflow(p); await p.screenshot({ path: `${SP}/l13-today-${tag}.png` });
     await go(p, '#workouts'); const okW = await noOverflow(p); await p.screenshot({ path: `${SP}/l13-workouts-${tag}.png` });
-    await p.click('.log-btn'); await p.waitForTimeout(250); await p.click('.ex-chip >> nth=0'); await p.waitForTimeout(150);
+    await p.click('.fab'); await p.waitForTimeout(250); await p.click('.ex-chip >> nth=0'); await p.waitForTimeout(150);
     await p.click('.add-line'); const okF = await noOverflow(p); await p.screenshot({ path: `${SP}/l13-form-${tag}.png` });
     await p.keyboard.press('Escape'); await p.waitForTimeout(300);
     await go(p, '#exercise/e'); const okE = await noOverflow(p); await p.screenshot({ path: `${SP}/l13-ex-${tag}.png`, fullPage: true });

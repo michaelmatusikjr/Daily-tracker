@@ -81,7 +81,7 @@ const CAVEAT = /open or was recently used/;
     // Unhealthy: Settings shows the caveat again with the reason
     healthy = false;
     await p.evaluate(async () => (await import('./js/push.js')).checkHealth()); await p.waitForTimeout(300);
-    await go(p, '#stats'); await go(p, '#settings');
+    await go(p, '#calendar'); await go(p, '#settings');
     const s2 = await p.textContent('.set-group:has-text("Reminders")');
     assert(CAVEAT.test(s2) && s2.includes('timer isn’t running'), 'B6 unhealthy: caveat back in Settings, with the reason');
     // Notifications denied: coverage needs permission; one note only, the blocked one

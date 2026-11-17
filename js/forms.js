@@ -1,4 +1,5 @@
 // Bottom-sheet forms: quick add, task editor, habit editor.
+import { openJournalForm } from './journalForm.js';
 import { h, openSheet, segmented, toast, iconBtn } from './ui.js';
 import { icon } from './icons.js';
 import { getState, update, uid } from './store.js';
@@ -241,9 +242,11 @@ export function openQuickAdd() {
     { value: 'task', label: 'Task', icon: 'check' },
     { value: 'habit', label: 'Habit', icon: 'habits' },
     { value: 'workout', label: 'Workout', icon: 'dumbbell' },
+    { value: 'journal', label: 'Journal', icon: 'book' },
   ], 'task', (v) => {
     if (v === 'habit') { sheet.close(); openHabitForm(null); }
     if (v === 'workout') { sheet.close(); openWorkoutForm(null); }
+    if (v === 'journal') { sheet.close(); openJournalForm(ctx.ui.date); }
   }, { label: 'What to add' });
 
   const sheet = openSheet({ title: 'Quick add', content: [modeSwitch, form] });

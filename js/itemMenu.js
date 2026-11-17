@@ -8,8 +8,9 @@ import { todayKey, addDays, fmtDateShort, fmtDateLong } from './dates.js';
 import {
   toggleTask, deleteTask, moveTask, duplicateTask, skipTaskDay,
   bumpHabit, toggleHabitDay, resetHabitDay, setArchived, deleteHabit,
-  deleteWorkout, setExerciseArchived, setMissed,
+  deleteWorkout, setExerciseArchived, setMissed, deleteJournal,
 } from './actions.js';
+import { openJournalForm } from './journalForm.js';
 import { openTaskForm, openHabitForm } from './forms.js';
 import { openWorkoutForm } from './workoutForm.js';
 import { habitTitle } from './habitIcon.js';
@@ -162,6 +163,18 @@ export function exerciseMenu(id) {
       { label: 'View history', icon: 'stats', run: () => ctx.go('exercise/' + ex.id) },
       { label: ex.archived ? 'Unarchive' : 'Archive', icon: 'archive', run: () => setExerciseArchived(id, !ex.archived) },
       { label: 'Delete', icon: 'trash', danger: true, run: () => confirmDeleteExercise(ex) },
+    ],
+  };
+}
+
+/** Long-press menu for a journal entry. */
+export function journalMenu(k) {
+  if (!getState().journal[k]) return null;
+  return {
+    title: `Journal · ${fmtDateShort(k)}`,
+    items: [
+      { label: 'Edit', icon: 'edit', run: () => openJournalForm(k) },
+      { label: 'Delete', icon: 'trash', danger: true, run: () => deleteJournal(k) },
     ],
   };
 }

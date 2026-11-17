@@ -350,7 +350,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
     assert(await covers() && (await q.textContent('.push-status')).startsWith('On'), 'Z9 healthy again → server covers again');
     // Blocked permission
     await q.evaluate(() => { Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'denied' }); });
-    await go(q, '#stats'); await go(q, '#settings');
+    await go(q, '#calendar'); await go(q, '#settings');
     assert((await q.textContent('.push-status')).startsWith('Notifications are blocked – closed-app reminders can’t appear.'), 'B1 permission denied → blocked status with help');
     await q.evaluate(() => { Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'granted' }); });
     // Wrong register key → plain wording

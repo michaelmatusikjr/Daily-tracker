@@ -74,15 +74,15 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   await p.keyboard.press('ArrowDown'); await p.waitForTimeout(300);
   const after = await p.locator('.tasks:not(.compact) .task-title').allTextContents();
   assert(before[0] === after[1], 'keyboard reorder');
-  await p.click('.journal-head'); await p.waitForTimeout(200);
-  await p.click('.mood >> nth=3'); await p.waitForTimeout(200);
-  await p.fill('.journal-note', 'Productive day'); await p.waitForTimeout(600);
+  await p.click('.fab'); await p.waitForTimeout(300);
+  await p.click('.sheet .segmented button:has-text("Journal")'); await p.waitForTimeout(300);
+  await p.click('.sheet .mood >> nth=3'); await p.waitForTimeout(200);
+  await p.fill('.sheet .journal-note', 'Productive day'); await p.click('.sheet .btn.primary:has-text("Save")'); await p.waitForTimeout(500);
   await p.screenshot({ path: SP + '/d-today.png', fullPage: true });
   await p.click('a[href="#calendar"]'); await p.waitForTimeout(300);
   await p.screenshot({ path: SP + '/d-calendar.png' });
-  await p.click('a[href="#stats"]'); await p.waitForTimeout(300);
-  await p.click('text=30 days'); await p.waitForTimeout(300);
-  await p.screenshot({ path: SP + '/d-stats.png', fullPage: true });
+  await p.click('a[href="#journal"]'); await p.waitForTimeout(300);
+  await p.screenshot({ path: SP + '/d-journal.png', fullPage: true });
   // export
   await p.evaluate(() => { location.hash = '#settings'; }); await p.waitForTimeout(300);
   const [dl] = await Promise.all([p.waitForEvent('download'), p.click('text=Export JSON')]);

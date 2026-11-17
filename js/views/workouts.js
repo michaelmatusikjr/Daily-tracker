@@ -1,12 +1,12 @@
 // Workouts tab (history by day + filter), exercise detail (records, totals, chart)
 // and exercise management.
-import { h, s, iconBtn, segmented, emptyState, openSheet, choose, confirmDialog, toast } from '../ui.js';
+import { h, s, iconBtn, segmented, emptyState, openSheet, choose, confirmDialog, toast, tabs } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState, update, getActiveProfile } from '../store.js';
 import { ctx } from '../ctx.js';
 import { fmt, fmtDateShort, relativeLabel } from '../dates.js';
 import {
-  computeRecords, exerciseById, workoutSummary, periodStats, exerciseTotals, chartSeries,
+  computeRecords, exerciseById, workoutSummary, periodStats, recentRecords, exerciseTotals, chartSeries,
   fmtClock, fmtLong, trimNum, weightLabel, distLabel, paceText, recordText, STD_DISTANCES,
 } from '../workouts.js';
 import { openWorkoutForm } from '../workoutForm.js';
@@ -100,6 +100,45 @@ function matchesFilter(w, f, st) {
   return f === 'ex:' + w.exerciseId;
 }
 
+/** Workouts › Stats: days this week/month, strength vs cardio split, cardio totals, recent records, charts, progress table. */
+function workoutStatsPanel(st) {
+  const out = [];
+  if (!st.workouts.length) {
+    out.push(h('section.card.stats-card', emptyState('📊', 'No workout stats yet', 'Log a workout to see your totals, records and progress here.')));
+    return out;
+  }
+  out.push(progressCard(st));
+  const ps = periodStats(st);
+  const set = st.settings;
+  out.push(h('div.stat-grid.stats-card',
+    statCard(String(ps.week), 'Workout days', 'This week'),
+    statCard(String(ps.month), 'Workout days', 'This month'),
+    statCard(ps.cardioTime ? fmtLong(ps.cardioTime) : '—', 'Cardio time', 'This month'),
+    statCard(ps.cardioDist ? `${trimNum(ps.cardioDist, 1)} ${distLabel(set.distanceUnit)}` : '—', 'Cardio distance', 'This month')));
+  const total = ps.strength + ps.bodyweight + ps.cardio;
+  if (total) {
+    const pct = (n) => (n / total) * 100;
+    out.push(h('div.card.stats-card',
+      h('div.section-head', h('h2.section-title', 'Strength · bodyweight · cardio'), h('span.muted.small', 'This month')),
+      h('div.split-bar', { role: 'img', 'aria-label': `${ps.strength} strength, ${ps.bodyweight} bodyweight and ${ps.cardio} cardio entries this month` },
+        ps.strength ? h('span.split-s', { style: { width: pct(ps.strength) + '%' } }) : null,
+        ps.bodyweight ? h('span.split-b', { style: { width: pct(ps.bodyweight) + '%' } }) : null,
+        ps.cardio ? h('span.split-c', { style: { width: pct(ps.cardio) + '%' } }) : null),
+      h('div.split-legend', h('span', h('i.lg-s'), `Strength ${ps.strength}`), h('span', h('i.lg-b'), `Bodyweight ${ps.bodyweight}`), h('span', h('i.lg-c'), `Cardio ${ps.cardio}`))));
+  }
+  const prs = recentRecords(st, 5);
+  if (prs.length) {
+    out.push(h('div.card.stats-card', h('div.section-head', h('h2.section-title', '🏆 Recent records')),
+      h('ul.pr-list', prs.map(({ w, ex, labels }) => h('li', h('a.pr-item', { href: '#exercise/' + encodeURIComponent(ex.id) },
+        h('b', ex.name), h('span', labels.map(recordText).join(' · ')), h('small', fmtDateShort(w.date))))))));
+  }
+  const used = [...new Set(st.workouts.map((w) => w.exerciseId))].map((id) => exerciseById(st, id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+  out.push(h('div.card.stats-card', h('div.section-head', h('h2.section-title', 'Progress charts')),
+    h('ul.ex-links', used.map((ex) => h('li', h('a.ex-link-row', { href: '#exercise/' + encodeURIComponent(ex.id) },
+      typeIcon(ex, 18), h('span', ex.name), icon('chevronRight', { size: 16 })))))));
+  return out;
+}
+
 export function renderWorkouts() {
   const st = getState();
   const root = h('div.view.view-workouts');
@@ -109,12 +148,15 @@ export function renderWorkouts() {
       h('p.eyebrow', st.workouts.length ? `${ps.week} workout day${ps.week === 1 ? '' : 's'} this week` : 'Log your training'),
       h('h1.page-title', 'Workouts')),
     h('div.head-actions', iconBtn('list', 'Manage exercises', () => openExerciseManager()))));
-  root.append(h('button.btn.primary.block.log-btn', { type: 'button', onclick: () => openWorkoutForm(null) }, icon('plus', { size: 20 }), 'Log workout'));
-
-  root.append(progressCard(st));
+  const onStats = ctx.ui.workoutsTab === 'stats';
+  root.append(tabs([{ value: 'workouts', label: 'Workouts' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'workouts',
+    (v) => { ctx.ui.workoutsTab = v; ctx.rerender(); }, { label: 'Workouts view', idPrefix: 'wo-tab' }));
+  const body = h('div.tab-panel', { id: 'wo-tab-panel', role: 'tabpanel', 'aria-labelledby': `wo-tab-${onStats ? 'stats' : 'workouts'}` });
+  root.append(body);
+  if (onStats) { body.append(...workoutStatsPanel(st)); return root; }
 
   if (!st.workouts.length) {
-    root.append(h('section.card', emptyState('💪', 'No workouts yet',
+    body.append(h('section.card', emptyState('💪', 'No workouts yet',
       'Log anything: “Squats, 225 lbs, 3 × 5” or “Walk, 30 min, 2.5 mi”. Your exercises appear as quick picks next time.')));
     return root;
   }
@@ -128,13 +170,13 @@ export function renderWorkouts() {
     type: 'button', 'aria-pressed': String(f === value),
     onclick: () => { ctx.ui.workoutFilter = value; ctx.ui.workoutDays = 30; ctx.rerender(); },
   }, ic, label);
-  root.append(h('div.wo-filters', { role: 'group', 'aria-label': 'Filter workouts' },
+  body.append(h('div.wo-filters', { role: 'group', 'aria-label': 'Filter workouts' },
     h('div.filter-wrap', chip('all', 'All'), ...TYPE_OPTIONS.map((o) => chip(o.value, o.label, icon(o.icon, { size: 14 })))),
     exChips.length ? h('div.filter-row.ex-filter-row.no-swipe', exChips.map((e) => { const c = chip('ex:' + e.id, e.name); attachMenu(c, () => exerciseMenu(e.id), c); return c; })) : null));
 
   if (f.startsWith('ex:')) {
     const ex = exerciseById(st, f.slice(3));
-    root.append(h('a.card.ex-link', { href: '#exercise/' + encodeURIComponent(ex.id) },
+    body.append(h('a.card.ex-link', { href: '#exercise/' + encodeURIComponent(ex.id) },
       h('span', typeIcon(ex)), h('span.ex-link-text', h('b', ex.name), h('small', 'Records, totals and progress chart')), icon('chevronRight', { size: 18 })));
   }
 
@@ -143,16 +185,16 @@ export function renderWorkouts() {
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
   const days = [...new Set(list.map((w) => w.date))];
   const shownDays = days.slice(0, ctx.ui.workoutDays || 30);
-  if (!list.length) root.append(h('p.hint-line', 'No workouts match this filter.'));
+  if (!list.length) body.append(h('p.hint-line', 'No workouts match this filter.'));
   for (const d of shownDays) {
     const items = list.filter((w) => w.date === d);
     const names = [...new Set(items.map((w) => exerciseById(st, w.exerciseId)?.name || 'Workout'))];
-    root.append(h('section.section.wo-day',
+    body.append(h('section.section.wo-day',
       h('h2.wo-day-head', h('b', relativeLabel(d) === 'Today' || relativeLabel(d) === 'Yesterday' ? `${relativeLabel(d)}, ${fmtDateShort(d)}` : dayLabel(d)), h('span', ` · ${names.join(', ')}`)),
       h('ul.wo-list', items.map((w) => entryRow(w, st, records)))));
   }
   if (days.length > shownDays.length) {
-    root.append(h('button.btn.secondary.block', { type: 'button', onclick: () => { ctx.ui.workoutDays = (ctx.ui.workoutDays || 30) + 30; ctx.rerender(); } }, 'Show older workouts'));
+    body.append(h('button.btn.secondary.block', { type: 'button', onclick: () => { ctx.ui.workoutDays = (ctx.ui.workoutDays || 30) + 30; ctx.rerender(); } }, 'Show older workouts'));
   }
   return root;
 }

@@ -2,8 +2,8 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.11.0';
-export const SCHEMA_VERSION = 5;
+export const APP_VERSION = '1.12.0';
+export const SCHEMA_VERSION = 6;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
 // Copy of the pre-1.3 data as it was when it was moved, so a later merge can tell what an
@@ -47,7 +47,13 @@ export function defaultSettings() {
     // Default reminders for new tasks: Anytime tasks remind at anytimeReminderTime on their day;
     // timed tasks remind at the time of the event. Never changes existing tasks.
     taskDefaults: { on: true, anytimeReminderTime: '06:00' },
+    // Weather line on Today: units, which location is shown ('current' or a saved location's id) and saved cities.
+    weather: defaultWeather(),
   };
+}
+
+export function defaultWeather() {
+  return { units: 'F', selected: 'current', locations: [] };
 }
 
 export function defaultState() {
@@ -82,12 +88,35 @@ const migrations = {
       return { ...rest, target };
     }),
   }),
+  // v5 → v6: profile setting `weather` (units, selected location, saved cities); normalize() fills in the default.
+  5: (data) => data,
 };
 const TOD_TARGET = { morning: '12:00', afternoon: '17:00', evening: '21:00' };
 
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 const str = (v, max = 500) => (typeof v === 'string' ? v.slice(0, max) : '');
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Weather settings: units F/C, at most 10 saved locations with valid coordinates, selected id must exist. */
+export function normWeather(w) {
+  const out = defaultWeather();
+  if (!isObj(w)) return out;
+  if (w.units === 'C') out.units = 'C';
+  const seen = new Set();
+  for (const l of Array.isArray(w.locations) ? w.locations : []) {
+    if (out.locations.length >= 10) break;
+    if (!isObj(l)) continue;
+    const lat = typeof l.lat === 'number' ? l.lat : NaN, lon = typeof l.lon === 'number' ? l.lon : NaN;
+    const name = str(l.name, 80).trim();
+    let id = str(l.id, 40);
+    if (!name || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
+    if (!id || id === 'current' || seen.has(id)) id = uid();
+    seen.add(id);
+    out.locations.push({ id, name, lat: Math.round(lat * 100) / 100, lon: Math.round(lon * 100) / 100 });
+  }
+  out.selected = typeof w.selected === 'string' && out.locations.some((l) => l.id === w.selected) ? w.selected : 'current';
+  return out;
+}
 
 function normTask(t, i) {
   if (!isObj(t) || !str(t.title).trim()) return null;
@@ -323,6 +352,7 @@ export function normalize(data) {
     on: typeof td.on === 'boolean' ? td.on : def.settings.taskDefaults.on,
     anytimeReminderTime: TIME_RE.test(td.anytimeReminderTime) ? td.anytimeReminderTime : def.settings.taskDefaults.anytimeReminderTime,
   };
+  out.settings.weather = normWeather(out.settings.weather);
   out.categories = Array.isArray(data.categories)
     ? data.categories.filter((c) => isObj(c) && str(c.name).trim()).map((c) => ({
         id: str(c.id, 40) || uid(), name: str(c.name, 40).trim(), color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : '#64748b',

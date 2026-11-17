@@ -101,10 +101,10 @@ const discPng = (p) => p.evaluate(() => { const c = document.createElement('canv
     const { ctx, p } = await open(browser, { width: 320, dark, data });
     const icon = await p.evaluate(async () => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; const x = c.getContext('2d'); x.fillStyle = '#e11'; x.fillRect(5, 5, 30, 30); return (await import('./js/habitIcon.js')).processIcon(c.toDataURL('image/png')); });
     await p.evaluate(async (d) => { const A = await import('./js/actions.js'); const S = await import('./js/store.js'); A.saveHabit({ ...S.getState().habits.find((x) => x.id === 'h2'), icon: { type: 'image', data: d } }); }, icon);
-    await go(p, '#stats');
+    await go(p, '#habits'); await p.click('[role=tab]:has-text("Stats")'); await p.waitForTimeout(250);
     const gapStats = await p.evaluate(() => { const t = document.querySelector('.stat-sub .habit-title'); const img = t.querySelector('img').getBoundingClientRect(); const r = document.createRange(); r.selectNodeContents(t); const rects = [...r.getClientRects()]; return { gap: getComputedStyle(t).columnGap, text: t.textContent }; });
     assert(gapStats.gap !== 'normal' && parseFloat(gapStats.gap) > 3, `G1 Stats longest-streak: gap between image and name (${gapStats.gap})`);
-    await go(p, '#habits');
+    await go(p, '#habits'); await p.click('[role=tab]:has-text("Active habits")'); await p.waitForTimeout(250);
     await p.click('.habit-card:has-text("Stretch") .habit-open', { button: 'right' }); await p.waitForTimeout(300);
     const g2 = await p.evaluate(() => { const t = document.querySelector('.sheet.action-menu .sheet-title .habit-title'); const img = t.querySelector('img').getBoundingClientRect(); const r = document.createRange(); const txt = [...t.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()); r.selectNodeContents(txt); return r.getBoundingClientRect().left - img.right; });
     assert(g2 >= 3, `G2 item-menu title: ${g2.toFixed(1)}px between image and name`);

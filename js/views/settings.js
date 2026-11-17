@@ -10,7 +10,7 @@ import { canInstall, promptInstall, isIOS, isStandalone } from '../pwa.js';
 import { showOnboarding } from '../onboarding.js';
 import { ensureCategory } from '../forms.js';
 import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '../reminders.js';
-import { setWorkoutHabit } from '../actions.js';
+import { setWorkoutHabit, setWeatherUnits } from '../actions.js';
 import { habitText } from '../habitIcon.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
 import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
@@ -62,6 +62,11 @@ export function renderSettings() {
   root.append(group('Preferences',
     row('Week starts on', null, segmented([{ value: 1, label: 'Monday' }, { value: 0, label: 'Sunday' }], set.weekStart, (v) => setSetting('weekStart', v), { label: 'Week starts on', small: true })),
     row('Time format', null, segmented([{ value: '12', label: '12h' }, { value: '24', label: '24h' }], set.timeFormat, (v) => setSetting('timeFormat', v), { label: 'Time format', small: true }))));
+
+  // Weather line on Today
+  root.append(group('Weather',
+    row('Temperature', null, segmented([{ value: 'F', label: '°F' }, { value: 'C', label: '°C' }], set.weather.units, (v) => setWeatherUnits(v), { label: 'Temperature unit', small: true })),
+    h('p.set-desc.pad', 'Approximate location (about 1 km) is sent to the weather service. Change the location from the pin on Today’s weather line.')));
 
   // Workouts: units + optional habit link
   const checkHabits = st.habits.filter((x) => !x.archived && x.goal.type === 'check');

@@ -149,7 +149,7 @@ const go = (p, hash) => p.evaluate((x) => { location.hash = x; }, hash).then(() 
     assert(r.j === 23400 && r.k === 75, '4 flipping an ambiguous reading');
     assert(r.l === 'ERR' && r.m === 150 && r.n === 'ERR', '4 "1,000" rejected, "2,5" decimal, > 24 h rejected');
     assert(r.amb && r.txt === '6 min 30 s' && r.alt === '6 h 30 min' && !r.amb25, '4 ambiguity: 6:30 can be either; 25:30 can only be m:ss');
-    await go(p, '#workouts'); await p.click('.log-btn'); await p.click('.ex-chip:has-text("Run")'); await p.waitForTimeout(150);
+    await go(p, '#workouts'); await p.click('.fab'); await p.click('.ex-chip:has-text("Run")'); await p.waitForTimeout(150);
     await p.fill('#wo-time', '25:30'); await p.waitForTimeout(100);
     assert((await p.textContent('.time-hint')) === '= 25 min 30 s', '4 live hint under the field');
     await p.fill('#wo-time', '6:30'); await p.waitForTimeout(100);
@@ -280,7 +280,7 @@ const go = (p, hash) => p.evaluate((x) => { location.hash = x; }, hash).then(() 
     await p.setViewportSize({ width: 390, height: 820 }); await p.waitForTimeout(100);
     assert(!(await p.locator('.nav-item[data-tab="settings"]').isVisible()), '9 no Settings tab on mobile');
     // Caps + thousands separator
-    await go(p, '#workouts'); await p.click('.log-btn'); await p.click('.ex-chip:has-text("Squat")'); await p.waitForTimeout(150);
+    await go(p, '#workouts'); await p.click('.fab'); await p.click('.ex-chip:has-text("Squat")'); await p.waitForTimeout(150);
     const row = p.locator('.wo-line').nth(0).locator('input');
     await row.nth(2).fill('2000'); await p.click('.sheet-foot .btn.primary'); await p.waitForTimeout(100);
     assert((await p.textContent('.sheet .form-error')).includes('Reps: max 1000'), '9 reps cap');

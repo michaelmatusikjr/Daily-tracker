@@ -107,7 +107,7 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     const hist = [W('w1', '2026-11-03', 'sq', { lines: [L(225, 3, 5)] }), W('w2', '2026-11-05', 'run', { distance: 3.11, distanceUnit: 'mi', time: 25 * 60 })];
     const { ctx: c2, p: q } = await open(browser, { workouts: hist });
     const log = async (name, fill) => {
-      await go(q, '#workouts'); await q.click('.log-btn'); await q.click(`.ex-chip:has-text("${name}")`); await q.waitForTimeout(150);
+      await go(q, '#workouts'); await q.click('.fab'); await q.click(`.ex-chip:has-text("${name}")`); await q.waitForTimeout(150);
       await fill(); await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(300);
     };
     await log('Squat', async () => { const i = q.locator('.wo-line input'); await i.nth(0).fill('235'); await i.nth(1).fill('3'); await i.nth(2).fill('5'); });
@@ -129,8 +129,8 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     const rows = await q.$$eval('.dist-table tbody tr', (e) => e.map((x) => x.textContent));
     assert(rows.length === 1 && rows[0].startsWith('5K24:50') && rows[0].includes('/mi'), 'U6 Cardio table: qualifying distances with time, pace, date');
     assert((await q.textContent('.dist-records')).includes('Log a 1 mi (1.6 km) to set a record'), 'U6 muted hint for a missing distance');
-    await go(q, '#stats');
-    assert((await q.textContent('.stats-workouts')).includes('Fastest 5K: 24:50') && (await q.textContent('.split-legend')).includes('Bodyweight'), 'U7 Stats: recent records + three-way split');
+    await go(q, '#workouts'); await q.click('[role=tab]:has-text("Stats")'); await q.waitForTimeout(250);
+    assert((await q.textContent('.view-workouts')).includes('Fastest 5K: 24:50') && (await q.textContent('.split-legend')).includes('Bodyweight'), 'U7 Stats: recent records + three-way split');
     await c2.close();
   }
 
@@ -141,10 +141,10 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     const { ctx: c3, p: q } = await open(browser, { workouts: hist, habits, settings: { workoutHabit: { habitId: 'hb', filter: 'bodyweight' } } });
     const guess = await q.evaluate(async () => { const F = await import('./js/workoutForm.js'); return ['Push-ups', 'pushup', 'Sit-ups', 'Pull up', 'Chin-ups', 'Dips', 'Plank', 'Burpees', 'Lunges', 'Crunches', 'Wall sit', 'Air squat', 'Bodyweight squats', 'Squats', 'Bench press', 'Run'].map(F.guessType); });
     assert(JSON.stringify(guess) === JSON.stringify([...Array(13).fill('bodyweight'), 'strength', 'strength', 'cardio']), 'G guessing: bodyweight names, strength and cardio');
-    await go(q, '#workouts'); await q.click('.log-btn'); await q.click('.ex-chip:has-text("Push-ups")'); await q.waitForTimeout(150);
+    await go(q, '#workouts'); await q.click('.fab'); await q.click('.ex-chip:has-text("Push-ups")'); await q.waitForTimeout(150);
     assert(await q.locator('#wo-time').count() === 1 && (await q.textContent('.wo-fields')).includes('Extra weight'), 'F bodyweight form: sets/reps, optional extra weight and hold time');
     await q.keyboard.press('Escape'); await q.waitForTimeout(250);
-    await q.click('.log-btn'); await q.click('.ex-chip:has-text("Squat")'); await q.waitForTimeout(150);
+    await q.click('.fab'); await q.click('.ex-chip:has-text("Squat")'); await q.waitForTimeout(150);
     assert(await q.locator('#wo-time').count() === 0, 'F strength form has no time box');
     await q.keyboard.press('Escape'); await q.waitForTimeout(250);
     // Old strength entry with a time: still shown, kept on save
@@ -158,11 +158,11 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     assert((await q.textContent('.sheet')).includes('Bodyweight may fit better'), 'K Manage exercises suggests Bodyweight');
     await q.keyboard.press('Escape'); await q.waitForTimeout(250);
     // Habit link with Bodyweight filter
-    await go(q, '#workouts'); await q.click('.log-btn'); await q.click('.ex-chip:has-text("Squat")'); await q.waitForTimeout(150);
+    await go(q, '#workouts'); await q.click('.fab'); await q.click('.ex-chip:has-text("Squat")'); await q.waitForTimeout(150);
     let i = q.locator('.wo-line input'); await i.nth(0).fill('135'); await i.nth(1).fill('3'); await i.nth(2).fill('5');
     await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(250);
     assert(!(await stored(q)).logs.hb?.['2026-11-13'], 'H Bodyweight-only link ignores strength');
-    await q.click('.log-btn'); await q.click('.ex-chip:has-text("Push-ups")'); await q.waitForTimeout(150);
+    await q.click('.fab'); await q.click('.ex-chip:has-text("Push-ups")'); await q.waitForTimeout(150);
     i = q.locator('.wo-line input'); await i.nth(1).fill('3'); await i.nth(2).fill('20');
     await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(250);
     assert((await stored(q)).logs.hb?.['2026-11-13'] === 1, 'H bodyweight workout checks the linked habit');
@@ -187,11 +187,13 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     const hist = [W('w1', '2026-11-03', 'sq', { lines: [L(225, 3, 5)] }), W('w2', '2026-11-04', 'sq', { lines: [L(235, 3, 5)] }), W('w3', '2026-11-05', 'run', { distance: 3.1, time: 1500 }), W('w4', '2026-11-06', 'run', { distance: 3.1, time: 1490 }), W('w5', '2026-11-12', 'pu', { lines: [L(null, 3, 20)], time: 60 })];
     const { ctx: c4, p: q } = await open(browser, { workouts: hist, width, dark });
     let ok = true;
-    for (const h of ['#exercise/sq', '#exercise/pu', '#exercise/run', '#stats', '#workouts', '#settings']) {
+    for (const h of ['#exercise/sq', '#exercise/pu', '#exercise/run', '#journal', '#workouts', '#settings']) {
       await go(q, h);
       if (!(await q.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))) { ok = false; console.log('  overflow', width, h); }
       if (width === 320 && h !== '#settings') await q.screenshot({ path: `${__dirname}/l14-${h.replace(/\W/g, '')}-${dark ? 'dark' : 'light'}.png`, fullPage: true });
     }
+    await go(q, '#workouts'); await q.click('[role=tab]:has-text("Stats")'); await q.waitForTimeout(250);
+    if (!(await q.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth))) { ok = false; console.log('  overflow', width, 'workouts stats'); }
     assert(ok, `L ${width}${dark ? ' dark' : ''}: no horizontal overflow`);
     await c4.close();
   }

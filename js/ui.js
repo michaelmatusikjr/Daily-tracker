@@ -79,6 +79,34 @@ export function segmented(options, value, onChange, { label = '', small = false 
   return wrap;
 }
 
+/**
+ * Segmented tabs (role=tablist): options [{value,label}]. Arrow keys / Home / End move between tabs
+ * (roving tabindex); selecting one calls onChange(value). The caller re-renders and shows the panel.
+ */
+export function tabs(options, value, onChange, { label = '', idPrefix = 'tab' } = {}) {
+  const wrap = h('div.segmented.seg-tabs', { role: 'tablist', 'aria-label': label });
+  const buttons = options.map((o) => h('button', {
+    type: 'button', role: 'tab', id: `${idPrefix}-${o.value}`, 'aria-selected': String(o.value === value), 'aria-controls': `${idPrefix}-panel`,
+    tabindex: o.value === value ? '0' : '-1', 'data-fk': `${idPrefix}-${o.value}`,
+    onclick: () => { if (o.value !== value) onChange(o.value); },
+  }, o.label));
+  wrap.addEventListener('keydown', (e) => {
+    const i = buttons.indexOf(document.activeElement);
+    if (i < 0) return;
+    let j = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') j = (i + 1) % buttons.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') j = (i - 1 + buttons.length) % buttons.length;
+    else if (e.key === 'Home') j = 0;
+    else if (e.key === 'End') j = buttons.length - 1;
+    if (j === null) return;
+    e.preventDefault();
+    buttons[j].focus();
+    onChange(options[j].value); // re-render keeps focus via data-fk
+  });
+  wrap.append(...buttons);
+  return wrap;
+}
+
 /** Progress ring. pct 0..1 */
 export function ring(pct, { size = 64, stroke = 7, color = 'var(--accent)', track = 'var(--ring-track)', label = null, cls = '' } = {}) {
   const r = (size - stroke) / 2;

@@ -79,20 +79,18 @@ const active = (p) => p.evaluate(() => { const a = document.activeElement; retur
     assert(!/January|February|March|April|June|July|August|September|October|November|December/.test(all), 'M6 no full month names on screen');
     await ctx.close();
   }
-  // 2. Stats › Strength progress: card top fully in view with a margin
+  // 2. Workouts › Stats: the Progress card is on the first screen, fully in view
   {
     const { ctx, p } = await open(browser, { height: 600 });
-    await go(p, '#stats');
-    await p.locator('.strength-link').scrollIntoViewIfNeeded();
-    await p.click('.strength-link'); await p.waitForTimeout(700);
+    await go(p, '#workouts'); await p.click('[role=tab]:has-text("Stats")'); await p.waitForTimeout(250);
     const top = await p.evaluate(() => document.getElementById('progress-card').getBoundingClientRect().top);
-    assert(top >= 8 && top <= 40, `S1 Progress card top sits ${top.toFixed(1)}px below the viewport top (not cut off)`);
+    assert(top >= 8 && top <= 420, `S1 Progress card top sits ${top.toFixed(1)}px below the viewport top (not cut off)`);
     await ctx.close();
   }
   // 3. 320px: number and unit stay on one line; no overflow (kg and lbs, light and dark)
   for (const [unit, dark] of [['kg', false], ['kg', true], ['lb', false]]) {
     const { ctx, p } = await open(browser, { width: 320, dark, data: seed(unit) });
-    await go(p, '#workouts');
+    await go(p, '#workouts'); await p.click('[role=tab]:has-text("Stats")'); await p.waitForTimeout(250);
     const r = await p.evaluate(() => [...document.querySelectorAll('.progress-table .pt-val')].map((v) => { const rects = [...v.getClientRects()]; const b = v.getBoundingClientRect(); const td = v.closest('td').getBoundingClientRect(); return { t: v.textContent, lines: new Set(rects.map((x) => Math.round(x.top))).size, inside: b.right <= td.right + 0.5 && b.left >= td.left - 0.5 }; }));
     const page = await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
     assert(r.length >= 6 && r.every((x) => x.lines === 1 && x.inside) && page, `W1 320 ${unit}${dark ? ' dark' : ''}: values never split, stay inside their cells: ${r.map((x) => x.t).join(', ')}`);

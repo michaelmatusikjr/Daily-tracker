@@ -389,23 +389,78 @@ export function reorderHabits(ids) {
 }
 
 // ---------- Journal ----------
-export function setMood(k, mood) {
-  update((s) => {
-    const j = s.journal[k] || { mood: null, note: '' };
-    j.mood = j.mood === mood ? null : mood;
-    j.updatedAt = Date.now();
-    if (!j.mood && !j.note) delete s.journal[k]; else s.journal[k] = j;
-  });
-  haptic(8);
+/** The entry for day k ({mood, note, updatedAt}) or null. */
+const journalEntry = (k) => getState().journal[k] || null;
+function putJournal(k, entry) {
+  update((s) => { if (entry) s.journal[k] = entry; else delete s.journal[k]; });
 }
 
-export function setNote(k, note) {
+/** Save the journal entry for day k. An empty entry (no mood and no note) removes it (with Undo if one existed). */
+export function saveJournal(k, { mood, note }) {
+  const prev = journalEntry(k) ? { ...journalEntry(k) } : null;
+  const n = String(note || '').slice(0, 1000);
+  const m = [1, 2, 3, 4, 5].includes(mood) ? mood : null;
+  const empty = !m && !n.trim();
+  if (empty && !prev) return;
+  const next = empty ? null : { mood: m, note: n, updatedAt: Date.now() };
+  putJournal(k, next);
+  if (empty) toast('Journal entry deleted', { action: 'Undo', onAction: () => putJournal(k, prev) });
+  else toast(prev ? 'Journal entry updated' : 'Journal entry saved');
+}
+
+/** Delete the entry for day k, with Undo. */
+export function deleteJournal(k) {
+  const prev = journalEntry(k) ? { ...journalEntry(k) } : null;
+  if (!prev) return;
+  putJournal(k, null);
+  toast(`Deleted journal entry for ${fmtDateShort(k)}`, { action: 'Undo', onAction: () => putJournal(k, prev) });
+}
+
+// ---------- Weather settings ----------
+export function setWeatherUnits(units) {
+  update((s) => { s.settings.weather.units = units === 'C' ? 'C' : 'F'; });
+}
+export function selectWeatherLocation(id) {
   update((s) => {
-    const j = s.journal[k] || { mood: null, note: '' };
-    j.note = note.slice(0, 1000);
-    j.updatedAt = Date.now();
-    if (!j.mood && !j.note) delete s.journal[k]; else s.journal[k] = j;
-  }, { silent: true });
+    const w = s.settings.weather;
+    w.selected = id !== 'current' && w.locations.some((l) => l.id === id) ? id : 'current';
+  });
+}
+/** Save a location ({name, lat, lon}) and select it. Coordinates are rounded to 2 decimals (~1 km). Returns false when full. */
+export function addWeatherLocation({ name, lat, lon }) {
+  const r = (n) => Math.round(n * 100) / 100;
+  let ok = true;
+  update((s) => {
+    const w = s.settings.weather;
+    const same = w.locations.find((l) => l.lat === r(lat) && l.lon === r(lon));
+    if (same) { w.selected = same.id; return; }
+    if (w.locations.length >= 10) { ok = false; return; }
+    const loc = { id: uid(), name: String(name || '').trim().slice(0, 80) || 'Saved location', lat: r(lat), lon: r(lon) };
+    w.locations.push(loc);
+    w.selected = loc.id;
+  });
+  return ok;
+}
+export function deleteWeatherLocation(id) {
+  const w0 = getState().settings.weather;
+  const idx = w0.locations.findIndex((l) => l.id === id);
+  if (idx < 0) return;
+  const loc = { ...w0.locations[idx] };
+  const wasSelected = w0.selected === id;
+  update((s) => {
+    const w = s.settings.weather;
+    w.locations = w.locations.filter((l) => l.id !== id);
+    if (w.selected === id) w.selected = 'current';
+  });
+  toast(`Removed ${loc.name}`, {
+    action: 'Undo',
+    onAction: () => update((s) => {
+      const w = s.settings.weather;
+      if (w.locations.some((l) => l.id === id) || w.locations.length >= 10) return;
+      w.locations.splice(Math.min(idx, w.locations.length), 0, loc);
+      if (wasSelected) w.selected = id;
+    }),
+  });
 }
 
 // ---------- Examples ----------

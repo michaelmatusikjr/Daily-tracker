@@ -120,8 +120,8 @@ const openForm = async (p, id) => {
   assert(await p.locator('.habit-card:has-text("Stretch") .emoji-bubble img').count() === 1, 'R5 Habits card');
   await go(p, '#habit/h2');
   assert(await p.locator('.title-emoji img.habit-img').count() === 1, 'R6 habit detail heading');
-  await go(p, '#stats');
-  assert(await p.locator('.rate-row:has-text("Stretch") img.habit-img').count() === 1 && await p.locator('.stat-sub img.habit-img').count() === 1, 'R7 Stats list and longest-streak tile');
+  await go(p, '#habits'); await p.click('[role=tab]:has-text("Stats")'); await p.waitForTimeout(250);
+  assert(await p.locator('.rate-row:has-text("Stretch") img.habit-img').count() === 1 && await p.locator('.stat-sub img.habit-img').count() === 1, 'R7 Habits › Stats list and longest-streak tile');
   await go(p, '#settings');
   const opts = await p.$$eval('select[aria-label="Habit to check off when you log a workout"] option', (o) => o.map((x) => x.textContent));
   assert(opts.includes('Stretch') && opts.includes('🦊 Water'), 'R8 workout-link select: text only (image icons left out)');

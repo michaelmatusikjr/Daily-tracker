@@ -9,7 +9,7 @@ import { renderToday } from './views/today.js';
 import { renderHabits } from './views/habits.js';
 import { renderHabitDetail } from './views/habitDetail.js';
 import { renderCalendar } from './views/calendar.js';
-import { renderStats } from './views/stats.js';
+import { renderJournal } from './views/journal.js';
 import { renderSettings } from './views/settings.js';
 import { openQuickAdd, openHabitForm } from './forms.js';
 import { showOnboarding } from './onboarding.js';
@@ -18,6 +18,7 @@ import { reschedule } from './notify.js';
 import { initPush, scheduleSync, onPushChange } from './push.js';
 import { renderWorkouts, renderExercise } from './views/workouts.js';
 import { openWorkoutForm } from './workoutForm.js';
+import { openJournalForm } from './journalForm.js';
 import { openProfileEditor } from './profiles.js';
 import { APP_VERSION as APP_VERSION_STR, getProfiles, readProfileState, switchProfile } from './store.js';
 import { showMenu, habitMenu } from './itemMenu.js';
@@ -31,12 +32,12 @@ const TABS = [
   { id: 'habits', label: 'Habits', icon: 'habits' },
   { id: 'workouts', label: 'Workouts', icon: 'dumbbell' },
   { id: 'calendar', label: 'Calendar', icon: 'calendar' },
-  { id: 'stats', label: 'Stats', icon: 'stats' },
+  { id: 'journal', label: 'Journal', icon: 'book' },
   { id: 'settings', label: 'Settings', icon: 'settings', desktopOnly: true },
 ];
 // On phones Settings has no tab: it opens from the profile menu (avatar on Today) or #settings.
 // The wide-screen side nav also lists it.
-const TITLES = { completed: 'Completed', today: 'Today', habits: 'Habits', habit: 'Habit', workouts: 'Workouts', exercise: 'Exercise', calendar: 'Calendar', stats: 'Stats', settings: 'Settings' };
+const TITLES = { completed: 'Completed', today: 'Today', habits: 'Habits', habit: 'Habit', workouts: 'Workouts', exercise: 'Exercise', calendar: 'Calendar', journal: 'Journal', settings: 'Settings' };
 
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
@@ -133,7 +134,7 @@ function render() {
     case 'habits': view = renderHabits(); break;
     case 'habit': view = renderHabitDetail(arg); break;
     case 'calendar': view = renderCalendar(); break;
-    case 'stats': view = renderStats(); break;
+    case 'journal': view = renderJournal(); break;
     case 'completed': view = renderCompleted(); break;
     case 'settings': view = renderSettings(); break;
     case 'workouts': view = renderWorkouts(); break;
@@ -151,7 +152,7 @@ function render() {
   });
   document.title = `${TITLES[name]} · Daily Tracker`;
   fab.hidden = name === 'settings';
-  fab.setAttribute('aria-label', name === 'habits' || name === 'habit' ? 'New habit' : name === 'workouts' || name === 'exercise' ? 'Log workout' : 'Quick add');
+  fab.setAttribute('aria-label', name === 'habits' || name === 'habit' ? 'New habit' : name === 'workouts' || name === 'exercise' ? 'Log workout' : name === 'journal' ? 'New journal entry' : 'Quick add');
   if (changedRoute) {
     window.scrollTo(0, 0);
     if (lastRoute !== null) main.focus({ preventScroll: true });
@@ -219,6 +220,7 @@ const fab = h('button.fab', { type: 'button', 'aria-label': 'Quick add', onclick
   if (name === 'habits' || name === 'habit') openHabitForm(null);
   else if (name === 'workouts') openWorkoutForm(null);
   else if (name === 'exercise') openWorkoutForm(null, { exerciseId: parseRoute().arg });
+  else if (name === 'journal') openJournalForm(todayKey());
   else openQuickAdd();
 } }, icon('plus', { size: 28 }));
 
@@ -243,7 +245,7 @@ function init() {
     if (info.profileSwitched) {
       // Fresh view state for the other person.
       closeAllSheets();
-      Object.assign(ctx.ui, { date: todayKey(), calMonth: monthStart(todayKey()), detailMonth: null, habitsReorder: false, showArchived: false, journalOpen: null, workoutFilter: 'all', workoutDays: 30 });
+      Object.assign(ctx.ui, { date: todayKey(), calMonth: monthStart(todayKey()), detailMonth: null, habitsReorder: false, showArchived: false, habitsTab: 'active', workoutsTab: 'workouts', journalQuery: '', workoutFilter: 'all', workoutDays: 30 });
       applyTheme(st.settings); lastSettingsSig = sNow;
     }
     render();

@@ -3,13 +3,15 @@ import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { avatarEl, openProfileMenu } from '../profiles.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, MOODS, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
+import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
 import { fmt as fmtDate, diffDays, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, greeting, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
 import { taskRow, habitControl, streakBadge, timeRange, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
-import { moveToToday, reorderToday, setMood, setNote, bumpHabit } from '../actions.js';
+import { moveToToday, reorderToday, bumpHabit } from '../actions.js';
 import { openQuickAdd } from '../forms.js';
-import { attachMenu, habitMenu, taskMenu, showMenu } from '../itemMenu.js';
+import { attachMenu, habitMenu, taskMenu, showMenu, journalMenu } from '../itemMenu.js';
+import { openJournalForm, entryBody } from '../journalForm.js';
+import { weatherSlot } from '../weatherUi.js';
 import { habitIcon } from '../habitIcon.js';
 import { openTaskView } from '../taskView.js';
 
@@ -121,6 +123,7 @@ export function renderToday() {
   }
   onSwipe(strip, { left: () => ctx.setDate(addDays(k, 7)), right: () => ctx.setDate(addDays(k, -7)) });
   root.append(strip);
+  root.append(weatherSlot(k));
 
   // ---- Progress card ----
   const pctLabel = Math.round(prog.pct * 100) + '%';
@@ -214,8 +217,9 @@ export function renderToday() {
   // ---- Missed (collapsed) ----
   if (missedHabits.length || missedTasks.length) root.append(missedSection(k, missedHabits, missedTasks));
 
-  // ---- Journal ----
-  root.append(journalCard(k));
+  // ---- Journal entry (added from +; read-only here) ----
+  const jc = journalEntryCard(k);
+  if (jc) root.append(jc);
 
   onSwipe(root, { left: () => ctx.setDate(addDays(k, 1)), right: () => ctx.setDate(addDays(k, -1)) });
   return root;
@@ -250,50 +254,12 @@ function missedSection(k, habits, tasks) {
   return sec;
 }
 
-function journalSubtitle(entry) {
-  if (entry.mood) return `Feeling ${MOODS[entry.mood - 1].label.toLowerCase()}` + (entry.note ? ' · note saved' : '');
-  return entry.note ? 'Note saved' : 'How was your day?';
-}
-
-function journalCard(k) {
-  const st = getState();
-  const entry = st.journal[k] || { mood: null, note: '' };
-  if (ctx.ui.journalOpen === null) ctx.ui.journalOpen = false;
-  const open = ctx.ui.journalOpen;
-  const moodEmoji = MOODS.find((m) => m.v === entry.mood)?.e;
-  const bodyId = 'journal-body';
-  const head = h('button.journal-head', {
-    type: 'button', 'aria-expanded': String(open), 'aria-controls': bodyId,
-    onclick: () => { ctx.ui.journalOpen = !open; ctx.rerender(); },
-  },
-  h('span.journal-icon', { 'aria-hidden': 'true' }, moodEmoji || icon('book', { size: 18 })),
-  h('span.journal-title', h('b', 'Journal'), h('small.journal-sub', journalSubtitle(entry))),
-  h('span.chev', icon('chevronDown', { size: 18 })));
-  const card = h(`section.card.journal${open ? '.open' : ''}`, head);
-  if (open) {
-    const moods = h('div.moods', { role: 'radiogroup', 'aria-label': 'Mood' },
-      MOODS.map((m) => h('button.mood', {
-        type: 'button', role: 'radio', 'aria-checked': String(entry.mood === m.v), 'aria-label': m.label, title: m.label,
-        onclick: () => setMood(k, m.v),
-      }, h('span.mood-e', m.e), h('span.mood-l', m.label))));
-    let timer;
-    // setNote is silent (no re-render, keeps focus), so refresh the subtitle by hand.
-    const save = () => {
-      setNote(k, ta.value);
-      status.textContent = 'Saved';
-      head.querySelector('.journal-sub').textContent = journalSubtitle(getState().journal[k] || { mood: null, note: '' });
-    };
-    const status = h('span.save-status', { 'aria-live': 'polite' });
-    const ta = h('textarea.input.journal-note', {
-      rows: 3, maxlength: 1000, placeholder: 'A few words about today…', 'aria-label': 'Journal note',
-      oninput: () => {
-        clearTimeout(timer);
-        status.textContent = '';
-        timer = setTimeout(save, 400);
-      },
-      onblur: () => { clearTimeout(timer); save(); },
-    }, entry.note || '');
-    card.append(h('div.journal-body', { id: bodyId }, moods, ta, status));
-  }
+/** The day's journal entry, read-only. Tap opens it for editing (like tapping a task opens it); long-press: Edit / Delete. */
+function journalEntryCard(k) {
+  const entry = getState().journal[k];
+  if (!entry) return null;
+  const btn = h('button.journal-open', { type: 'button', onclick: () => openJournalForm(k), 'aria-label': 'Journal entry. Open to edit' }, ...entryBody(entry));
+  const card = h('section.card.journal-entry', { 'aria-label': 'Journal' }, h('p.journal-label', icon('book', { size: 14 }), 'Journal'), btn);
+  attachMenu(card, () => journalMenu(k), btn);
   return card;
 }

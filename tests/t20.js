@@ -142,7 +142,7 @@ const openMissed = async (p) => { if ((await p.getAttribute('.missed-section .co
         return JSON.stringify(['2026-11-18', '2026-11-12', '2026-11-15'].map((k) => L.dayProgress(st, k)).concat(st.habits.map((h) => [L.streaks(st, h), L.completionRate(st, h, 30), L.completionRate(st, h)])));
       });
       await go(q, '#calendar'); out.cal = await q.$$eval('.cal-day', (e) => e.map((x) => x.getAttribute('aria-label') + '|' + x.className + '|' + x.getAttribute('style')).join('\n'));
-      await go(q, '#stats'); out.stats = await q.textContent('.view');
+      await go(q, '#habits'); await q.click('[role=tab]:has-text("Stats")'); await q.waitForTimeout(250); out.stats = await q.textContent('.view');
       await go(q, '#habit/h1'); out.detail = await q.textContent('.stat-grid');
       await c.close();
       return out;

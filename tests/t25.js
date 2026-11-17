@@ -283,9 +283,9 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
     await p.evaluate(async () => { const A = await import('./js/actions.js'); A.toggleTask('a4', '2026-11-18'); A.toggleTask('a3', '2026-11-15'); });
     const st = await stored(p);
     assert(st.tasks.find((x) => x.id === 'a4').completedAt > 0 && st.tasks.find((x) => x.id === 'a3').doneAt['2026-11-15'] > 0, 'T3 completedAt / doneAt recorded');
-    await go(p, '#stats');
-    await p.click('.completed-link'); await p.waitForTimeout(400);
-    assert(await p.evaluate(() => location.hash) === '#completed', 'H5 reachable from Stats');
+    await go(p, '#calendar');
+    await p.click('.cal-completed-btn'); await p.waitForTimeout(400);
+    assert(await p.evaluate(() => location.hash) === '#completed', 'H5 reachable from Calendar');
     await ctx.close();
   }
   // Performance: 5000 completions

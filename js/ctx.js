@@ -8,8 +8,9 @@ export const ctx = {
     detailMonth: null,
     habitsReorder: false,
     showArchived: false,
-    statsRange: 7,
-    journalOpen: null,
+    habitsTab: 'active', // 'active' | 'stats'
+    workoutsTab: 'workouts', // 'workouts' | 'stats'
+    journalQuery: '',
     workoutFilter: 'all',
     workoutDays: 30,
     exChart: 'primary',

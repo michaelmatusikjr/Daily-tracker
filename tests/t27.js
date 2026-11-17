@@ -68,7 +68,7 @@ const isRed = (c) => c.r > 200 && c.b < 60, isBlue = (c) => c.b > 200 && c.r < 6
     await p.click('.cal-completed-btn'); await p.waitForTimeout(400);
     assert(await p.evaluate(() => location.hash) === '#completed' && (await p.textContent('.page-title')).includes('Completed'), 'N3 button opens the Completed view');
     await go(p, '#stats');
-    assert(await p.locator('.completed-link').count() === 1, 'N4 Stats keeps its Completed link');
+    assert(await p.locator('.completed-link').count() === 0 && await p.locator('a[href="#stats"]').count() === 0 && (await p.textContent('.page-title')).includes('Nov'), 'N4 Stats tab is gone (old #stats falls back to Today, no Completed link there)');
     // ---- #15 no zoom / no selecting UI ----
     await go(p, '#today');
     const css = await p.evaluate(() => {

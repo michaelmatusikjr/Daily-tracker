@@ -94,14 +94,14 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
   for (const [width, dark] of [[320, false], [320, true], [390, false], [390, true]]) {
     const hist = [W('w1', '2026-11-03', 'sq', { lines: [L(225, 3, 5)] }), W('w3', '2026-11-05', 'run', { distance: 3.1, time: 1500 }), W('w5', '2026-11-12', 'pu', { lines: [L(null, 3, 20)] })];
     const { ctx: c4, p: q } = await open(browser, { workouts: hist, width, dark });
-    await go(q, '#stats');
+    await go(q, '#workouts'); await q.click('[role=tab]:has-text("Stats")'); await q.waitForTimeout(250);
     const cols = await q.$$eval('.split-bar > *', (e) => e.map((x) => getComputedStyle(x).backgroundColor));
     assert(cols.length === 3 && new Set(cols).size === 3, `P4c ${width}${dark ? ' dark' : ''} three distinct split colours ${cols.join(' ')}`);
-    await go(q, '#workouts');
+    await go(q, '#workouts'); await q.click('[role=tab]:has-text("Workouts")'); await q.waitForTimeout(250);
     const vis = await q.evaluate(() => { const b = [...document.querySelectorAll('.filter-chip')].find((x) => x.textContent.trim() === 'Cardio').getBoundingClientRect(); return b.right <= document.documentElement.clientWidth && b.width > 0; });
     assert(vis, `P4d ${width}${dark ? ' dark' : ''} "Cardio" chip fully visible`);
     assert(await q.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `P4d ${width} no page overflow`);
-    if (width === 320) { await q.screenshot({ path: `${__dirname}/l15-workouts-${dark ? 'dark' : 'light'}.png` }); await go(q, '#stats'); await q.locator('.split-bar').scrollIntoViewIfNeeded(); await q.screenshot({ path: `${__dirname}/l15-stats-${dark ? 'dark' : 'light'}.png` }); }
+    if (width === 320) { await q.screenshot({ path: `${__dirname}/l15-workouts-${dark ? 'dark' : 'light'}.png` }); await q.click('[role=tab]:has-text("Stats")'); await q.waitForTimeout(250); await q.locator('.split-bar').scrollIntoViewIfNeeded(); await q.screenshot({ path: `${__dirname}/l15-stats-${dark ? 'dark' : 'light'}.png` }); }
     await c4.close();
   }
   console.log(errs.join('\n') || 'no console errors');

@@ -1,4 +1,4 @@
-import { h, iconBtn, makeSortable, emptyState, sectionHead } from '../ui.js';
+import { h, iconBtn, makeSortable, emptyState, sectionHead, tabs } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState } from '../store.js';
 import { ctx } from '../ctx.js';
@@ -10,6 +10,7 @@ import { reorderHabits, setArchived, seedExamples, bumpHabit } from '../actions.
 import { openHabitForm } from '../forms.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
 import { habitIcon } from '../habitIcon.js';
+import { habitStatsPanel } from './habitStats.js';
 
 
 const withMenu = (hb, li) => { attachMenu(li, () => habitMenu(hb.id), li.querySelector('.habit-open')); return li; };
@@ -19,20 +20,25 @@ export function renderHabits() {
   const today = todayKey();
   const habits = activeHabits(st);
   const archived = st.habits.filter((x) => x.archived);
-  const reorder = ctx.ui.habitsReorder && habits.length > 1;
+  const onStats = ctx.ui.habitsTab === 'stats';
+  const reorder = !onStats && ctx.ui.habitsReorder && habits.length > 1;
   const root = h('div.view.view-habits');
   const dayNames = weekdayLabels('short');
 
   root.append(h('header.page-head',
     h('div.page-head-text', h('p.eyebrow', habits.length ? `${habits.length} active` : 'Build routines'), h('h1.page-title', 'Habits')),
     h('div.head-actions',
-      habits.length > 1 ? h(`button.chip-btn${reorder ? '.active' : ''}`, {
+      !onStats && habits.length > 1 ? h(`button.chip-btn${reorder ? '.active' : ''}`, {
         type: 'button', 'aria-pressed': String(reorder), onclick: () => { ctx.ui.habitsReorder = !reorder; ctx.rerender(); },
-      }, icon(reorder ? 'check' : 'reorder', { size: 16 }), reorder ? 'Done' : 'Reorder') : null,
-      iconBtn('plus', 'New habit', () => openHabitForm(null), 'accent'))));
+      }, icon(reorder ? 'check' : 'reorder', { size: 16 }), reorder ? 'Done' : 'Reorder') : null)));
+  root.append(tabs([{ value: 'active', label: 'Active habits' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'active',
+    (v) => { ctx.ui.habitsTab = v; ctx.ui.habitsReorder = false; ctx.rerender(); }, { label: 'Habits view', idPrefix: 'habits-tab' }));
+  const body = h('div.tab-panel', { id: 'habits-tab-panel', role: 'tabpanel', 'aria-labelledby': `habits-tab-${onStats ? 'stats' : 'active'}` });
+  root.append(body);
+  if (onStats) { body.append(habitStatsPanel(st)); return root; }
 
   if (!habits.length) {
-    root.append(h('section.card', emptyState('🌱', 'No habits yet',
+    body.append(h('section.card', emptyState('🌱', 'No habits yet',
       'Small daily actions add up. Start with one habit you can do in two minutes.',
       h('div.empty-actions',
         h('button.btn.primary', { type: 'button', onclick: () => openHabitForm(null) }, icon('plus', { size: 18 }), 'Create a habit'),
@@ -74,7 +80,7 @@ export function renderHabits() {
       const list = h('ul.habit-list');
       habits.forEach((hb) => list.append(card(hb)));
       makeSortable(list, { onReorder: (ids) => reorderHabits(ids) });
-      root.append(h('p.hint-line', 'Drag the handles (or focus one and use arrow keys) to reorder.'), list);
+      body.append(h('p.hint-line', 'Drag the handles (or focus one and use arrow keys) to reorder.'), list);
     } else {
       // Habits with a "complete by" time come first (earliest target first), then Anytime ones.
       const useGroups = habits.some((x) => x.target);
@@ -86,7 +92,7 @@ export function renderHabits() {
         if (!items.length) continue;
         const list = h('ul.habit-list');
         items.forEach((hb) => list.append(card(hb)));
-        root.append(h('section.section', useGroups ? sectionHead(label) : null, list));
+        body.append(h('section.section', useGroups ? sectionHead(label) : null, list));
       }
     }
   }
@@ -102,7 +108,7 @@ export function renderHabits() {
           h('span.emoji-bubble.small', { style: { '--c': hb.color }, 'aria-hidden': 'true' }, habitIcon(hb)), h('span.habit-name', hb.name)),
         h('button.btn.small.secondary', { type: 'button', onclick: () => setArchived(hb.id, false) }, 'Restore'))))));
     }
-    root.append(sec);
+    body.append(sec);
   }
   return root;
 }

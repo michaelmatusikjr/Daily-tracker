@@ -132,10 +132,11 @@ async function swipe(p, sel, dx) {
   assert(tmsg.includes('Everything done') && tmsg.includes('Undo'), '16 celebration toast with Undo');
   await p.click('.toast-action'); await p.waitForTimeout(300);
   assert(JSON.parse(await stored()).tasks.find((t) => t.id === 't1').done === false, '17 undo restores not-done');
-  // 28. journal subtitle updates
-  await p.click('.journal-head'); await p.waitForTimeout(200);
-  await p.fill('.journal-note', 'hello'); await p.waitForTimeout(700);
-  assert((await p.locator('.journal-sub').textContent()) === 'Note saved', '28 journal subtitle updates');
+  // 28. a journal entry added from + shows on Today
+  await p.click('.fab'); await p.waitForTimeout(300);
+  await p.click('.sheet .segmented button:has-text("Journal")'); await p.waitForTimeout(300);
+  await p.fill('.sheet .journal-note', 'hello'); await p.click('.sheet .btn.primary:has-text("Save")'); await p.waitForTimeout(500);
+  assert((await p.locator('.journal-entry').textContent()).includes('hello'), '28 journal entry shows on Today');
 
   // 21. ZWJ emoji
   await p.click('a[data-tab="habits"]'); await p.waitForTimeout(200);
@@ -169,9 +170,9 @@ async function swipe(p, sel, dx) {
   });
   assert(r22[0] === 'indigo' && r22[1] === 2 && r22[2] === 'daily', '22 import normalized ' + JSON.stringify(r22));
 
-  // 25/26 stats
-  await p.click('a[data-tab="stats"]'); await p.waitForTimeout(300);
-  console.log('stats text:', await p.locator('.chart-card .muted.small').first().textContent(), '|', await p.locator('.dow-list').locator('..').locator('p').textContent());
+  // 25/26 journal tab
+  await p.click('a[data-tab="journal"]'); await p.waitForTimeout(300);
+  assert((await p.locator('.journal-item').first().textContent()).includes('hello'), '25 journal tab lists the entry');
 
   // 31 + 7 onboarding replay
   await p.evaluate(() => { location.hash = '#settings'; }); await p.waitForTimeout(300);
