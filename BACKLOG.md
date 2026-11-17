@@ -23,45 +23,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Photos sync too:** task photos and habit image icons.
   - **Devices:** all of them (iPhone, iPad, computers), so test across Safari, Chrome and Firefox.
 
-### 4. Weather line on Today
-- **Scheduled:** Fri Nov 27, 8:00 AM (US Central)
-- **What:** a small, non-interactive line under the week strip on Today, e.g. "📍 Springfield · ⛅ 72° / 51° · 💧 20%":
-  - today's high/low temperature and chance of precipitation
-  - the location name
-- **Other days:** when another day within the next 7 days is selected in the week strip, the line shows that day's forecast. Days past 7, and past days, show nothing.
-- **Shown nowhere else.**
-- **Feasible:** yes.
-  - **Forecast source:** Open-Meteo, which is free with no API key and works directly from the app (no server needed).
-  - **Location:** your phone's location, with a one-time permission prompt. A city typed in Settings could be a fallback.
-  - **Location name:** turning coordinates into a city name needs a small reverse-geocoding lookup.
-- **Notes:**
-  - It needs internet. Offline, it shows the last forecast it fetched (marked as stale) or hides itself.
-  - Your approximate location is sent to the weather service. Precision can be rounded to about 1 km for privacy.
-  - °F/°C and units would follow a setting.
-- **Size:** small–medium.
-- **Added:** 2026-11-16
-- **Decided (2026-11-17):**
-  - **Units:** °F by default, changeable in Settings (°F/°C).
-  - **Location:** the phone's location by default. If permission is denied, prompt to add a city.
-  - **Location pill:** the location on the weather line is a tappable pill with an up/down chevron icon (⌃ over ⌄) showing it can be changed. This is the only interactive part of the weather line.
-  - **The dropdown** lists "Current location" plus saved locations; select one, add a new one (search by city/ZIP), or delete one. The choice is remembered per profile.
-
-### 14. Journal tab and reorganised tabs
-- **What:**
-  - **Journal on Today:**
-    - Remove the journal box at the bottom of Today; new entries are added from the **+** button.
-    - On previous days that have an entry, Today shows it read-only. Nothing shows if there's no entry.
-    - Entries can be edited or deleted with a long-press.
-  - **New Journal tab** replaces the Stats tab, listing all entries, newest first. Probably searchable, like Completed.
-  - **Habits tab** gets two tabs: **Active habits** and **Stats** (the habit stats move here). Remove the "+" at the top; the bottom "+" is enough.
-  - **Workouts tab** gets two tabs: **Workouts** and **Stats** (the workout stats and progress table). Remove the "Log workout" button at the top; the bottom "+" is enough.
-- **Decided (2026-11-17):** the remaining general stats (today's %, task counts, 7/30-day chart, etc.) are **removed**, not moved.
-- **Open detail:** whether the journal mood picker stays (assume yes unless told otherwise).
-- **Size:** medium–large.
-- **Added:** 2026-11-17
-- **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update (runs in a fresh session)
-- **Decided (2026-11-17):** keep the 5-emoji mood picker with journal entries.
-
 ## Done
 
 ### 1. Mark a habit or task as "missed"
@@ -252,3 +213,44 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Scheduled:** Fri Nov 27, 8:00 AM (US Central) update (runs in a fresh session)
 - **Decided (2026-11-17):** a habit sits in the timeline at its target time, shown like "Floss · by 8:00 AM".
 - **Shipped:** v1.11.0 (2026-11-17)
+
+### 14. Journal tab and reorganised tabs
+- **What:**
+  - **Journal on Today:**
+    - Remove the journal box at the bottom of Today; new entries are added from the **+** button.
+    - On previous days that have an entry, Today shows it read-only. Nothing shows if there's no entry.
+    - Entries can be edited or deleted with a long-press.
+  - **New Journal tab** replaces the Stats tab, listing all entries, newest first. Probably searchable, like Completed.
+  - **Habits tab** gets two tabs: **Active habits** and **Stats** (the habit stats move here). Remove the "+" at the top; the bottom "+" is enough.
+  - **Workouts tab** gets two tabs: **Workouts** and **Stats** (the workout stats and progress table). Remove the "Log workout" button at the top; the bottom "+" is enough.
+- **Decided (2026-11-17):** the remaining general stats (today's %, task counts, 7/30-day chart, etc.) are **removed**, not moved.
+- **Open detail:** whether the journal mood picker stays (assume yes unless told otherwise).
+- **Size:** medium–large.
+- **Added:** 2026-11-17
+- **Scheduled:** Fri Dec 4, 8:00 AM (US Central) update (runs in a fresh session)
+- **Decided (2026-11-17):** keep the 5-emoji mood picker with journal entries.
+- **Shipped:** v1.12.0 (2026-11-17)
+
+### 4. Weather line on Today
+- **Scheduled:** Fri Nov 27, 8:00 AM (US Central)
+- **What:** a small, non-interactive line under the week strip on Today, e.g. "📍 Springfield · ⛅ 72° / 51° · 💧 20%":
+  - today's high/low temperature and chance of precipitation
+  - the location name
+- **Other days:** when another day within the next 7 days is selected in the week strip, the line shows that day's forecast. Days past 7, and past days, show nothing.
+- **Shown nowhere else.**
+- **Feasible:** yes.
+  - **Forecast source:** Open-Meteo, which is free with no API key and works directly from the app (no server needed).
+  - **Location:** your phone's location, with a one-time permission prompt. A city typed in Settings could be a fallback.
+  - **Location name:** turning coordinates into a city name needs a small reverse-geocoding lookup.
+- **Notes:**
+  - It needs internet. Offline, it shows the last forecast it fetched (marked as stale) or hides itself.
+  - Your approximate location is sent to the weather service. Precision can be rounded to about 1 km for privacy.
+  - °F/°C and units would follow a setting.
+- **Size:** small–medium.
+- **Added:** 2026-11-16
+- **Decided (2026-11-17):**
+  - **Units:** °F by default, changeable in Settings (°F/°C).
+  - **Location:** the phone's location by default. If permission is denied, prompt to add a city.
+  - **Location pill:** the location on the weather line is a tappable pill with an up/down chevron icon (⌃ over ⌄) showing it can be changed. This is the only interactive part of the weather line.
+  - **The dropdown** lists "Current location" plus saved locations; select one, add a new one (search by city/ZIP), or delete one. The choice is remembered per profile.
+- **Shipped:** v1.12.0 (2026-11-17)
