@@ -1,2 +1,3 @@
-# Screenshots written by test runs
-tests/m-*.png
+# Screenshots and data written by test runs (files already tracked stay tracked)
+tests/*.png
+tests/*.json
