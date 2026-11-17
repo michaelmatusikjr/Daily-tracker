@@ -177,18 +177,23 @@ function geolocate(fresh = false) {
 async function refreshPosition(fresh = false) {
   try {
     const p = await geolocate(fresh);
-    geoDenied = false;
+    geoDenied = false; deniedThisSession = false;
     const lat = round2(p.lat), lon = round2(p.lon);
     const nameKey = nameKeyOf(p.lat, p.lon);
     const old = readPos();
-    let name = old && old.nameKey === nameKey ? old.name || '' : '';
+    // Reuse the known city name when the new fix is within ~200 m of where it was looked up (fixes jitter).
+    const near = (() => {
+      const m = old && typeof old.nameKey === 'string' && old.nameKey.split(',').map(Number);
+      return !!m && m.length === 2 && m.every(Number.isFinite) && Math.abs(m[0] - p.lat) <= 0.002 && Math.abs(m[1] - p.lon) <= 0.002;
+    })();
+    let name = old && near ? old.name || '' : '';
     if (!name) { try { name = await reverseName(p.lat, p.lon); } catch { name = old && keyOf(old.lat, old.lon) === keyOf(lat, lon) ? old.name || '' : ''; } }
-    lsWrite(POS_KEY, { lat, lon, name, nameKey: name ? nameKey : '', at: Date.now() });
+    lsWrite(POS_KEY, { lat, lon, name, nameKey: name ? (near ? old.nameKey : nameKey) : '', at: Date.now() });
     return true;
   } catch (e) {
     // Denied (code 1) forgets the remembered position; any other failure (unsupported, unavailable, timeout)
     // keeps an older position if there is one, otherwise it's time to ask for a city.
-    if (e && e.code === 1) { try { localStorage.removeItem(POS_KEY); } catch { /* ignore */ } }
+    if (e && e.code === 1) { deniedThisSession = true; try { localStorage.removeItem(POS_KEY); } catch { /* ignore */ } }
     geoDenied = !readPos();
     return false;
   }
@@ -272,11 +277,14 @@ export function ensureFresh(w) {
  * position (no cached fix, high accuracy), then fetches the forecast even if the cache is fresh.
  * Resolves when done; repeated calls while one is running share it.
  */
-export function refreshWeather(w) {
+export function refreshWeather(w, { auto = false } = {}) {
   if (inFlight.has('force')) return inFlight.get('force');
+  // Coming back to the app: at most once a minute, keep the failure backoff, and don't retry a denied location.
+  if (auto && (Date.now() - lastForced < AUTO_GAP_MS || (deniedThisSession && resolveTarget(w).kind === 'need-city'))) return Promise.resolve();
+  lastForced = Date.now();
   const p = (async () => {
     try {
-      failedAt.clear();
+      if (!auto) failedAt.clear();
       let t = resolveTarget(w);
       if (t.kind === 'need-city') { geoDenied = false; t = resolveTarget(w); }
       if (t.kind === 'current' || t.kind === 'locating') {
@@ -300,6 +308,9 @@ export function refreshWeather(w) {
   inFlight.set('force', p);
   return p;
 }
+
+let lastForced = 0, deniedThisSession = false;
+const AUTO_GAP_MS = 60 * 1000;
 
 function recentlyFailed(key) { const t = failedAt.get(key); return !!t && Date.now() - t < RETRY_MS; }
 function positionDue() { const p = readPos(); return !p || Date.now() - (p.at || 0) > FRESH_MS; }

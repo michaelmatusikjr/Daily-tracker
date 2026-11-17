@@ -241,7 +241,7 @@ function init() {
   // Forced weather refresh (fresh position + forecast) when the selected location is "current".
   const forceWeather = (always = false) => {
     const w = getState().settings.weather;
-    if (getState().settings.onboarded && w && (always || w.selected === 'current')) refreshWeather(w);
+    if (getState().settings.onboarded && w && (always || w.selected === 'current')) refreshWeather(w, { auto: true });
   };
   forceWeather(); // once per app launch, before the first render so its own refresh doesn't double up
   render();
