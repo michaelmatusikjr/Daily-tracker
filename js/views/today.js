@@ -3,18 +3,41 @@ import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { avatarEl, openProfileMenu } from '../profiles.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, tasksOn, splitTasks, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, MOODS, weekCount, isTaskMissed, isHabitMissed, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
+import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, MOODS, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
 import { fmt as fmtDate, diffDays, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, greeting, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
 import { taskRow, habitControl, streakBadge, timeRange, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
-import { moveToToday, reorderTasks, setMood, setNote, bumpHabit } from '../actions.js';
+import { moveToToday, reorderToday, setMood, setNote, bumpHabit } from '../actions.js';
 import { openQuickAdd } from '../forms.js';
 import { attachMenu, habitMenu, taskMenu, showMenu } from '../itemMenu.js';
 import { habitIcon } from '../habitIcon.js';
 import { openTaskView } from '../taskView.js';
 
-const TOD_ORDER = { morning: 0, afternoon: 1, evening: 2, anytime: 3 };
-const TOD_LABEL = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', anytime: '' };
+/** One habit row (check/count control, long-press menu). `timed`: shows its "by" time in a rail like timed tasks. */
+function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
+  const fmt = st.settings.timeFormat;
+  const weekMet = isWeekly(hb) && weekStatus(st, hb, habitWeekStart(st, k), today).met && !habitDone(st, hb, k);
+  const s = streaks(st, hb, today);
+  const v = habitVal(st, hb, k);
+  // Most useful info first, since the line is truncated with an ellipsis.
+  const sub = [];
+  if (isWeekly(hb)) {
+    const ws = weekStatus(st, hb, habitWeekStart(st, k), today);
+    sub.push(ws.met ? 'Done for this week ✓' : `${ws.left} left this week`);
+  }
+  if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
+  if (hb.target) sub.push(`by ${fmtTime(hb.target, fmt)}`);
+  const warnBadge = (hb.reminder || habitWarnAt(st, hb) !== null) && !canFire();
+  const li = h(`li.habit-row${timed ? '.timed' : ''}${isWeekly(hb) ? '.weekly' : ''}${weekMet ? '.week-done' : ''}`, { dataset: { id: hb.id, kind: 'habit' }, style: { '--c': hb.color } },
+    timed ? h('span.task-time', h('span', fmtTime(hb.target, fmt)), h('small', 'by')) : null,
+    h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
+      h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
+      h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || warnBadge ? h('span.habit-sub', streakBadge(s), warnBadge ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
+    hb.goal.type === 'count' && v > 0 && k <= today ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, k, -1), 'minus-btn') : null,
+    habitControl(hb, k),
+    draggable ? h('button.drag-handle', { type: 'button', 'data-fk': 'dh-' + hb.id, 'aria-label': `Reorder ${hb.name} (use arrow keys)` }, icon('grip', { size: 18 })) : null);
+  return attachLi(li, () => habitMenu(hb.id, k));
+}
 
 /** "Tomorrow", "In 3 days", "12 days ago" (+ year when it differs) — never repeats the title. */
 function eyebrowLabel(k, today) {
@@ -133,51 +156,35 @@ export function renderToday() {
   const weekMet = (hb) => isWeekly(hb) && weekStatus(st, hb, habitWeekStart(st, k), today).met && !habitDone(st, hb, k);
   const dueHabits = activeHabits(st)
     .filter((hb) => habitStart(st, hb) <= k || k >= hb.createdAt)
-    .filter((hb) => isWeekly(hb) || isDueOn(st, hb, k))
-    .sort((a, b) => weekMet(a) - weekMet(b) || TOD_ORDER[a.timeOfDay] - TOD_ORDER[b.timeOfDay] || a.order - b.order);
+    .filter((hb) => isWeekly(hb) || isDueOn(st, hb, k));
   // "Mark as missed" only hides an item from these lists (it still counts as not done).
   const habits = dueHabits.filter((hb) => !isHabitMissed(st, hb, k));
   const missedHabits = dueHabits.filter((hb) => isHabitMissed(st, hb, k));
-  if (habits.length) {
-    const list = h('ul.habit-rows');
-    for (const hb of habits) {
-      const s = streaks(st, hb, today);
-      const v = habitVal(st, hb, k);
-      // Most useful info first, since the line is truncated with an ellipsis.
-      const sub = [];
-      if (isWeekly(hb)) {
-        const ws = weekStatus(st, hb, habitWeekStart(st, k), today);
-        sub.push(ws.met ? 'Done for this week ✓' : `${ws.left} left this week`);
-      }
-      if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
-      if (TOD_LABEL[hb.timeOfDay]) sub.push(TOD_LABEL[hb.timeOfDay]);
-      list.append(attachLi(h(`li.habit-row${isWeekly(hb) ? '.weekly' : ''}${weekMet(hb) ? '.week-done' : ''}`, { dataset: { id: hb.id }, style: { '--c': hb.color } },
-        h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
-          h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
-          h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || (hb.reminder && !canFire()) ? h('span.habit-sub', streakBadge(s), hb.reminder && !canFire() ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
-        hb.goal.type === 'count' && v > 0 && k <= today ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, k, -1), 'minus-btn') : null,
-        habitControl(hb, k)), () => habitMenu(hb.id, k)));
-    }
-    root.append(h('section.section', sectionHead('Habits', h('a.link-btn', { href: '#habits' }, 'All habits'), 'habits'), list));
-  }
 
-  // ---- Tasks ----
+  // ---- Tasks and habits: the Schedule (timed) and the Anytime list ----
   const dayTasks = tasksOn(st, k);
   const missedTasks = dayTasks.filter((t) => isTaskMissed(t, k));
   const { timed, anytime } = splitTasks(dayTasks.filter((t) => !isTaskMissed(t, k)));
-  if (!dayTasks.length) {
+  if (!dayTasks.length && !dueHabits.length) {
     root.append(h('section.card', emptyState(isToday ? '🌤️' : '🗓️', 'Nothing scheduled',
       'Tap + and type something like “Gym 6pm” or “Call mom tomorrow 14:30”.',
       h('button.btn.primary', { type: 'button', onclick: () => openQuickAdd() }, icon('plus', { size: 18 }), 'Add a task'))));
   }
-  if (timed.length) {
+  // Schedule: timed tasks and habits with a "complete by" time, in time order (tasks before habits at the same time).
+  const entries = [
+    ...timed.map((t) => ({ kind: 'task', t, min: timeToMin(t.time) })),
+    ...habits.filter((hb) => hb.target).sort((a, b) => a.order - b.order).map((hb) => ({ kind: 'habit', hb, min: timeToMin(hb.target) })),
+  ].sort((a, b) => a.min - b.min || (a.kind === b.kind ? 0 : a.kind === 'task' ? -1 : 1));
+  if (entries.length) {
     const now = isToday ? nowMin() : null;
     const list = h('ol.timeline');
     let nowPlaced = !isToday;
     const nowLine = () => h('li.now-line', { 'aria-label': `Now, ${fmtTime(`${String(Math.floor(now / 60)).padStart(2, '0')}:${String(now % 60).padStart(2, '0')}`, fmt)}` },
       h('span.now-dot'), h('span.now-label', 'Now'));
-    for (const t of timed) {
-      if (!nowPlaced && timeToMin(t.time) > now) { list.append(nowLine()); nowPlaced = true; }
+    for (const e of entries) {
+      if (!nowPlaced && e.min > now) { list.append(nowLine()); nowPlaced = true; }
+      if (e.kind === 'habit') { list.append(habitRow(st, e.hb, k, today, { timed: true })); continue; }
+      const t = e.t;
       const row = taskRow(t, k, { nowMin: now });
       row.classList.add('timed');
       row.prepend(h('span.task-time', h('span', fmtTime(t.time, fmt)), t.duration ? h('small', timeRange(t, fmt).split(' – ')[1] || '') : null));
@@ -186,12 +193,20 @@ export function renderToday() {
     if (!nowPlaced) list.append(nowLine());
     root.append(h('section.section', sectionHead('Schedule', null, 'clock'), list));
   }
-  if (anytime.length) {
+  // Anytime: untimed tasks and habits without a target, draggable together (shared `todayOrder`).
+  const anyItems = sortAnytime([
+    ...anytime.map((t) => ({ kind: 'task', item: t })),
+    ...habits.filter((hb) => !hb.target).map((hb) => ({ kind: 'habit', item: hb })),
+  ]);
+  // Met weekly habits sit last.
+  anyItems.sort((a, b) => (a.kind === 'habit' && weekMet(a.item) ? 1 : 0) - (b.kind === 'habit' && weekMet(b.item) ? 1 : 0));
+  if (anyItems.length) {
     const list = h('ul.tasks');
-    for (const t of anytime) list.append(taskRow(t, k, { draggable: anytime.length > 1 }));
-    makeSortable(list, { onReorder: (ids) => reorderTasks(ids) });
-    const doneCount = anytime.filter((t) => list.querySelector(`[data-id="${CSS.escape(t.id)}"].done`)).length;
-    root.append(h('section.section', sectionHead('Anytime', h('span.muted.small', `${doneCount}/${anytime.length}`), 'list'), list));
+    const drag = anyItems.length > 1;
+    for (const x of anyItems) list.append(x.kind === 'task' ? taskRow(x.item, k, { draggable: drag }) : habitRow(st, x.item, k, today, { draggable: drag }));
+    makeSortable(list, { onReorder: (ids) => reorderToday(ids) });
+    const doneCount = anyItems.filter((x) => (x.kind === 'task' ? isTaskDone(x.item, k) : habitDone(st, x.item, k))).length;
+    root.append(h('section.section', sectionHead('Anytime', h('span.muted.small', `${doneCount}/${anyItems.length}`), 'list'), list));
   }
 
   menuHint(habits.length + timed.length + anytime.length > 0);

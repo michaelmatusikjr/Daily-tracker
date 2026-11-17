@@ -382,7 +382,7 @@ p { margin: 0; }
 .dragging { z-index: 5; box-shadow: var(--shadow-lg) !important; transition: none !important; opacity: .97; }
 .is-sorting > :not(.dragging) { transition: transform .18s var(--ease); }
 
-.task.timed { padding-left: 10px; }
+.task.timed, .habit-row.timed { padding-left: 10px; }
 .task-time {
   width: 62px; flex: none; display: flex; flex-direction: column; align-items: flex-start;
   font-size: 13px; font-weight: 680; color: var(--text-2); font-variant-numeric: tabular-nums; line-height: 1.25;
