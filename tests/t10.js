@@ -235,7 +235,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert(await p.locator('.wo-entry .pr-badge').count() === 1, 'W2 🏆 badge on the record entry');
     await p.click('.wo-entry:has(.pr-badge) .wo-del'); await p.waitForTimeout(200);
     assert(await p.locator('.pr-badge').count() === 0, 'W2 records recompute after delete');
-    await p.click('.toast-action'); await p.waitForTimeout(200);
+    await p.click('#toasts .toast-action'); await p.waitForTimeout(200);
     assert(await p.locator('.pr-badge').count() === 1, 'W2 Undo restores the record');
     // Multi-line
     await logWorkout(p, { name: 'Squats', lines: [[225, 3, 5], [245, 1, 3]], date: '2026-11-11' });
@@ -296,7 +296,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     await p.click('.wo-entry .wo-del >> nth=0'); await p.waitForTimeout(200);
     // other workouts still exist today (Walk 45, Plank) → still checked
     assert(JSON.stringify(await hv('2026-11-12')) === '[1,true]', 'L2 still checked while another workout remains that day');
-    await p.click('.toast-action'); await p.waitForTimeout(200);
+    await p.click('#toasts .toast-action'); await p.waitForTimeout(200);
     // Past date log
     await logWorkout(p, { name: 'Plank', time: '45', date: '2026-11-05' });
     assert(JSON.stringify(await hv('2026-11-05')) === '[1,true]', 'L3 past date checked');
@@ -304,12 +304,12 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     const del = async (d) => { const ids = (await stored(p)).workouts.filter((w) => w.date === d).map((w) => w.id); for (const id of ids) { await p.evaluate(async (x) => (await import('./js/actions.js')).deleteWorkout(x), id); } };
     await del('2026-11-05');
     assert(JSON.stringify(await hv('2026-11-05')) === '[0,false]', 'L4 deleting the last workout un-checks the auto-checked habit');
-    await p.click('.toast-action'); await p.waitForTimeout(200); // undo last delete
+    await p.click('#toasts .toast-action'); await p.waitForTimeout(200); // undo last delete
     assert(JSON.stringify(await hv('2026-11-05')) === '[1,true]', 'L5 Undo of delete restores habit state');
     // Undo of a save
     await logWorkout(p, { name: 'Plank', time: '50', date: '2026-11-04' });
     assert(JSON.stringify(await hv('2026-11-04')) === '[1,true]', 'L6 saved → checked');
-    await p.click('.toast-action'); await p.waitForTimeout(200);
+    await del('2026-11-04'); await p.waitForTimeout(200); // (saving no longer shows an Undo toast; delete instead)
     assert(JSON.stringify(await hv('2026-11-04')) === '[0,false]' && !(await stored(p)).workouts.some((w) => w.date === '2026-11-04'), 'L6 Undo of save removes workout and un-checks');
     // Manual check is never undone by the link
     await p.evaluate(async () => (await import('./js/actions.js')).setHabitValue('hx', '2026-11-03', 1));
