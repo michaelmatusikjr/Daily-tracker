@@ -157,6 +157,20 @@ async function reverseName(lat, lon) {
   return n ? n.trim().slice(0, 80) : '';
 }
 
+// ---------- diagnostics (memory only; shown in the location menu) ----------
+const lastError = new Map(); // 'forecast' | 'pos' | 'name' | 'search' → { msg, at }
+function noteError(kind, e) {
+  const geo = { 1: 'Location permission denied', 2: 'Position unavailable', 3: 'Timed out finding your location' };
+  const msg = kind === 'pos' && e && geo[e.code] ? geo[e.code] : (e && e.name === 'AbortError' ? 'Timed out' : String((e && e.message) || e || 'Error'));
+  lastError.set(kind, { msg: msg.slice(0, 120), at: Date.now() });
+}
+export function noteSearchError(e) { if (e) noteError('search', e); else lastError.delete('search'); }
+/** What the location menu shows: the position's accuracy and recent problems. */
+export function weatherDiagnostics() {
+  const pos = readPos();
+  return { acc: pos && Number.isFinite(pos.acc) ? pos.acc : null, posAt: pos ? pos.at || null : null, errors: Object.fromEntries(lastError) };
+}
+
 // ---------- current location ----------
 const failedAt = new Map(); // key → time of the last failed attempt (memory only)
 let geoDenied = false;
@@ -167,7 +181,7 @@ function geolocate(fresh = false) {
     // The browser's own timeout may only start once permission is answered, so also give up ourselves.
     const guard = setTimeout(() => reject(Object.assign(new Error('timeout'), { code: 3 })), TIMEOUT_MS + 2000);
     navigator.geolocation.getCurrentPosition(
-      (p) => { clearTimeout(guard); resolve({ lat: p.coords.latitude, lon: p.coords.longitude }); },
+      (p) => { clearTimeout(guard); resolve({ lat: p.coords.latitude, lon: p.coords.longitude, acc: Number.isFinite(p.coords.accuracy) ? Math.round(p.coords.accuracy) : null }); },
       (e) => { clearTimeout(guard); reject(e); },
       { enableHighAccuracy: fresh, timeout: TIMEOUT_MS, maximumAge: fresh ? 0 : 15 * 60 * 1000 });
   });
@@ -187,10 +201,12 @@ async function refreshPosition(fresh = false) {
       return !!m && m.length === 2 && m.every(Number.isFinite) && Math.abs(m[0] - p.lat) <= 0.002 && Math.abs(m[1] - p.lon) <= 0.002;
     })();
     let name = old && near ? old.name || '' : '';
-    if (!name) { try { name = await reverseName(p.lat, p.lon); } catch { name = old && keyOf(old.lat, old.lon) === keyOf(lat, lon) ? old.name || '' : ''; } }
-    lsWrite(POS_KEY, { lat, lon, name, nameKey: name ? (near ? old.nameKey : nameKey) : '', at: Date.now() });
+    if (!name) { try { name = await reverseName(p.lat, p.lon); lastError.delete('name'); } catch (e) { noteError('name', e); name = old && keyOf(old.lat, old.lon) === keyOf(lat, lon) ? old.name || '' : ''; } }
+    lsWrite(POS_KEY, { lat, lon, name, nameKey: name ? (near ? old.nameKey : nameKey) : '', acc: p.acc, at: Date.now() });
+    lastError.delete('pos');
     return true;
   } catch (e) {
+    noteError('pos', e);
     // Denied (code 1) forgets the remembered position; any other failure (unsupported, unavailable, timeout)
     // keeps an older position if there is one, otherwise it's time to ask for a city.
     if (e && e.code === 1) { deniedThisSession = true; try { localStorage.removeItem(POS_KEY); } catch { /* ignore */ } }
@@ -258,16 +274,7 @@ export function ensureFresh(w) {
     const entry = readCache()[key];
     if (entry && Date.now() - (entry.fetchedAt || 0) < FRESH_MS) return;
     if (inFlight.has(key) || recentlyFailed(key)) return;
-    const p = fetchForecast(t.lat, t.lon).then((f) => {
-      const cache = readCache();
-      cache[key] = { fetchedAt: Date.now(), tz: f.tz, days: f.days };
-      writeCache(cache);
-      failedAt.delete(key);
-      listener();
-    }).catch(() => {
-      failedAt.set(key, Date.now());
-      listener(); // lets the line switch to its "stale" look
-    }).finally(() => inFlight.delete(key));
+    const p = loadForecast(t).finally(() => { inFlight.delete(key); listener(); });
     inFlight.set(key, p);
   } catch { /* weather must never break the app */ }
 }
@@ -287,30 +294,42 @@ export function refreshWeather(w, { auto = false } = {}) {
       if (!auto) failedAt.clear();
       let t = resolveTarget(w);
       if (t.kind === 'need-city') { geoDenied = false; t = resolveTarget(w); }
+      // Don't make the forecast wait for a GPS fix (that can take 10 s+): refresh the known place right away.
+      const first = t.kind === 'saved' || t.kind === 'current' ? loadForecast(t) : null;
       if (t.kind === 'current' || t.kind === 'locating') {
+        const before = t.kind === 'current' ? keyOf(t.lat, t.lon) : '';
         const ok = await refreshPosition(true);
         if (!ok) failedAt.set('pos', Date.now());
         listener();
         t = resolveTarget(w);
+        if (t.kind === 'current' && keyOf(t.lat, t.lon) !== before) await loadForecast(t);
       }
-      if (t.kind !== 'saved' && t.kind !== 'current') return;
-      const key = keyOf(t.lat, t.lon);
-      try {
-        const f = await fetchForecast(t.lat, t.lon);
-        const cache = readCache();
-        cache[key] = { fetchedAt: Date.now(), tz: f.tz, days: f.days };
-        writeCache(cache);
-        failedAt.delete(key);
-      } catch { failedAt.set(key, Date.now()); }
-      listener();
+      if (first) await first;
     } catch { /* weather must never break the app */ }
-  })().finally(() => inFlight.delete('force'));
+  })().finally(() => { inFlight.delete('force'); listener(); });
   inFlight.set('force', p);
   return p;
 }
 
 let lastForced = 0, deniedThisSession = false;
 const AUTO_GAP_MS = 60 * 1000;
+
+async function loadForecast(t) {
+  const key = keyOf(t.lat, t.lon);
+  try {
+    const f = await fetchForecast(t.lat, t.lon);
+    const cache = readCache();
+    cache[key] = { fetchedAt: Date.now(), tz: f.tz, days: f.days };
+    writeCache(cache);
+    failedAt.delete(key); lastError.delete('forecast');
+  } catch (e) { failedAt.set(key, Date.now()); noteError('forecast', e); }
+  listener();
+}
+
+/** True while a forecast or position lookup for the line is running. */
+export function weatherBusy() { return inFlight.size > 0; }
+/** True when the last forecast request for the shown place failed. */
+export function weatherFailed(w) { const t = resolveTarget(w); return (t.kind === 'current' || t.kind === 'saved') && failedAt.has(keyOf(t.lat, t.lon)); }
 
 function recentlyFailed(key) { const t = failedAt.get(key); return !!t && Date.now() - t < RETRY_MS; }
 function positionDue() { const p = readPos(); return !p || Date.now() - (p.at || 0) > FRESH_MS; }

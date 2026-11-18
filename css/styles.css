@@ -1353,18 +1353,24 @@ input, textarea, [contenteditable], [contenteditable] * { -webkit-user-select: t
 .seg-tabs button[aria-selected="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 [data-theme="dark"] .seg-tabs button[aria-selected="true"] { background: var(--surface-3); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg-tabs button[aria-selected="true"] { background: var(--surface-3); } }
-.weather-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 8px; margin: -6px 0 var(--s3); font-size: 13.5px; color: var(--text-2); }
+/* Temps dead centre; the pill centred in the space to their left, rain chance centred in the space to their right. */
+.weather-line { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; margin: -6px 0 var(--s3); font-size: 13.5px; color: var(--text-2); }
+.weather-line > .wx-pill { grid-column: 1; justify-self: center; max-width: 100%; }
+.weather-line > .wx-temps { grid-column: 2; }
+.weather-line > .wx-pop { grid-column: 3; justify-self: center; }
+.wx-status { color: var(--text-3); }
+.wx-retry { background: none; border: 0; padding: 4px 0; font: inherit; color: var(--accent); cursor: pointer; }
+.wx-diag { display: block; font-size: 12.5px; color: var(--text-3); }
+.wx-tip { display: block; margin-top: 4px; color: var(--text-2); }
 .weather-line.stale .wx-temps, .weather-line.stale .wx-pop { opacity: .6; }
 .weather-line > * { min-width: 0; }
-.weather-line .wx-pill { flex: 0 1 auto; }
 .wx-temps, .wx-pop { flex: none; }
-.wx-pop { text-align: right; }
 .wx-stale-note { margin: -4px 0 var(--s3); font-size: 12px; color: var(--text-3); text-align: center; }
 .wx-pill {
   display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 8px 0 10px; border-radius: 999px; max-width: 60%;
   background: var(--surface-2); color: var(--text); border: 1px solid var(--border); font-size: 13px; font-weight: 620;
 }
-.wx-pill .wx-name { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx-pill .wx-name { max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wx-pill svg { flex: none; color: var(--text-3); }
 .wx-temps, .wx-pop { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wx-stale { font-size: 12px; color: var(--text-3); }

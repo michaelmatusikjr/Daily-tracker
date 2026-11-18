@@ -156,7 +156,9 @@ const touch = async (cdp, type, x, y) => cdp.send('Input.dispatchTouchEvent', { 
     // weather line
     const b = await p.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const L = r('.weather-line'); const P = r('.wx-pill'), T = r('.wx-temps'), O = r('.wx-pop'); return { L, P, T, O, txt: document.querySelector('.wx-temps')?.textContent, pop: document.querySelector('.wx-pop')?.textContent }; });
     assert(b.P && b.T && b.O && b.P.right <= b.T.left && b.T.right <= b.O.left, 'F1 pill | temps | pop in order, no overlap');
-    assert(b.P.left - b.L.left < 4 && b.L.right - b.O.right < 4, 'F2 pill hugs left edge, pop hugs right edge');
+    const cx = (r) => (r.left + r.right) / 2;
+    assert(Math.abs(cx(b.T) - cx(b.L)) < 2, 'F2a temps centred on the line');
+    assert(Math.abs(cx(b.P) - (b.L.left + b.T.left) / 2) < 12 && Math.abs(cx(b.O) - (b.T.right + b.L.right) / 2) < 12, 'F2b pill centred left of temps, pop centred right of temps');
     assert(/72° \/ 51°/.test(b.txt) && /10%/.test(b.pop) && b.P.height < 40, `F3 contents: ${b.txt} / ${b.pop}`);
     assert(!/null|undefined/.test(await p.textContent('.weather-slot')), 'F5 no stray null/undefined text in the slot');
     const mid = (b.T.left + b.T.right) / 2, lmid = (b.L.left + b.L.right) / 2;

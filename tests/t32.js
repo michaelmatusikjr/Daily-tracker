@@ -152,7 +152,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     assert(/latitude=37\.22&longitude=-93\.3&/.test(net.forecast.at(-1)), 'C10 forecast requested for the saved location: ' + net.forecast.at(-1));
     // Menu: current + saved + add
     await p.click('.wx-pill'); await p.waitForTimeout(350);
-    const items = await p.$$eval('.sheet .menu-item', (e) => e.map((x) => x.textContent.trim()));
+    const items = await p.$$eval('.sheet .menu-item', (e) => e.map((x) => { const c = x.cloneNode(true); c.querySelectorAll('small').forEach((n) => n.remove()); return c.textContent.trim(); }));
     assert(items.join('|') === 'Current location|Springfield|Add location', 'C11 menu lists Current location, saved, Add location: ' + items.join('|'));
     assert(await p.locator('.wx-loc[aria-checked="true"]').textContent() === 'Springfield', 'C12 selected location is marked');
     // Delete + Undo
@@ -198,7 +198,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     await p.click('.sheet [aria-label="Switch to Sam"]'); await p.waitForTimeout(700);
     assert((await p.locator('.wx-pill').textContent()).trim() === 'Boston' && (await line(p)).includes('22° / 11°'), 'E2 profile 2 shows its own city/units: ' + (await line(p)));
     await p.click('.wx-pill'); await p.waitForTimeout(300);
-    const items = await p.$$eval('.sheet .menu-item', (e) => e.map((x) => x.textContent.trim()));
+    const items = await p.$$eval('.sheet .menu-item', (e) => e.map((x) => { const c = x.cloneNode(true); c.querySelectorAll('small').forEach((n) => n.remove()); return c.textContent.trim(); }));
     assert(items.join('|') === 'Current location|Boston|Berlin|Add location', 'E3 saved locations are per profile: ' + items.join('|'));
     await p.keyboard.press('Escape'); await p.waitForTimeout(350);
     assert((await stored(p, 'p')).settings.weather.locations.length === 1 && (await stored(p, 'q')).settings.weather.locations.length === 2, 'E4 each profile keeps its own list');
@@ -222,7 +222,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     // Offline with nothing cached: just the pill, nothing else
     const { ctx, p } = await open(browser, { forecast: 'abort' });
     await p.waitForTimeout(400);
-    assert(await p.locator('.wx-pill').count() === 1 && await p.locator('.wx-temps').count() === 0 && await p.locator('.progress-card').count() === 1, 'F4 no cache + offline: no forecast text, Today fine');
+    assert(await p.locator('.wx-pill').count() === 1 && await p.locator('.wx-temps:not(.wx-status)').count() === 0 && await p.locator('.progress-card').count() === 1, 'F4 no cache + offline: no forecast text, Today fine');
     await ctx.close();
   }
 
@@ -230,7 +230,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
   for (const mode of ['fail', 'hang']) {
     const { ctx, p } = await open(browser, { forecast: mode });
     if (mode === 'hang') { await p.clock.runFor(9000); await p.waitForTimeout(300); }
-    assert(await p.locator('.progress-card').count() === 1 && await p.locator('.wx-temps').count() === 0, `G1 forecast ${mode}: Today renders, no forecast text`);
+    assert(await p.locator('.progress-card').count() === 1 && await p.locator('.wx-temps:not(.wx-status)').count() === 0, `G1 forecast ${mode}: Today renders, no forecast text`);
     await p.click('button[aria-label="Next day"]'); await p.waitForTimeout(300);
     assert(await p.locator('.view-today').count() === 1, `G2 forecast ${mode}: navigating still works`);
     await ctx.close();
@@ -244,7 +244,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     await c2.addInitScript((d) => { if (!localStorage.getItem('dailyTracker:profiles')) { localStorage.setItem('dailyTracker:profiles', JSON.stringify({ version: 1, activeId: 'p', profiles: [{ id: 'p', name: 'Me', avatar: { type: 'emoji', emoji: '', color: '#6366f1' } }] })); localStorage.setItem('dailyTracker:data:p', d); } }, JSON.stringify(base()));
     const p2 = await c2.newPage(); p2.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
     await p2.clock.install({ time: NOW }); await p2.goto(APP); await p2.waitForTimeout(600);
-    assert(await p2.locator('.progress-card').count() === 1 && await p2.locator('.wx-temps').count() === 0, 'G3 malformed forecast JSON is ignored');
+    assert(await p2.locator('.progress-card').count() === 1 && await p2.locator('.wx-temps:not(.wx-status)').count() === 0, 'G3 malformed forecast JSON is ignored');
     await c2.close();
   }
 
@@ -375,7 +375,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const html = fs.readFileSync(__dirname + '/../index.html', 'utf8');
     assert(!/Content-Security-Policy/i.test(html), 'I4 no CSP that would block the three API hosts');
     const ver = /VERSION = '([^']+)'/.exec(sw)[1], appv = /APP_VERSION = '([^']+)'/.exec(fs.readFileSync(__dirname + '/../js/store.js', 'utf8'))[1];
-    assert(ver === '1.13.0' && appv === '1.13.0', 'I5 versions bumped together: ' + ver + ' / ' + appv);
+    assert(ver === '1.13.1' && appv === '1.13.1', 'I5 versions bumped together: ' + ver + ' / ' + appv);
   }
 
   await browser.close();

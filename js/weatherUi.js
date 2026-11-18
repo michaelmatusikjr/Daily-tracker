@@ -5,7 +5,7 @@ import { icon } from './icons.js';
 import { getState } from './store.js';
 import { ctx } from './ctx.js';
 import { fmtTime } from './dates.js';
-import { weatherFor, ensureFresh, onWeatherChange, searchPlaces, resetRetries } from './weather.js';
+import { weatherFor, ensureFresh, onWeatherChange, searchPlaces, resetRetries, refreshWeather, weatherBusy, weatherFailed, weatherDiagnostics, noteSearchError } from './weather.js';
 import { selectWeatherLocation, addWeatherLocation, deleteWeatherLocation } from './actions.js';
 
 /** An empty container Today always renders; fillWeather() puts the line in it (or leaves it empty). */
@@ -36,6 +36,12 @@ function fillWeather(slot, fresh = false) {
     kids.push(h('span.wx-temps', { title: f.label }, `${f.emoji} ${f.hi}° / ${f.lo}°`));
     if (f.pop !== null) kids.push(h('span.wx-pop', `💧 ${f.pop}%`));
     if (upd) note = h('p.wx-stale-note', upd.replace(/^ · /, ''));
+  } else if (!info.needCity) {
+    // Nothing to show yet: say so, in the centre, instead of an empty line.
+    const failed = !weatherBusy() && weatherFailed(w);
+    kids.push(failed
+      ? h('button.wx-temps.wx-status.wx-retry', { type: 'button', onclick: () => { refreshWeather(getState().settings.weather); fillWeather(slot); } }, 'Weather unavailable · Retry')
+      : h('span.wx-temps.wx-status', 'Loading weather…'));
   }
   slot.replaceChildren(...[h(`div.weather-line${info.stale ? '.stale' : ''}${fresh ? '.fresh' : ''}`, ...kids), note].filter(Boolean));
 }
@@ -58,11 +64,25 @@ function openLocationMenu() {
       deletable ? iconBtn('trash', `Remove ${label}`, () => { closeAllSheets(); deleteWeatherLocation(id); }, 'wx-del') : null);
   };
   const list = h('div.menu-list', { role: 'menu', 'aria-label': 'Weather location' },
-    row('Current location', 'current'),
+    row('Current location', 'current', currentSub()),
     ...w.locations.map((l) => row(l.name, l.id, null, true)),
     h('button.menu-item', { type: 'button', role: 'menuitem', onclick: () => { closeAllSheets(); openAddLocation(); } },
       icon('plus', { size: 20 }), h('span', 'Add location')));
   openSheet({ title: 'Weather location', content: list, cls: 'action-menu' });
+}
+
+/** Under "Current location": the place found and how precise the phone's position was, plus any recent problem. */
+function currentSub() {
+  const d = weatherDiagnostics();
+  const parts = [];
+  if (d.acc !== null) parts.push(d.acc >= 1000 ? `accurate to about ${Math.round(d.acc / 100) / 10} km` : `accurate to about ${d.acc} m`);
+  const err = d.errors.pos || d.errors.forecast || d.errors.name;
+  if (err) parts.push(err === d.errors.forecast ? `forecast: ${err.msg}` : err === d.errors.name ? `city name: ${err.msg}` : err.msg);
+  const tip = d.acc !== null && d.acc >= 1500
+    ? 'Your iPhone is sharing an approximate location, so the city can be wrong. Turn on Settings › Privacy & Security › Location Services › Safari Websites › Precise Location.'
+    : null;
+  if (!parts.length && !tip) return null;
+  return h('span.wx-diag', parts.join(' · '), tip ? h('span.wx-tip', tip) : null);
 }
 
 // ---------- add location ----------
@@ -80,13 +100,16 @@ export function openAddLocation() {
     say('Searching…');
     try {
       const found = await searchPlaces(q);
+      noteSearchError(null);
       if (mine !== seq) return;
       if (!found.length) { say('No matches. Check the spelling or ZIP code.'); return; }
       say('');
       results.replaceChildren(...found.map((p) => h('li', h('button.menu-item.wx-result', { type: 'button', onclick: () => pick(p) },
         icon('pin', { size: 20 }), h('span', p.name, p.detail ? h('small', p.detail) : null)))));
-    } catch {
-      if (mine === seq) say('Couldn’t search right now. Check your connection and try again.');
+    } catch (e) {
+      noteSearchError(e);
+      const why = e && e.name === 'AbortError' ? 'it timed out' : String((e && e.message) || 'unknown error').slice(0, 80);
+      if (mine === seq) say(`Couldn’t search right now (${why}). Check your connection and try again.`);
     }
   }
   function pick(p) {
