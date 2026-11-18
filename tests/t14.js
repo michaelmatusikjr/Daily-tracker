@@ -115,8 +115,10 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     const t1 = (await q.textContent('.takeover-emoji')) + ' ' + (await q.textContent('.takeover-msg'));
     assert(t1.includes('🏆 New 3×5 max & 1-rep max: Squat 235 lbs'), 'U1 record toast names the record: ' + t1.slice(0, 50));
     assert(await q.locator('.wo-entry .pr-badge').count() === 1, 'U1 🏆 badge in history');
-    await q.click('.takeover-action'); await q.waitForTimeout(300);
-    assert((await stored(q)).workouts.length === 2 && await q.locator('.pr-badge').count() === 0, 'U2 Undo reverts the record cleanly');
+    assert(await q.locator('.takeover button').count() === 0, 'U2 PR takeover has no Undo button');
+    await q.click('.takeover'); await q.waitForTimeout(450);
+    await q.evaluate(async () => { const S = await import('/js/store.js'); S.update((s) => { s.workouts.pop(); }); }); await q.waitForTimeout(300);
+    assert((await stored(q)).workouts.length === 2 && await q.locator('.pr-badge').count() === 0, 'U2 record removed again for the next steps');
     await log('Squat', async () => { const i = q.locator('.wo-line input'); await i.nth(0).fill('235'); await i.nth(1).fill('2'); await i.nth(2).fill('5'); });
     await log('Squat', async () => { const i = q.locator('.wo-line input'); await i.nth(0).fill('235'); await i.nth(1).fill('1'); await i.nth(2).fill('5'); });
     assert(((await q.textContent('.takeover-emoji')) + ' ' + (await q.textContent('.takeover-msg'))).includes('🏆 New 3×5 max: Squat 235 lbs'), 'U3 "🏆 New 3×5 max: Squat 235 lbs" when the 3rd set completes');

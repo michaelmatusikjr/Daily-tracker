@@ -82,8 +82,7 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     await openEdit(); await q.locator('.wo-line input').nth(0).fill('245'); await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(250);
     t = ((await q.textContent('.takeover-emoji')) + ' ' + (await q.textContent('.takeover-msg')));
     assert(t.includes('🏆 New 3×5 max & 1-rep max: Squat 245 lbs'), 'P1 a raised weight is newly earned and celebrates both records: ' + t.slice(0, 60));
-    await q.click('.takeover-action'); await q.waitForTimeout(300);
-    assert((await stored(q)).workouts.find((w) => w.id === 'w2').lines[0].weight === 235, 'P1 Undo reverts the edit');
+    assert(await q.locator('.takeover button').count() === 0, 'P1 no Undo button on the record takeover');
     await c2.close();
   }
 

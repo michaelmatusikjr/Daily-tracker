@@ -221,7 +221,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const { ctx, p } = await open(browser, { forecast: 'abort', init });
     await p.waitForTimeout(2500); // the forecast is retried once after 1.5 s before it counts as failed;
     const t = await line(p);
-    assert(t && t.includes('72° / 51°') && /updated \d{1,2}(:\d{2})?/.test(t), 'F1 offline: cached forecast shown with an "updated …" note: ' + t);
+    assert(t && t.includes('72° / 51°') && !/updated/i.test(t), 'F1 offline: cached forecast shown without an "updated …" note: ' + t);
     assert(await p.locator('.weather-line.stale').count() === 1, 'F2 and marked stale (dimmed)');
     assert(await p.locator('.progress-card').count() === 1, 'F3 Today still renders');
     await ctx.close();

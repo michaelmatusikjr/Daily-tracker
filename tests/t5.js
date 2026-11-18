@@ -130,9 +130,10 @@ async function swipe(p, sel, dx) {
   await p.waitForTimeout(200);
   await p.locator('.task .check').first().click(); await p.waitForTimeout(400);
   const tmsg = await p.locator('.takeover').textContent();
-  assert(tmsg.includes('Everything done') && tmsg.includes('Undo'), '16 celebration takeover with Undo');
-  await p.click('.takeover-action'); await p.waitForTimeout(300);
-  assert(JSON.parse(await stored()).tasks.find((t) => t.id === 't1').done === false, '17 undo restores not-done');
+  assert(tmsg.includes('Everything done') && !tmsg.includes('Undo') && await p.locator('.takeover button').count() === 0, '16 celebration takeover without Undo');
+  await p.click('.takeover'); await p.waitForTimeout(450);
+  assert(await p.locator('.takeover').count() === 0, '17 tap dismisses takeover');
+  await p.locator('.task .check').first().click(); await p.waitForTimeout(300); // back to not done for the next steps
   // 28. a journal entry added from + shows on Today
   await p.click('.fab'); await p.waitForTimeout(300);
   await p.click('.sheet .segmented button:has-text("Journal")'); await p.waitForTimeout(300);

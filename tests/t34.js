@@ -103,7 +103,7 @@ const toastCount = (p) => p.locator('#toasts .toast').count();
     await p.click('.task[data-id="a"] .check'); await p.waitForTimeout(900);
     const tk = p.locator('.takeover');
     assert(await tk.count() === 1 && /Everything done for today/.test(await tk.innerText()), 'B1 completing the last item shows the takeover');
-    assert(await p.locator('.takeover .takeover-action').innerText() === 'Undo', 'B2 takeover has an Undo button');
+    assert(await p.locator('.takeover button').count() === 0, 'B2 takeover has no button (no Undo)');
     assert(await p.locator('.takeover .confetto').count() === 40, 'B3 confetti present (40 pieces)');
     const r = await tk.boundingBox();
     assert(r.x === 0 && r.y === 0 && r.width >= 380, 'B4 takeover covers the viewport');
@@ -113,20 +113,16 @@ const toastCount = (p) => p.locator('#toasts .toast').count();
     await p.mouse.click(10, 300); await p.waitForTimeout(450);
     assert(await tk.count() === 0, 'B6 clicking the backdrop dismisses');
     assert((await stored(p)).tasks[0].done === true, 'B7 dismissing keeps the task done');
-    // Undo
     await p.click('.task[data-id="a"] .check'); await p.waitForTimeout(300); // un-complete
-    await p.click('.task[data-id="a"] .check'); await p.waitForTimeout(900);
-    await p.click('.takeover .takeover-action'); await p.waitForTimeout(500);
-    assert((await stored(p)).tasks[0].done === false && await p.locator('.takeover').count() === 0, 'B8 Undo restores and dismisses');
     // Escape
     await p.click('.task[data-id="a"] .check'); await p.waitForTimeout(900);
     await p.keyboard.press('Escape'); await p.waitForTimeout(450);
     assert(await p.locator('.takeover').count() === 0, 'B9 Escape dismisses');
-    // auto-dismiss (6 s with action)
+    // auto-dismiss (~4 s, no action)
     await p.click('.task[data-id="a"] .check'); await p.waitForTimeout(300);
     await p.click('.task[data-id="a"] .check'); await p.waitForTimeout(900);
-    await p.waitForTimeout(5400);
-    assert(await p.locator('.takeover').count() === 0, 'B10 auto-dismisses after ~6 s');
+    await p.waitForTimeout(3600);
+    assert(await p.locator('.takeover').count() === 0, 'B10 auto-dismisses after ~4 s');
     await ctx.close();
   }
 
@@ -138,8 +134,7 @@ const toastCount = (p) => p.locator('#toasts .toast').count();
     const tk = p.locator('.takeover');
     assert(await tk.count() === 1 && (await tk.innerText()).includes('Squat') && (await tk.locator('.takeover-emoji').innerText()) === '🏆', 'B11 personal record shows the 🏆 takeover');
     assert(await toastCount(p) === 0, 'B12 takeover replaces pills');
-    await p.click('.takeover .takeover-action'); await p.waitForTimeout(500);
-    assert((await stored(p)).workouts.length === 1, 'B13 Undo removes the new workout');
+    assert(await tk.locator('button').count() === 0, 'B13 PR takeover has no button');
     await ctx.close();
   }
 
