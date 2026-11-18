@@ -90,7 +90,7 @@ const toastCount = (p) => p.locator('#toasts .toast').count();
     await p.evaluate(async () => { const m = await import('/js/actions.js'); await m.deleteTask('a', (await import('/js/dates.js')).todayKey()); });
     await p.waitForTimeout(450);
     const b2 = await p.locator('#toasts .toast').boundingBox();
-    const x = b2.x + 40, y = b2.y + b2.height / 2;
+    const x = b2.x + 40, y = b2.y + b2.height - 6;
     await p.mouse.move(x, y); await p.mouse.down(); await p.mouse.move(x, y - 15, { steps: 3 }); await p.mouse.move(x, y - 45, { steps: 4 }); await p.mouse.up();
     await p.waitForTimeout(500);
     assert(await toastCount(p) === 0, 'C8 swiping the pill up dismisses it');
