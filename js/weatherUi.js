@@ -4,7 +4,6 @@ import { h, openSheet, closeAllSheets, iconBtn, toast } from './ui.js';
 import { icon } from './icons.js';
 import { getState } from './store.js';
 import { ctx } from './ctx.js';
-import { fmtTime } from './dates.js';
 import { weatherFor, ensureFresh, onWeatherChange, searchPlaces, resetRetries, refreshWeather, weatherBusy, weatherFailed, weatherDiagnostics, noteSearchError } from './weather.js';
 import { selectWeatherLocation, addWeatherLocation, deleteWeatherLocation } from './actions.js';
 
@@ -30,12 +29,9 @@ function fillWeather(slot, fresh = false) {
     onclick: () => (info.needCity && !w.locations.length ? openAddLocation() : openLocationMenu()),
   }, icon('pin', { size: 14 }), h('span.wx-name', info.pill), icon('chevronsUpDown', { size: 14, cls: 'wx-chev' }));
   const kids = [pill];
-  let note = null;
   if (f) {
-    const upd = info.stale && info.updatedAt ? ` · updated ${fmtTime(new Date(info.updatedAt).toTimeString().slice(0, 5), st.settings.timeFormat)}` : '';
     kids.push(h('span.wx-temps', { title: f.label }, `${f.emoji} ${f.hi}° / ${f.lo}°`));
     if (f.pop !== null) kids.push(h('span.wx-pop', `💧 ${f.pop}%`));
-    if (upd) note = h('p.wx-stale-note', upd.replace(/^ · /, ''));
   } else if (!info.needCity) {
     // Nothing to show yet: say so, in the centre, instead of an empty line.
     const failed = !weatherBusy() && weatherFailed(w);
@@ -43,7 +39,7 @@ function fillWeather(slot, fresh = false) {
       ? h('button.wx-temps.wx-status.wx-retry', { type: 'button', onclick: () => { refreshWeather(getState().settings.weather); fillWeather(slot); } }, 'Weather unavailable · Retry')
       : h('span.wx-temps.wx-status', 'Loading weather…'));
   }
-  slot.replaceChildren(...[h(`div.weather-line${info.stale ? '.stale' : ''}${fresh ? '.fresh' : ''}`, ...kids), note].filter(Boolean));
+  slot.replaceChildren(...[h(`div.weather-line${info.stale ? '.stale' : ''}${fresh ? '.fresh' : ''}`, ...kids)]);
 }
 
 // Late results update only the weather line (no full re-render), and only if Today is still showing that date.

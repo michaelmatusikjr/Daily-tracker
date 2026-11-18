@@ -144,23 +144,10 @@ const touch = async (cdp, type, x, y) => cdp.send('Input.dispatchTouchEvent', { 
     await ctx.close();
   }
 
-  // ===== 3c. Pull to refresh + 4. weather line =====
+  // ===== 4. weather line =====
   {
     const { ctx, p, net } = await open(browser);
     await p.waitForTimeout(500);
-    const cdp = await ctx.newCDPSession(p);
-    const f0 = net.forecast.length;
-    await touch(cdp, 'touchStart', 200, 200); await touch(cdp, 'touchMove', 205, 230); await touch(cdp, 'touchMove', 205, 300);
-    await p.waitForTimeout(100);
-    assert(await p.locator('.ptr.show').count() === 1, 'E1 indicator shows while pulling');
-    await touch(cdp, 'touchEnd', 205, 300); await p.waitForTimeout(1200);
-    assert(net.forecast.length === f0 + 1, 'E2 pull-to-refresh refetched the forecast');
-    assert(await p.locator('.ptr.show').count() === 0, 'E3 indicator hidden after refresh');
-    const f1 = net.forecast.length;
-    await touch(cdp, 'touchStart', 200, 200); await touch(cdp, 'touchMove', 205, 240); await touch(cdp, 'touchEnd', 205, 240); await p.waitForTimeout(600);
-    assert(net.forecast.length === f1, 'E4 short pull does not refresh');
-    await touch(cdp, 'touchStart', 300, 300); await touch(cdp, 'touchMove', 200, 330); await touch(cdp, 'touchMove', 100, 400); await touch(cdp, 'touchEnd', 100, 400); await p.waitForTimeout(600);
-    assert(net.forecast.length === f1, 'E5 mostly-horizontal drag does not refresh');
     // weather line
     const b = await p.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const L = r('.weather-line'); const P = r('.wx-pill'), T = r('.wx-temps'), O = r('.wx-pop'); return { L, P, T, O, txt: document.querySelector('.wx-temps')?.textContent, pop: document.querySelector('.wx-pop')?.textContent }; });
     assert(b.P && b.T && b.O && b.P.right <= b.T.left && b.T.right <= b.O.left, 'F1 pill | temps | pop in order, no overlap');
