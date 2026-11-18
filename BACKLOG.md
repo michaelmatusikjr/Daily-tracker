@@ -23,15 +23,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Photos sync too:** task photos and habit image icons.
   - **Devices:** all of them (iPhone, iPad, computers), so test across Safari, Chrome and Firefox.
 
-### 19. Toasts: fewer, a top pill, full-screen celebrations, subtle animations
-- **Added:** 2026-11-17
-- **Decided (2026-11-17):**
-  - **Full-screen takeover** (blurred backdrop, card springs in, tap anywhere except Undo to dismiss): "Everything done for the day" (with confetti), new personal record (🏆), "Saved data couldn’t be read".
-  - **Drop these toasts** (the result is already visible and undoable in place): task completed, duplicated, order updated, task added for the day you're viewing (adding to another day keeps "Added to … · View"), habit created, journal saved/updated, workout logged/saved, exercise added/saved, "Switched to X" when picked by the user, category added, "Reminders on" / "Notifications allowed", closed-app reminders on/off success (warnings/failures stay).
-  - **Remaining toasts become a top pill** that drops from under the status bar (message left, Undo right; swipe up or tap to dismiss; ~4 s, 6 s with Undo; never covers the + button or tab bar).
-  - **Animations:** tab switches slide/fade (150–200 ms), check-off pop + progress ring animation, list items slide in / collapse out, springier sheets, long-press menu scales from the item, streak flame flicker, pull-to-refresh spinner. Reduced Motion → fades only, no confetti.
-- **Size:** medium.
-
 ## Done
 
 ### 1. Mark a habit or task as "missed"
@@ -268,3 +259,13 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **What:** Settings › Defaults pickers compact on the right; habit time-of-day Reminder removed (the "complete by" warning stays); US ZIP search (zippopotam.us); current location re-checked on opening the app (at most once a minute) and with a new pull-down-to-refresh on Today; city name looked up at ~100 m; weather line spread across the screen.
 - **Added:** 2026-11-17
 - **Shipped:** v1.12.1 (2026-11-17)
+
+### 19. Toasts: fewer, a top pill, full-screen celebrations, subtle animations
+- **Added:** 2026-11-17
+- **Decided (2026-11-17):**
+  - **Full-screen takeover** (blurred backdrop, card springs in, tap anywhere except Undo to dismiss): "Everything done for the day" (with confetti), new personal record (🏆), "Saved data couldn’t be read".
+  - **Drop these toasts** (the result is already visible and undoable in place): task completed, duplicated, order updated, task added for the day you're viewing (adding to another day keeps "Added to … · View"), habit created, journal saved/updated, workout logged/saved, exercise added/saved, "Switched to X" when picked by the user, category added, "Reminders on" / "Notifications allowed", closed-app reminders on/off success (warnings/failures stay).
+  - **Remaining toasts become a top pill** that drops from under the status bar (message left, Undo right; swipe up or tap to dismiss; ~4 s, 6 s with Undo; never covers the + button or tab bar).
+  - **Animations:** tab switches slide/fade (150–200 ms), check-off pop + progress ring animation, list items slide in / collapse out, springier sheets, long-press menu scales from the item, streak flame flicker, pull-to-refresh spinner. Reduced Motion → fades only, no confetti.
+- **Size:** medium.
+- **Shipped:** v1.13.0 (2026-11-18)
