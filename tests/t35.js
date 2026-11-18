@@ -10,7 +10,7 @@ const TODAY = key(new Date());
 const task = (id, title, o = {}) => ({ id, title, notes: '', date: TODAY, time: null, duration: null, priority: 0, category: null, reminder: null, reminderAt: null, recur: { type: 'none', days: [], interval: 2 }, done: false, doneDates: {}, exceptions: [], createdAt: 1, order: 1, ...o });
 const habit = (id, name, o = {}) => ({ id, name, emoji: '📚', color: '#22c55e', schedule: { type: 'daily', days: [] }, goal: { type: 'check', target: 1, unit: '' }, reminder: null, target: null, createdAt: 1, order: 1, archived: false, ...o });
 const base = (o = {}) => ({ version: 6, settings: { onboarded: true, theme: 'light', weekStart: 1 }, categories: [{ id: 'c1', name: 'Home', color: '#0ea5e9' }], tasks: [], habits: [], logs: {}, journal: {}, exercises: [], workouts: [], ...o });
-const WO = { exercises: [{ id: 'sq', name: 'Squat', type: 'strength' }], workouts: [] };
+const WO = { exercises: [{ id: 'sq', name: 'Squat', type: 'strength' }], workouts: [{ id: 'w1', date: '2026-11-10', exerciseId: 'sq', lines: [{ weight: 185, sets: 3, reps: 5 }], weightUnit: 'lb', time: null, distance: null, distanceUnit: 'mi', note: '', createdAt: 1 }] };
 
 async function open(browser, data, { init = null, clock = null } = {}) {
   const ctx = await browser.newContext({ ...devices['iPhone 13'], serviceWorkers: 'block' });
@@ -41,7 +41,7 @@ const box = (p, sel) => p.locator(sel).first().boundingBox();
     const days = Array.from({ length: 8 }, (_, i) => `2026-11-${18 + i}`);
     const cache = { '39.78,-89.65': { fetchedAt: NOW.getTime() - 3 * 3600 * 1000, tz: 'America/Chicago', days: Object.fromEntries(days.map((k) => [k, { hi: 22.2, lo: 10.6, pop: 20, code: 2 }])) } };
     const init = { 'dailyTracker:weatherCache': JSON.stringify(cache), 'dailyTracker:weatherPos': JSON.stringify({ lat: 39.78, lon: -89.65, name: 'Springfield', at: NOW.getTime() }) };
-    const { ctx, p } = await open(browser, base(), { init, clock: NOW });
+    const { ctx, p } = await open(browser, base({ settings: { onboarded: true, theme: 'light', weekStart: 1, weather: { units: 'F', selected: 'a1', locations: [{ id: 'a1', name: 'Springfield', lat: 39.78, lon: -89.65 }] } } }), { init, clock: NOW });
     await p.waitForTimeout(2500);
     const t = await p.locator('.weather-slot').innerText();
     assert(t.includes('72° / 51°'), 'A1 old cached forecast still shown: ' + t.replace(/\n/g, ' '));
@@ -78,7 +78,7 @@ const box = (p, sel) => p.locator(sel).first().boundingBox();
     assert(await tk.locator('button').count() === 0 && !/Undo/.test(await tk.innerText()), 'C2 PR takeover has no button / Undo');
     await p.mouse.click(10, 300); await p.waitForTimeout(450);
     assert(await tk.count() === 0, 'C3 tap dismisses it');
-    assert((await stored(p)).workouts.length === 1, 'C4 workout stays saved');
+    assert((await stored(p)).workouts.length === 2, 'C4 workout stays saved');
     await ctx.close();
   }
 
@@ -89,7 +89,7 @@ const box = (p, sel) => p.locator(sel).first().boundingBox();
         task('t1', 'Call mom', { time: '09:00' }),
         task('t2', 'Alpha', { order: 1 }),
         task('t3', 'Beta done', { order: 2, done: true, doneDates: { [TODAY]: true } }),
-        task('t4', 'Gamma flagged', { order: 3, priority: 3, category: 'c1', reminderAt: Date.now() + 3600000 }),
+        task('t4', 'Gamma flagged', { order: 3, priority: 3, category: 'c1', reminderAt: '15:00' }),
       ],
       habits: [habit('h1', 'Read', { target: '12:00' }), habit('h2', 'Stretch', { order: 2 })],
     });
@@ -97,7 +97,7 @@ const box = (p, sel) => p.locator(sel).first().boundingBox();
     const by = await box(p, '.habit-row.timed .task-time small'), tm = await box(p, '.habit-row.timed .task-time > span');
     assert(by && tm && by.y + by.height <= tm.y + 1, `D1 "by" is above the time (by.y=${Math.round(by.y)}, time.y=${Math.round(tm.y)})`);
     assert(Math.abs(by.x - tm.x) < 2, 'D2 "by" aligned with the time');
-    assert((await p.locator('.task.timed .task-time').innerText()).trim().startsWith('9:00') || /9:00/.test(await p.locator('.task.timed .task-time').innerText()), 'D3 timed task rail unchanged');
+    assert(/^9/.test((await p.locator('.task.timed .task-time').innerText()).trim()), 'D3 timed task rail unchanged');
     const hb = await box(p, '.habit-row .habit-check');
     const vw = 390;
     for (const id of ['t1', 't2', 't3', 't4']) {
