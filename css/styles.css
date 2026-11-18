@@ -1170,7 +1170,7 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .sheet-root.pop .sheet {
   position: fixed; width: 260px; max-width: calc(100vw - 16px); max-height: min(420px, calc(100dvh - 16px));
   border-radius: 14px; padding-bottom: 0; border: 1px solid var(--border);
-  opacity: 0; transform: scale(.97); transform-origin: top left; transition: opacity .12s, transform .12s var(--ease);
+  opacity: 0; transform: scale(.9); transform-origin: top left; transition: opacity .15s, transform .2s cubic-bezier(.3, 1.2, .5, 1);
 }
 .sheet-root.pop.open .sheet { opacity: 1; transform: none; }
 .sheet-root.pop .sheet-grabber { display: none; }
