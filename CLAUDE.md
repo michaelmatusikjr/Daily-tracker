@@ -32,13 +32,14 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
 
 ## Release workflow (tiered – keep it token-efficient)
 1. Work on a feature branch; batch backlog items into one release.
-2. **Build:** for anything beyond a small fix, use one *fresh* builder subagent (`model: sonnet`) with a self-contained spec. Don't resume long-lived agents across releases. Small fixes: do them directly.
-3. **Test:** run the relevant suites; full `tests/run-all.sh` before release.
-4. **QA gate (risk-based):**
+2. **Model choice:** spin up an agent for each task using the *cheapest* model that can do it (`haiku` first, e.g. searches, simple edits, test runs); step up to `sonnet` and only then `opus` when the task genuinely needs it (complex logic, data safety, QA review). State the reason when using a more expensive model.
+3. **Build:** for anything beyond a small fix, use one *fresh* builder subagent on the cheapest model that can handle it (see step 2) with a self-contained spec. Don't resume long-lived agents across releases. Small fixes: do them directly.
+4. **Test:** run the relevant suites; full `tests/run-all.sh` before release.
+5. **QA gate (risk-based):**
    - Data safety, storage/import/export, sync, reminders/push, security, server changes → one *fresh* QA subagent reviewing a `git archive` copy (adversarial, verdict + ranked findings).
    - Cosmetic/wording/layout → no QA agent; relevant suites + a screenshot check.
-5. **Release:** fast-forward `main` to the tested commit (`git push origin <commit>:main`). Only QA-approved/tested commits go to `main` because Pages serves it live.
-6. Mark items Done in `BACKLOG.md` with the version. Tell the user briefly what changed and to tap **Reload** in the app.
+6. **Release:** fast-forward `main` to the tested commit (`git push origin <commit>:main`). Only QA-approved/tested commits go to `main` because Pages serves it live.
+7. Mark items Done in `BACKLOG.md` with the version. Tell the user briefly what changed and to tap **Reload** in the app.
 
 ## Push server (deployed)
 - Worker: `https://daily-tracker-push.michael-matusik-jr.workers.dev`, D1 `daily-tracker-push`, cron every minute. Config in `server/wrangler.toml` (no secrets). Secrets `VAPID_PRIVATE_KEY`, `REGISTER_KEY` live only in Cloudflare.
