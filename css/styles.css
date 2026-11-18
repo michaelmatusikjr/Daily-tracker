@@ -1466,3 +1466,16 @@ input, textarea, [contenteditable], [contenteditable] * { -webkit-user-select: t
   .ghost-out.collapsing { height: auto !important; }
   .sheet { transition-timing-function: ease-out !important; }
 }
+
+/* ---------- 1.13.3: tap-and-hold feedback (onItemMenu) ---------- */
+/* While the finger is down the item sinks a little and a soft accent glow spreads from the finger;
+   when the menu opens the item pops back. Uses `scale` so it composes with any transform/animation. */
+.lp-hold { scale: .965; transition: scale var(--lp-ms, 380ms) cubic-bezier(.3, 0, .2, 1), box-shadow var(--lp-ms, 380ms) ease-out;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), 0 6px 18px rgba(0,0,0,.08);
+  background-image: radial-gradient(circle at var(--lp-x, 50%) var(--lp-y, 50%), color-mix(in srgb, var(--accent) 14%, transparent) 0, transparent 70%); }
+.lp-pop { animation: lpPop .3s cubic-bezier(.34, 1.56, .64, 1); }
+@keyframes lpPop { 0% { scale: .965; } 60% { scale: 1.02; } 100% { scale: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .lp-hold { scale: none; transition: box-shadow .15s; }
+  .lp-pop { animation: none; }
+}

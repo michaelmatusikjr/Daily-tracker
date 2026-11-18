@@ -298,15 +298,27 @@ export function onItemMenu(el, open, { delay = 500 } = {}) {
   const skip = '.drag-handle, input, textarea, select';
   let timer = null, sx = 0, sy = 0, suppress = false, lastOpen = 0, lastMode = null, lastType = 'mouse', lastDown = 0;
   const fire = (mode, info) => { lastOpen = Date.now(); lastMode = mode; open(mode, info); };
-  const cancel = () => { clearTimeout(timer); timer = null; };
+  // Hold feedback: after a short pause (so taps and scrolls don't flicker) the item sinks and a glow grows
+  // while the finger stays down; when the menu opens it pops back. Pure CSS classes (see .lp-hold / .lp-pop).
+  let holdTimer = null;
+  const unhold = () => { clearTimeout(holdTimer); holdTimer = null; el.classList.remove('lp-hold'); };
+  const cancel = () => { clearTimeout(timer); timer = null; unhold(); };
   el.addEventListener('pointerdown', (e) => {
     suppress = false; lastType = e.pointerType || 'mouse'; lastDown = Date.now();
     if (lastType === 'mouse' || !e.isPrimary || e.target.closest(skip)) return;
     sx = e.clientX; sy = e.clientY;
     const target = e.target;
     cancel();
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--lp-x', `${Math.round(sx - r.left)}px`);
+    el.style.setProperty('--lp-y', `${Math.round(sy - r.top)}px`);
+    el.style.setProperty('--lp-ms', `${Math.max(100, delay - 120)}ms`);
+    holdTimer = setTimeout(() => el.classList.add('lp-hold'), 120);
     timer = setTimeout(() => {
       timer = null; suppress = true; haptic(10); swallowNextClick();
+      unhold();
+      el.classList.remove('lp-pop'); void el.offsetWidth; el.classList.add('lp-pop');
+      setTimeout(() => el.classList.remove('lp-pop'), 320);
       fire('touch', { target, x: sx, y: sy });
     }, delay);
   });
