@@ -87,7 +87,7 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
   let st = await stored(p);
   const wp = st.tasks.find((x) => x.id === 't2');
   assert(JSON.stringify(wp.doneDates) === JSON.stringify({ [TODAY]: true }) && (await p.textContent('.tv-state')).startsWith('Done') && (await p.textContent('.tv-done')).includes('Mark not done'), 'D1 recurring: Mark done affects only this occurrence; view updates in place');
-  assert((await p.textContent('#toasts')).includes('Undo'), 'D1 with an Undo toast');
+  assert(!(await p.textContent('#toasts')).includes('Undo'), 'D1 completing shows no toast (the view updates in place)');
   await p.click('.tv-done'); await p.waitForTimeout(300);
   assert(!(await stored(p)).tasks.find((x) => x.id === 't2').doneDates[TODAY] && (await p.textContent('.tv-state')).startsWith('Not done'), 'D2 Mark not done');
   await esc(p);

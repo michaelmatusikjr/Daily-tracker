@@ -82,7 +82,7 @@ export function openProfileMenu() {
       onclick: () => {
         if (p.id === active.id) { sheet.close(); return; }
         sheet.close();
-        if (switchProfile(p.id)) toast(`Switched to ${p.name}`);
+        switchProfile(p.id);
       },
     }, avatarEl(p, 44), h('span.profile-name', p.name), p.id === active.id ? icon('check', { size: 20, cls: 'profile-check' }) : null))));
   const action = (ic, label, onclick, cls = '') => h(`button.menu-item${cls}`, { type: 'button', onclick }, icon(ic, { size: 20 }), h('span', label));

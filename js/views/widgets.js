@@ -73,10 +73,14 @@ export function weekDots(hb, end = todayKey()) {
   return wrap;
 }
 
-export function streakBadge(s) {
+const lastStreak = new Map(); // habit id -> streak last rendered (a rise makes the flame flicker once)
+export function streakBadge(s, id = null) {
+  const prev = id ? lastStreak.get(id) : undefined;
+  if (id) lastStreak.set(id, s.current);
   if (!s.current) return null;
-  return h('span.streak', { title: `Current streak: ${s.current} ${s.unit}${s.current === 1 ? '' : 's'}` },
-    '🔥 ', h('b', String(s.current)), s.unit === 'week' ? ' wk' : '');
+  const rose = prev !== undefined && s.current > prev;
+  return h(`span.streak${rose ? '.flick' : ''}`, { title: `Current streak: ${s.current} ${s.unit}${s.current === 1 ? '' : 's'}` },
+    h('span.flame', '🔥'), ' ', h('b', String(s.current)), s.unit === 'week' ? ' wk' : '');
 }
 
 /** Task row with one-tap completion. */
@@ -107,7 +111,7 @@ export function taskRow(t, k, { draggable = false, showDate = false, nowMin = nu
     isNow = nowMin >= s && nowMin < s + (t.duration || 30);
   }
 
-  const row = h(`li.task${done ? '.done' : ''}${anim ? '.pop' : ''}${isNow ? '.is-now' : ''}`, {
+  const row = h(`li.task${done ? '.done' : ''}${anim ? '.pop' : ''}${ctx.anim.has('new-' + t.id) ? '.slide-in' : ''}${isNow ? '.is-now' : ''}`, {
     dataset: { id: t.id }, style: { '--prio': PRIORITIES[t.priority || 0].color },
   },
   h('button.check', {

@@ -75,17 +75,14 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     const openEdit = () => q.evaluate(async () => { const S = await import('./js/store.js'); const F = await import('./js/workoutForm.js'); F.openWorkoutForm(S.getState().workouts.find((w) => w.id === 'w2')); }).then(() => q.waitForTimeout(200));
     await openEdit(); await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(250);
     let t = await q.textContent('#toasts');
-    assert(!t.includes('🏆') && t.includes('Saved Squat'), 'P1 unchanged re-save shows plain saved toast: ' + t.slice(0, 40));
-    await q.click('.toast-action'); await q.waitForTimeout(200);
+    assert(!t.includes('🏆') && t === '' && await q.locator('.takeover').count() === 0, 'P1 unchanged re-save shows no toast and no celebration: ' + t.slice(0, 40));
     await openEdit(); await q.click('.sheet button:has-text("Add note")'); await q.fill('.sheet textarea', 'felt good'); await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(250);
     t = await q.textContent('#toasts');
-    assert(!t.includes('🏆'), 'P1 note-only change: no 🏆');
-    await q.click('.toast-action'); await q.waitForTimeout(200);
-    assert(!(await stored(q)).workouts.find((w) => w.id === 'w2').note, 'P1 Undo still restores the entry');
+    assert(!t.includes('🏆') && await q.locator('.takeover').count() === 0, 'P1 note-only change: no 🏆');
     await openEdit(); await q.locator('.wo-line input').nth(0).fill('245'); await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(250);
-    t = await q.textContent('#toasts');
-    assert(t.includes('🏆 New 3×5 max & 1-rep max: Squat 245 lbs'), 'P1 a raised weight is newly earned and toasts both records: ' + t.slice(0, 60));
-    await q.click('.toast-action'); await q.waitForTimeout(200);
+    t = ((await q.textContent('.takeover-emoji')) + ' ' + (await q.textContent('.takeover-msg')));
+    assert(t.includes('🏆 New 3×5 max & 1-rep max: Squat 245 lbs'), 'P1 a raised weight is newly earned and celebrates both records: ' + t.slice(0, 60));
+    await q.click('.takeover-action'); await q.waitForTimeout(300);
     assert((await stored(q)).workouts.find((w) => w.id === 'w2').lines[0].weight === 235, 'P1 Undo reverts the edit');
     await c2.close();
   }

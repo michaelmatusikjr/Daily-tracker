@@ -32,6 +32,8 @@ const SHELL = [
   './js/journalForm.js',
   './js/weather.js',
   './js/pullRefresh.js',
+  './js/takeover.js',
+  './js/motion.js',
   './js/weatherUi.js',
   './js/views/today.js',
   './js/views/widgets.js',

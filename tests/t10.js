@@ -133,7 +133,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     await go(p, '#today');
     await p.click('.avatar-btn'); await p.waitForTimeout(250);
     await p.click('.profile-item:has-text("Sam")'); await p.waitForTimeout(400);
-    assert((await toastText(p)).includes('Switched to Sam'), 'P2 "Switched to Sam" toast');
+    assert(!(await toastText(p)).includes('Switched to Sam'), 'P2 no "Switched to Sam" toast when the user picks a profile');
     assert(await S(p, () => [document.documentElement.dataset.theme, document.documentElement.dataset.accent].join()) === 'dark,teal', 'P2 Sam’s theme/accent applied');
     assert(await p.locator('.task').count() === 1, 'P2 Sam’s data shown');
     // Reminder fires for Sam even when Alex is active, prefixed with the name
@@ -218,7 +218,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert((await p.textContent('.sheet .form-error')).includes('future'), 'W5 future date rejected');
     await p.keyboard.press('Escape'); await p.waitForTimeout(300);
     await logWorkout(p, { name: 'Squats', isNew: true, lines: [[225, 3, 5]], date: '2026-11-10' });
-    assert((await toastText(p)).includes('Logged Squats · 225 lbs · 3 × 5'), 'W1 log new exercise; toast summary');
+    assert(!(await toastText(p)).includes('Logged'), 'W1 log new exercise; no toast');
     // Repeat: pick → prefilled → Save
     await go(p, '#workouts'); await p.click('.fab'); await p.waitForTimeout(200);
     const chips = await p.$$eval('.ex-chip', (e) => e.map((x) => x.textContent));
@@ -230,7 +230,8 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert((await stored(p)).workouts.length === 2, 'W1 pick → Save logs a repeat');
     // PR
     await logWorkout(p, { name: 'Squats', lines: [[245, 1, 3]] });
-    assert((await toastText(p)).includes('🏆 New 1-rep max: Squats 245 lbs'), 'W2 PR toast (new 1-rep max)');
+    assert(((await p.textContent('.takeover-emoji')) + ' ' + (await p.textContent('.takeover-msg'))).includes('🏆 New 1-rep max: Squats 245 lbs'), 'W2 PR takeover (new 1-rep max)');
+    await p.keyboard.press('Escape'); await p.waitForTimeout(350);
     assert(await p.locator('.wo-entry .pr-badge').count() === 1, 'W2 🏆 badge on the record entry');
     await p.click('.wo-entry:has(.pr-badge) .wo-del'); await p.waitForTimeout(200);
     assert(await p.locator('.pr-badge').count() === 0, 'W2 records recompute after delete');
@@ -241,9 +242,9 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     const allText = await p.textContent('.view'); assert(allText.includes('225 × 3×5, 245 × 1×3'), 'W3 multi-line summary' + (allText.includes('245') ? '' : ' :: ' + allText.slice(0, 300)));
     // Cardio + time-only strength
     await logWorkout(p, { name: 'Walk', isNew: true, type: 'cardio', time: '30', dist: '2.5' });
-    assert((await toastText(p)).includes('Walk · 30 min · 2.5 mi · 12:00/mi'), 'W4 cardio summary with pace');
+    assert((await toastText(p)) === '', 'W4 cardio save: no toast');
     await logWorkout(p, { name: 'Plank', isNew: true, time: '1:30' });
-    assert((await toastText(p)).includes('Plank · 1:30'), 'W4 m:ss hold');
+    assert((await toastText(p)) === '', 'W4 m:ss hold: no toast');
     await logWorkout(p, { name: 'Walk', time: '0:45', dist: '3.5' });
     assert(!(await toastText(p)).includes('🏆'), 'W4 a longer walk is not a record (records are standard distances only)');
     // Filters

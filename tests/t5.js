@@ -32,6 +32,7 @@ async function swipe(p, sel, dx) {
   await p.reload(); await p.waitForTimeout(500);
   assert(await p.locator('.load-fail').count() === 1, '1 warning card shown');
   assert(await p.evaluate(() => Object.keys(localStorage).some((k) => k.includes(':backup-'))), '1 backup key written');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(300); // dismiss the unreadable-data takeover
   await p.click('.fab'); await p.fill('.qa-input', 'Should not save'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
   assert((await stored()) === '{"version":1, "tasks": [ broken', '1 raw data not overwritten');
   await p.screenshot({ path: SP + '/q-loadfail.png' });
@@ -128,9 +129,9 @@ async function swipe(p, sel, dx) {
   });
   await p.waitForTimeout(200);
   await p.locator('.task .check').first().click(); await p.waitForTimeout(400);
-  const tmsg = await p.locator('.toast').textContent();
-  assert(tmsg.includes('Everything done') && tmsg.includes('Undo'), '16 celebration toast with Undo');
-  await p.click('.toast-action'); await p.waitForTimeout(300);
+  const tmsg = await p.locator('.takeover').textContent();
+  assert(tmsg.includes('Everything done') && tmsg.includes('Undo'), '16 celebration takeover with Undo');
+  await p.click('.takeover-action'); await p.waitForTimeout(300);
   assert(JSON.parse(await stored()).tasks.find((t) => t.id === 't1').done === false, '17 undo restores not-done');
   // 28. a journal entry added from + shows on Today
   await p.click('.fab'); await p.waitForTimeout(300);

@@ -108,43 +108,67 @@ export function tabs(options, value, onChange, { label = '', idPrefix = 'tab' } 
 }
 
 /** Progress ring. pct 0..1 */
-export function ring(pct, { size = 64, stroke = 7, color = 'var(--accent)', track = 'var(--ring-track)', label = null, cls = '' } = {}) {
+export function ring(pct, { size = 64, stroke = 7, color = 'var(--accent)', track = 'var(--ring-track)', label = null, cls = '', from = null } = {}) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
+  const off = (p) => c * (1 - Math.min(1, Math.max(0, p)));
+  const animate = typeof from === 'number' && from !== pct;
   const svg = s('svg', { class: `ring ${cls}`, width: size, height: size, viewBox: `0 0 ${size} ${size}`, 'aria-hidden': 'true' },
     s('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: track, 'stroke-width': stroke }),
     s('circle', {
       class: 'ring-fg', cx: size / 2, cy: size / 2, r, fill: 'none', stroke: color, 'stroke-width': stroke,
-      'stroke-linecap': 'round', 'stroke-dasharray': c, 'stroke-dashoffset': c * (1 - Math.min(1, Math.max(0, pct))),
+      'stroke-linecap': 'round', 'stroke-dasharray': c, 'stroke-dashoffset': off(animate ? from : pct),
       transform: `rotate(-90 ${size / 2} ${size / 2})`,
     }));
+  if (animate) {
+    // Start from the previous value, then let the CSS transition run to the new one.
+    const fg = svg.querySelector('.ring-fg');
+    requestAnimationFrame(() => requestAnimationFrame(() => { fg.style.strokeDashoffset = String(off(pct)); }));
+  }
   if (label === null) return svg;
   return h('div.ring-wrap', { style: { width: size + 'px', height: size + 'px' } }, svg, h('span.ring-label', label));
 }
 
-// ---------- Toasts ----------
+// ---------- Toasts (a pill that drops in from the top) ----------
 let toastTimer = null;
-export function toast(message, { action, onAction, duration = 4500, force = false } = {}) {
+/** Hide any visible pill right away (a full-screen takeover replaces it). */
+export function clearToast() {
+  clearTimeout(toastTimer);
+  document.getElementById('toasts')?.replaceChildren();
+}
+export function toast(message, { action, onAction, duration, force = false } = {}) {
   const host = document.getElementById('toasts');
   if (!host) return;
   // While saving is failing (storage full) a "Saved"/"Logged" toast would be a lie: the
   // persistent "Not saved" banner is shown instead. `force` is for messages unrelated to saving.
   if (!force && !isStorageOk()) return;
-  clearTimeout(toastTimer);
-  host.replaceChildren();
-  const el = h('div.toast', { role: 'status' },
+  clearToast();
+  // 4 s, or 6 s when there is an action; a caller may ask for longer.
+  const ms = Math.max(duration ?? 0, action ? 6000 : 4000);
+  const el = h('div.toast', { role: 'status', onclick: (e) => { if (!e.target.closest('.toast-action')) dismiss(); } },
     h('span.toast-msg', message),
     action ? h('button.toast-action', {
       type: 'button',
       onclick: () => { dismiss(); onAction?.(); },
     }, action) : null);
+  // Swipe up to dismiss.
+  let sy = null;
+  el.addEventListener('pointerdown', (e) => { sy = e.clientY; });
+  el.addEventListener('pointermove', (e) => { if (sy !== null && sy - e.clientY > 30) { sy = null; dismiss(); } });
+  const endSwipe = () => { sy = null; };
+  el.addEventListener('pointerup', endSwipe);
+  el.addEventListener('pointercancel', endSwipe);
   host.append(el);
-  requestAnimationFrame(() => el.classList.add('show'));
+  requestAnimationFrame(() => requestAnimationFrame(() => { if (el.isConnected) el.classList.add('show'); }));
+  let gone = false;
   function dismiss() {
+    if (gone) return;
+    gone = true;
     el.classList.remove('show');
+    el.classList.add('leaving');
     setTimeout(() => el.remove(), 250);
   }
-  toastTimer = setTimeout(dismiss, duration);
+  toastTimer = setTimeout(dismiss, ms);
   return dismiss;
 }
 

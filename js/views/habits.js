@@ -33,7 +33,7 @@ export function renderHabits() {
         type: 'button', 'aria-pressed': String(reorder), onclick: () => { ctx.ui.habitsReorder = !reorder; ctx.rerender(); },
       }, icon(reorder ? 'check' : 'reorder', { size: 16 }), reorder ? 'Done' : 'Reorder') : null)));
   root.append(tabs([{ value: 'active', label: 'Active habits' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'active',
-    (v) => { ctx.ui.habitsTab = v; ctx.ui.habitsReorder = false; ctx.rerender(); }, { label: 'Habits view', idPrefix: 'habits-tab' }));
+    (v) => { ctx.slide = v === 'stats' ? 'r' : 'l'; ctx.ui.habitsTab = v; ctx.ui.habitsReorder = false; ctx.rerender(); }, { label: 'Habits view', idPrefix: 'habits-tab' }));
   const body = h('div.tab-panel', { id: 'habits-tab-panel', role: 'tabpanel', 'aria-labelledby': `habits-tab-${onStats ? 'stats' : 'active'}` });
   root.append(body);
   if (onStats) { body.append(habitStatsPanel(st)); return root; }
@@ -70,7 +70,7 @@ export function renderHabits() {
       li.append(h('div.habit-card-bottom',
         weekDots(hb, today),
         h('div.streaks',
-          streakBadge(s) || h('span.streak.zero', '🔥 0'),
+          streakBadge(s, hb.id) || h('span.streak.zero', '🔥 0'),
           h('span.best', { title: 'Best streak' }, icon('trophy', { size: 13 }), String(s.best), s.unit === 'week' ? ' wk' : ''))));
     }
     return li;

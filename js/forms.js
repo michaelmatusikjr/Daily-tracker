@@ -215,8 +215,10 @@ export function openQuickAdd() {
     if ((data.reminder !== null || data.reminderAt) && reminderStatus() === 'default') ensureReminderPermission();
     sheet.close();
     const where = relativeLabel(p.date);
-    toast(`Added to ${where}${p.time ? ' at ' + fmtTime(p.time, st.settings.timeFormat) : ''}`,
-      p.date !== ctx.ui.date ? { action: 'View', onAction: () => { ctx.setDate(p.date); ctx.go('today'); } } : {});
+    if (p.date !== ctx.ui.date) {
+      toast(`Added to ${where}${p.time ? ' at ' + fmtTime(p.time, st.settings.timeFormat) : ''}`,
+        { action: 'View', onAction: () => { ctx.setDate(p.date); ctx.go('today'); } });
+    }
   };
 
   const form = h('form.qa-form', { onsubmit: (e) => { e.preventDefault(); submit(); } },
@@ -463,7 +465,6 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
     if (removed.length) deleteFiles(removed).catch(() => {});
     photos.saved = true;
     sheet.close();
-    if (isNew) toast(`Added “${t}”`);
   }
 
   const footer = [
@@ -688,7 +689,6 @@ export function openHabitForm(habit) {
     if (!isNew) data.id = habit.id;
     saveHabit(data);
     sheet.close();
-    if (isNew) toast(`Habit “${n}” created`);
   }
 
   const footer = [h('span'), h('button.btn.primary', { type: 'button', onclick: submit }, isNew ? 'Create habit' : 'Save')];

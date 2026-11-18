@@ -3,16 +3,18 @@ import { update, getState, uid, getActiveProfile } from './store.js';
 import { deleteFiles, copyFiles } from './attachments.js';
 import { ctx } from './ctx.js';
 import { toast, haptic, choose } from './ui.js';
+import { takeover } from './takeover.js';
+import { prepareGhost } from './motion.js';
 import { isRecurring, isTaskDone, habitTarget, habitVal, dayProgress } from './logic.js';
 import { todayKey, fmtDateShort, addDays } from './dates.js';
-import { syncHabitLink, computeRecords, exerciseById, workoutSummary, recordToast } from './workouts.js';
+import { syncHabitLink, computeRecords, exerciseById, recordToast } from './workouts.js';
 
 function celebrateIfDone(k, before, undo = null) {
   const after = dayProgress(getState(), k);
   if (before.pct < 1 && after.pct === 1 && after.total > 0) {
     ctx.anim.add('ring');
-    const msg = k === todayKey() ? 'Everything done for today. Nice work! 🎉' : 'Everything done for that day 🎉';
-    setTimeout(() => toast(msg, undo ? { action: 'Undo', onAction: undo } : {}), 50);
+    const message = k === todayKey() ? 'Everything done for today. Nice work!' : 'Everything done for that day';
+    setTimeout(() => takeover({ emoji: '🎉', message, confetti: true, ...(undo ? { action: 'Undo', onAction: undo } : {}) }), 50);
     haptic([20, 40, 20]);
     return true;
   }
@@ -78,9 +80,7 @@ export function toggleTask(id, k) {
   haptic(was ? 5 : 12);
   if (was) return;
   const undo = () => setTaskDone(id, k, was);
-  if (!celebrateIfDone(k, before, undo)) {
-    toast(`Completed “${t.title}”`, { action: 'Undo', onAction: undo });
-  }
+  celebrateIfDone(k, before, undo);
 }
 
 export function moveToToday(ids) {
@@ -106,6 +106,7 @@ export function saveTask(data) {
     } else {
       const maxOrder = s.tasks.reduce((m, t) => Math.max(m, t.order || 0), 0);
       id = uid();
+      ctx.anim.add('new-' + id);
       s.tasks.push({
         notes: '', time: null, duration: null, priority: 0, category: null, reminder: null, reminderAt: null,
         recur: { type: 'none', days: [], interval: 2 }, done: false, doneDates: {}, exceptions: [],
@@ -142,7 +143,9 @@ export async function deleteTask(id, k) {
   }
   const snapshot = JSON.parse(JSON.stringify(t));
   const index = st.tasks.indexOf(t);
+  const ghost = prepareGhost(document.querySelector(`li.task[data-id="${CSS.escape(id)}"]`));
   update((s) => { s.tasks = s.tasks.filter((x) => x.id !== id); });
+  ghost.play();
   deleteFilesLater(id, (t.attachments || []).map((a) => a.id));
   toast(`Deleted “${t.title}”`, {
     action: 'Undo',
@@ -201,7 +204,6 @@ export function duplicateTask(id) {
       if (list.length) update((s) => { const x = s.tasks.find((y) => y.id === copy.id); if (x) x.attachments = list; });
     }).catch(() => toast('The copy was made, but its photos couldn’t be copied.', { force: true }));
   }
-  toast(`Duplicated “${t.title}”`, { action: 'Undo', onAction: () => update((s) => { s.tasks = s.tasks.filter((x) => x.id !== copy.id); }) });
 }
 
 export function reorderTasks(ids) {
@@ -212,11 +214,9 @@ export function reorderTasks(ids) {
 
 /**
  * Reorder Today's Anytime list, which mixes tasks and habits. Writes `todayOrder` on every item in
- * the new order, in one update; `order` (used by the Habits tab) is left alone. Undo restores the
- * previous values.
+ * the new order, in one update; `order` (used by the Habits tab) is left alone.
  */
 export function reorderToday(ids) {
-  const prev = {};
   const write = (map) => update((s) => {
     for (const x of [...s.tasks, ...s.habits]) {
       if (!(x.id in map)) continue;
@@ -250,9 +250,7 @@ export function reorderToday(ids) {
   if (!slots.length) merged.push(...rest);
   const next = {};
   merged.forEach((id, i) => { next[id] = i; });
-  for (const x of all) if (x.id in next) prev[x.id] = Number.isFinite(x.todayOrder) ? x.todayOrder : null;
   write(next);
-  toast('Order updated', { action: 'Undo', onAction: () => write(prev) });
 }
 
 // ---------- Habits ----------
@@ -377,7 +375,9 @@ export function deleteHabit(id) {
   if (!habit) return;
   const snap = JSON.parse(JSON.stringify(habit));
   const logs = st.logs[id] ? { ...st.logs[id] } : null;
+  const ghost = prepareGhost(document.querySelector(`li[data-id="${CSS.escape(id)}"]`));
   update((s) => { s.habits = s.habits.filter((x) => x.id !== id); delete s.logs[id]; delete s.autoHabit[id]; unlinkWorkoutHabit(s, id); });
+  ghost.play();
   toast(`Deleted “${habit.name}”`, {
     action: 'Undo',
     onAction: () => update((s) => { s.habits.push(snap); if (logs) s.logs[id] = logs; }),
@@ -405,7 +405,6 @@ export function saveJournal(k, { mood, note }) {
   const next = empty ? null : { mood: m, note: n, updatedAt: Date.now() };
   putJournal(k, next);
   if (empty) toast('Journal entry deleted', { action: 'Undo', onAction: () => putJournal(k, prev) });
-  else toast(prev ? 'Journal entry updated' : 'Journal entry saved');
 }
 
 /** Delete the entry for day k, with Undo. */
@@ -537,9 +536,7 @@ export function saveWorkout(data, { newExercise = null } = {}) {
     ctx.anim.add('w-' + id);
     haptic([20, 40, 20]);
     // e.g. '🏆 New 3×5 max: Squat 235 lbs' or '🏆 Fastest 5K: Run 24:50'
-    toast(recordToast(labels, ex.name), { ...undo, duration: 6000 });
-  } else {
-    toast(`${data.id ? 'Saved' : 'Logged'} ${ex.name} · ${workoutSummary(w, ex, st.settings)}`, undo);
+    takeover({ emoji: '🏆', message: recordToast(labels, ex.name).replace(/^🏆\s*/, ''), ...undo });
   }
   return id;
 }

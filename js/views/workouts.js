@@ -150,7 +150,7 @@ export function renderWorkouts() {
     h('div.head-actions', iconBtn('list', 'Manage exercises', () => openExerciseManager()))));
   const onStats = ctx.ui.workoutsTab === 'stats';
   root.append(tabs([{ value: 'workouts', label: 'Workouts' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'workouts',
-    (v) => { ctx.ui.workoutsTab = v; ctx.rerender(); }, { label: 'Workouts view', idPrefix: 'wo-tab' }));
+    (v) => { ctx.slide = v === 'stats' ? 'r' : 'l'; ctx.ui.workoutsTab = v; ctx.rerender(); }, { label: 'Workouts view', idPrefix: 'wo-tab' }));
   const body = h('div.tab-panel', { id: 'wo-tab-panel', role: 'tabpanel', 'aria-labelledby': `wo-tab-${onStats ? 'stats' : 'workouts'}` });
   root.append(body);
   if (onStats) { body.append(...workoutStatsPanel(st)); return root; }
@@ -396,7 +396,6 @@ export function openExerciseEditor(ex) {
       }
     });
     sheet.close();
-    toast(isNew ? `Added ${n}` : `Saved ${n}`);
   };
   const remove = () => confirmDeleteExercise(ex, () => sheet.close());
   const content = h('form.form', { onsubmit: (e) => { e.preventDefault(); save(); }, novalidate: true },

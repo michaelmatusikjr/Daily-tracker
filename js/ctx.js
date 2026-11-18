@@ -17,6 +17,8 @@ export const ctx = {
   },
   /** ids of elements that should play a "just changed" animation on next render */
   anim: new Set(),
+  /** one-shot slide direction ('l' | 'r') for the next render (sub-tab switches) */
+  slide: null,
   go: (route) => { location.hash = '#' + route; },
   setDate: () => {},
   rerender: () => {},

@@ -90,8 +90,9 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
     // Duplicate + Undo
     await hold(p, cdp, '.task:has-text("Buy milk") .task-main'); await pick(p, 'Duplicate');
     assert((await stored(p)).tasks.filter((t) => t.title === 'Buy milk').length === 2, 'T6 Duplicate');
-    await undo(p);
-    assert((await stored(p)).tasks.filter((t) => t.title === 'Buy milk').length === 1, 'T6 Undo removes the copy');
+    assert(await p.locator('#toasts .toast').count() === 0 || !(await p.textContent('#toasts')).includes('Duplicated'), 'T6 no Duplicated toast');
+    await p.evaluate(async () => { const S = await import('./js/store.js'); S.update((x) => { const c = x.tasks.filter((t) => t.title === 'Buy milk'); x.tasks = x.tasks.filter((t) => t !== c[c.length - 1]); }); }); await p.waitForTimeout(200);
+    assert((await stored(p)).tasks.filter((t) => t.title === 'Buy milk').length === 1, 'T6 copy removed (test cleanup)');
     // Mark done
     await hold(p, cdp, '.task:has-text("Call mom") .task-main'); await pick(p, 'Mark done');
     assert((await stored(p)).tasks.find((t) => t.id === 't3').done === true, 'T7 Mark done');

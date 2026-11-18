@@ -107,20 +107,21 @@ const rec = (p, workouts, exId, settings = {}) => p.evaluate(async ([ws, id, st]
     const hist = [W('w1', '2026-11-03', 'sq', { lines: [L(225, 3, 5)] }), W('w2', '2026-11-05', 'run', { distance: 3.11, distanceUnit: 'mi', time: 25 * 60 })];
     const { ctx: c2, p: q } = await open(browser, { workouts: hist });
     const log = async (name, fill) => {
+      await q.keyboard.press('Escape'); await q.waitForTimeout(250); // dismiss any takeover
       await go(q, '#workouts'); await q.click('.fab'); await q.click(`.ex-chip:has-text("${name}")`); await q.waitForTimeout(150);
       await fill(); await q.click('.sheet-foot .btn.primary'); await q.waitForTimeout(300);
     };
     await log('Squat', async () => { const i = q.locator('.wo-line input'); await i.nth(0).fill('235'); await i.nth(1).fill('3'); await i.nth(2).fill('5'); });
-    const t1 = await q.textContent('#toasts');
+    const t1 = (await q.textContent('.takeover-emoji')) + ' ' + (await q.textContent('.takeover-msg'));
     assert(t1.includes('🏆 New 3×5 max & 1-rep max: Squat 235 lbs'), 'U1 record toast names the record: ' + t1.slice(0, 50));
     assert(await q.locator('.wo-entry .pr-badge').count() === 1, 'U1 🏆 badge in history');
-    await q.click('.toast-action'); await q.waitForTimeout(200);
+    await q.click('.takeover-action'); await q.waitForTimeout(300);
     assert((await stored(q)).workouts.length === 2 && await q.locator('.pr-badge').count() === 0, 'U2 Undo reverts the record cleanly');
     await log('Squat', async () => { const i = q.locator('.wo-line input'); await i.nth(0).fill('235'); await i.nth(1).fill('2'); await i.nth(2).fill('5'); });
     await log('Squat', async () => { const i = q.locator('.wo-line input'); await i.nth(0).fill('235'); await i.nth(1).fill('1'); await i.nth(2).fill('5'); });
-    assert((await q.textContent('#toasts')).includes('🏆 New 3×5 max: Squat 235 lbs'), 'U3 "🏆 New 3×5 max: Squat 235 lbs" when the 3rd set completes');
+    assert(((await q.textContent('.takeover-emoji')) + ' ' + (await q.textContent('.takeover-msg'))).includes('🏆 New 3×5 max: Squat 235 lbs'), 'U3 "🏆 New 3×5 max: Squat 235 lbs" when the 3rd set completes');
     await log('Run', async () => { await q.fill('#wo-time', '24:50'); await q.fill('#wo-dist', '3.1'); });
-    assert((await q.textContent('#toasts')).includes('🏆 Fastest 5K: Run 24:50'), 'U4 "🏆 Fastest 5K: Run 24:50"');
+    assert(((await q.textContent('.takeover-emoji')) + ' ' + (await q.textContent('.takeover-msg'))).includes('🏆 Fastest 5K: Run 24:50'), 'U4 "🏆 Fastest 5K: Run 24:50"');
     await go(q, '#exercise/sq');
     const card = await q.textContent('.view');
     assert(card.includes('1-rep max') && card.includes('3×5 max') && card.includes('235 lbs') && card.includes('Nov 13'), 'U5 Strength card: 1-rep max and 3×5 max with dates');

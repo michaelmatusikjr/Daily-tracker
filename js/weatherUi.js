@@ -15,7 +15,7 @@ export function weatherSlot(dateKey) {
   return slot;
 }
 
-function fillWeather(slot) {
+function fillWeather(slot, fresh = false) {
   const st = getState();
   const w = st.settings.weather;
   const k = slot.dataset.date;
@@ -37,13 +37,13 @@ function fillWeather(slot) {
     if (f.pop !== null) kids.push(h('span.wx-pop', `💧 ${f.pop}%`));
     if (upd) note = h('p.wx-stale-note', upd.replace(/^ · /, ''));
   }
-  slot.replaceChildren(...[h(`div.weather-line${info.stale ? '.stale' : ''}`, ...kids), note].filter(Boolean));
+  slot.replaceChildren(...[h(`div.weather-line${info.stale ? '.stale' : ''}${fresh ? '.fresh' : ''}`, ...kids), note].filter(Boolean));
 }
 
 // Late results update only the weather line (no full re-render), and only if Today is still showing that date.
 onWeatherChange(() => {
   const slot = document.querySelector('.weather-slot');
-  if (slot && slot.dataset.date === ctx.ui.date) fillWeather(slot);
+  if (slot && slot.dataset.date === ctx.ui.date) fillWeather(slot, true);
 });
 
 // ---------- location menu ----------

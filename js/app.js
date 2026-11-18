@@ -2,6 +2,7 @@
 import { load, subscribe, getState, getLoadFailure, resolveLoadFailure, onSaveError, onSaveOk, getActiveProfile, handleStorageEvent, pendingLegacy, resolveLegacy, legacyTargetProfile, isStorageOk } from './store.js';
 import { ctx } from './ctx.js';
 import { h, closeAllSheets, isSheetOpen, confirmDialog, toast, choose } from './ui.js';
+import { takeover } from './takeover.js';
 import { icon } from './icons.js';
 import { applyTheme } from './theme.js';
 import { todayKey, monthStart, isValidKey } from './dates.js';
@@ -44,6 +45,8 @@ const TITLES = { completed: 'Completed', today: 'Today', habits: 'Habits', habit
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
 let lastRoute = null;
+let lastTabIdx = -1;
+const tabIdxOf = (name) => TABS.findIndex((t) => t.id === (name === 'habit' ? 'habits' : name === 'exercise' ? 'workouts' : name));
 let lastToday = todayKey();
 
 function parseRoute() {
@@ -143,14 +146,30 @@ function render() {
     case 'exercise': view = renderExercise(arg); break;
     default: view = renderToday();
   }
-  if (changedRoute) view.classList.add('enter');
+  // Slide in from the side of the tapped tab, but only when the tab/route really changed (re-renders
+  // happen every minute and on every data change). Sub-tabs (Habits/Workouts) set ctx.slide.
+  const tabIdx = tabIdxOf(name);
+  let dir = null;
+  if (changedRoute && lastRoute !== null && tabIdx >= 0 && lastTabIdx >= 0 && tabIdx !== lastTabIdx) dir = tabIdx > lastTabIdx ? 'r' : 'l';
+  else if (!changedRoute && ctx.slide) dir = ctx.slide;
+  ctx.slide = null;
+  if (dir) view.classList.add('slide-' + dir);
+  else if (changedRoute) view.classList.add('enter');
+  lastTabIdx = tabIdx;
   const failure = getLoadFailure();
   if (failure) view.prepend(loadFailureCard(failure));
   main.replaceChildren(view);
   ctx.anim.clear();
   const activeTab = name === 'habit' ? 'habits' : name === 'exercise' ? 'workouts' : name;
   nav.querySelectorAll('.nav-item').forEach((a) => {
-    if (a.dataset.tab === activeTab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    if (a.dataset.tab === activeTab) {
+      if (changedRoute && lastRoute !== null && a.getAttribute('aria-current') !== 'page') {
+        const ic = a.querySelector('.nav-icon');
+        ic?.classList.add('bounce');
+        setTimeout(() => ic?.classList.remove('bounce'), 400);
+      }
+      a.setAttribute('aria-current', 'page');
+    } else a.removeAttribute('aria-current');
   });
   document.title = `${TITLES[name]} · Daily Tracker`;
   fab.hidden = name === 'settings';
@@ -299,8 +318,9 @@ function init() {
     const toTop = () => { if (getLoadFailure()) window.scrollTo(0, 0); };
     window.addEventListener('load', () => { toTop(); requestAnimationFrame(toTop); });
     window.addEventListener('pageshow', toTop);
-    setTimeout(() => toast('Saved data couldn’t be read. Changes are paused until you choose.', {
-      action: 'Show', duration: 12000, onAction: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
+    setTimeout(() => takeover({
+      emoji: '⚠️', kind: 'alert', autoDismiss: false, message: 'Saved data couldn’t be read. Changes are paused until you choose.',
+      action: 'Show', onAction: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
     }), 300);
   }
   // Alarms were removed in 1.2.0: drop their leftover runtime state.

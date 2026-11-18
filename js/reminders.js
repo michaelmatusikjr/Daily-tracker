@@ -61,7 +61,6 @@ export async function ensureReminderPermission() {
   try { result = await Notification.requestPermission(); } catch { result = Notification.permission; }
   if (result === 'granted') {
     setNotifications(true);
-    toast('Notifications allowed – reminders are on');
     return 'ok';
   }
   if (result === 'denied') toast('Notifications were blocked, so reminders won’t appear', { duration: 6000 });

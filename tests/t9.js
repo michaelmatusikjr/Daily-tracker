@@ -91,7 +91,7 @@ async function openTaskFormWithTime(p) {
     await openTaskFormWithTime(p);
     await p.selectOption('.sheet select >> nth=1', '10'); await p.waitForTimeout(300);
     assert(await p.evaluate(() => window.__asked) === 1 && (await stored(p)).settings.notifications === true, 'R1 default → asked, granted → notifications on');
-    assert((await p.locator('.toast').textContent()).includes('reminders are on'), 'R1 confirmation toast');
+    assert(await p.locator('.toast').count() === 0, 'R1 no confirmation toast (the switch shows the state)');
     await ctx.close();
   }
   {

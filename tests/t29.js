@@ -83,8 +83,7 @@ const names = (p, sel) => p.locator(sel).evaluateAll((els) => els.map((e) => (e.
     await p.focus('ul.tasks .habit-row:has-text("Read") .drag-handle');
     await p.keyboard.press('ArrowUp'); await p.waitForTimeout(400);
     assert((await names(p, 'section:has(h2:text("Anytime")) ul.tasks > li')).slice(0, 4).join() === 'Buy milk,Water,Read,Call mom', 'R6 second move applied');
-    await p.click('#toasts .toast button:has-text("Undo")'); await p.waitForTimeout(400);
-    assert((await names(p, 'section:has(h2:text("Anytime")) ul.tasks > li')).slice(0, 4).join() === 'Buy milk,Water,Call mom,Read', 'R7 Undo restores the previous order');
+    assert(await p.locator('#toasts .toast').count() === 0, 'R7 reordering shows no toast (the new order is visible)');
     // New task goes after the dragged ones
     await p.evaluate(async () => { const A = await import('./js/actions.js'); A.saveTask({ title: 'Fresh', date: '2026-11-18', time: null }); });
     await p.waitForTimeout(300);

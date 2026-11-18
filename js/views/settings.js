@@ -105,7 +105,6 @@ export function renderSettings() {
         if (!v) return;
         ensureCategory(v);
         ctx.rerender();
-        toast(`Category “${v}” added`);
       },
     }, catInput, h('button.btn.secondary', { type: 'submit' }, icon('plus', { size: 16 }), 'Add'))));
 
@@ -138,7 +137,7 @@ export function renderSettings() {
       }
       if (!notifySupported()) { toast(rStatus === 'needs-install' ? 'Add the app to your Home Screen first' : 'Notifications are not supported here'); return; }
       const p = await requestPermission();
-      if (p === 'granted') { setSetting('notifications', true); reschedule(); toast('Reminders on'); }
+      if (p === 'granted') { setSetting('notifications', true); reschedule(); }
       else { setSetting('notifications', false); toast(p === 'denied' ? 'Notifications are blocked – see the help text' : 'Permission was not granted'); }
     })),
     notifOn ? h('div.set-actions', h('button.btn.secondary.small', {
@@ -211,10 +210,9 @@ function pushRows() {
       busy = true;
       if (want) {
         const r = await enablePush();
-        toast(r.ok ? (r.warning || 'Reminders will arrive even when the app is closed') : r.message, { duration: r.ok && !r.warning ? 4500 : 8000, force: true });
+        if (!r.ok || r.warning) toast(r.ok ? r.warning : r.message, { duration: 8000, force: true });
       } else {
         await disablePush();
-        toast('Closed-app reminders are off. Reminders appear while the app is open.', { force: true });
       }
       busy = false;
       ctx.rerender();

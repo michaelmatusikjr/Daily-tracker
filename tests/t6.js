@@ -56,7 +56,8 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   await p.reload(); await p.waitForTimeout(700);
   assert(await p.evaluate(() => window.scrollY) === 0, 'N5 starts at the top');
   assert(await p.locator('.load-fail').isVisible(), 'N5 card visible');
-  assert((await p.locator('.toast').textContent()).includes('couldn’t be read'), 'N5 toast shown');
+  assert((await p.locator('.takeover').textContent()).includes('couldn’t be read'), 'N5 takeover shown');
+  await p.keyboard.press('Escape'); await p.waitForTimeout(350);
   await p.click('.load-fail .danger-ghost'); await p.waitForTimeout(300);
   await p.click('.sheet .btn.danger'); await p.waitForTimeout(400);
   assert(await backups() === 1, 'N6 backups cleaned to the latest after reset');

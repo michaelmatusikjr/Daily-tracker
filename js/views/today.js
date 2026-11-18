@@ -15,6 +15,8 @@ import { weatherSlot } from '../weatherUi.js';
 import { habitIcon } from '../habitIcon.js';
 import { openTaskView } from '../taskView.js';
 
+let lastRing = { date: null, pct: null }; // previous day-ring value, so the ring animates from it
+
 /** One habit row (check/count control, long-press menu). `timed`: shows its "by" time in a rail like timed tasks. */
 function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
   const fmt = st.settings.timeFormat;
@@ -34,7 +36,7 @@ function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
     timed ? h('span.task-time', h('span', fmtTime(hb.target, fmt)), h('small', 'by')) : null,
     h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
       h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
-      h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || warnBadge ? h('span.habit-sub', streakBadge(s), warnBadge ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
+      h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || warnBadge ? h('span.habit-sub', streakBadge(s, hb.id), warnBadge ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
     hb.goal.type === 'count' && v > 0 && k <= today ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, k, -1), 'minus-btn') : null,
     habitControl(hb, k),
     draggable ? h('button.drag-handle', { type: 'button', 'data-fk': 'dh-' + hb.id, 'aria-label': `Reorder ${hb.name} (use arrow keys)` }, icon('grip', { size: 18 })) : null);
@@ -128,8 +130,10 @@ export function renderToday() {
   // ---- Progress card ----
   const pctLabel = Math.round(prog.pct * 100) + '%';
   const ringAnim = ctx.anim.has('ring');
+  const ringFrom = lastRing.date === k && lastRing.pct !== prog.pct ? lastRing.pct : null;
+  lastRing = { date: k, pct: prog.pct };
   root.append(h(`section.card.progress-card${ringAnim ? '.celebrate' : ''}`, { 'aria-label': 'Day progress' },
-    ring(prog.pct, { size: 84, stroke: 9, label: pctLabel, cls: 'day-ring' }),
+    ring(prog.pct, { size: 84, stroke: 9, label: pctLabel, cls: 'day-ring', from: ringFrom }),
     h('div.progress-text',
       h('p.progress-big', prog.total ? `${prog.done} of ${prog.total} done` : 'A clear day'),
       prog.total ? h('p.progress-break',
