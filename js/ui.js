@@ -200,7 +200,7 @@ export function openSheet({ title, content, footer = null, onClose, cls = '', at
     const left = Math.max(8, Math.min(at.x, vw - r.width - 8));
     let top = at.y;
     if (top + r.height > vh - 8) top = Math.max(8, (at.top ?? at.y) - r.height);
-    Object.assign(panel.style, { left: left + 'px', top: top + 'px' });
+    Object.assign(panel.style, { left: left + 'px', top: top + 'px', transformOrigin: `${Math.round(at.x - left)}px ${top < at.y ? 'bottom' : 'top'}` });
   }
   document.body.classList.add('sheet-open');
   let closed = false;
