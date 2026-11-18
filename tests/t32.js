@@ -40,9 +40,17 @@ async function mock(ctx, net, { forecast = 'ok', search = places, reverse = { ci
     return r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify(q === 'zzz' || q === '62704' ? { generationtime_ms: 1 } : { results: search }) });
   });
   await ctx.route(/api\.bigdatacloud\.net/, (r) => {
-    net.reverse.push(r.request().url());
     if (reverse === 'fail') return r.abort();
     return r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify(reverse) });
+  });
+  // City names now come from OpenStreetMap Nominatim (BigDataCloud is only the fallback).
+  await ctx.route(/nominatim\.openstreetmap\.org/, (r) => {
+    const u = r.request().url();
+    if (/\/search\?/.test(u)) return r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: '[]' });
+    net.reverse.push(u);
+    if (reverse === 'fail') return r.abort();
+    const city = reverse && (reverse.city || reverse.locality);
+    return r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify(city ? { address: { city } } : {}) });
   });
 }
 
@@ -89,7 +97,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     assert(await p.locator('.weather-line button').count() === 1 && await p.locator('.wx-temps button, .wx-pop button').count() === 0, 'A3 only the location pill is interactive');
     assert(net.forecast.length === 1 && /latitude=39\.78&/.test(net.forecast[0]) && /longitude=-89\.65&/.test(net.forecast[0]), 'A4 forecast request uses coordinates rounded to 2 decimals: ' + net.forecast[0]);
     assert(/timezone=auto/.test(net.forecast[0]) && /forecast_days=8/.test(net.forecast[0]) && /precipitation_probability_max/.test(net.forecast[0]) && /weather_code/.test(net.forecast[0]), 'A5 request asks for daily max/min/precip/code, timezone=auto, 8 days');
-    assert(net.reverse.length === 1 && /latitude=39\.781&/.test(net.reverse[0]) && /longitude=-89\.655(&|$)/.test(net.reverse[0]), 'A6 reverse geocoding (city name only) gets 3-decimal coordinates: ' + net.reverse[0]);
+    assert(net.reverse.length === 1 && /lat=39\.781&/.test(net.reverse[0]) && /lon=-89\.655(&|$)/.test(net.reverse[0]), 'A6 reverse geocoding (city name only) gets 3-decimal coordinates: ' + net.reverse[0]);
     await next(p, 3);
     t = await line(p);
     assert(t && t.includes('🌧️') && t.includes('26° / ') === false && t.includes('💧 30%'), 'A7 +3 days shows that day (rain, 30%): ' + t);
@@ -211,7 +219,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const cache = { '39.78,-89.65': { fetchedAt: old, tz: 'America/Chicago', days: Object.fromEntries(DAYS.map((k, i) => [k, { hi: i === 0 ? 22.2 : 20, lo: 10.6, pop: 20, code: 2 }])) } };
     const init = { 'dailyTracker:weatherCache': JSON.stringify(cache), 'dailyTracker:weatherPos': JSON.stringify({ lat: 39.78, lon: -89.65, name: 'Springfield', at: NOW.getTime() }) };
     const { ctx, p } = await open(browser, { forecast: 'abort', init });
-    await p.waitForTimeout(500);
+    await p.waitForTimeout(2500); // the forecast is retried once after 1.5 s before it counts as failed;
     const t = await line(p);
     assert(t && t.includes('72° / 51°') && /updated \d{1,2}(:\d{2})?/.test(t), 'F1 offline: cached forecast shown with an "updated …" note: ' + t);
     assert(await p.locator('.weather-line.stale').count() === 1, 'F2 and marked stale (dimmed)');
@@ -240,7 +248,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const { ctx, p } = await open(browser, { forecast: 'ok' });
     await ctx.close();
     const c2 = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block', geolocation: { latitude: 1, longitude: 2 }, permissions: ['geolocation'] });
-    await c2.route(/open-meteo|bigdatacloud/, (r) => r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: '{"daily":{"time":["x"],"temperature_2m_max":["hot"]}}' }));
+    await c2.route(/open-meteo|bigdatacloud|nominatim/, (r) => r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: '{"daily":{"time":["x"],"temperature_2m_max":["hot"]}}' }));
     await c2.addInitScript((d) => { if (!localStorage.getItem('dailyTracker:profiles')) { localStorage.setItem('dailyTracker:profiles', JSON.stringify({ version: 1, activeId: 'p', profiles: [{ id: 'p', name: 'Me', avatar: { type: 'emoji', emoji: '', color: '#6366f1' } }] })); localStorage.setItem('dailyTracker:data:p', d); } }, JSON.stringify(base()));
     const p2 = await c2.newPage(); p2.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
     await p2.clock.install({ time: NOW }); await p2.goto(APP); await p2.waitForTimeout(600);
@@ -315,7 +323,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const cache = { '39.78,-89.65': { fetchedAt: old, tz: 'America/Chicago', days: Object.fromEntries(DAYS.map((k) => [k, { hi: 22.2, lo: 10.6, pop: 20, code: 2 }])) } };
     const init = { 'dailyTracker:weatherCache': JSON.stringify(cache), 'dailyTracker:weatherPos': JSON.stringify({ lat: 39.78, lon: -89.65, name: 'Springfield', at: NOW.getTime() }) };
     const { ctx, p } = await open(browser, { forecast: 'abort', init });
-    await p.waitForTimeout(500);
+    await p.waitForTimeout(2500); // the forecast is retried once after 1.5 s before it counts as failed;
     const t = await line(p);
     assert(t && t.includes('Springfield') && !t.includes('72°'), 'J3 26 h old forecast hidden, pill kept: ' + t);
     await ctx.close();
@@ -375,7 +383,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const html = fs.readFileSync(__dirname + '/../index.html', 'utf8');
     assert(!/Content-Security-Policy/i.test(html), 'I4 no CSP that would block the three API hosts');
     const ver = /VERSION = '([^']+)'/.exec(sw)[1], appv = /APP_VERSION = '([^']+)'/.exec(fs.readFileSync(__dirname + '/../js/store.js', 'utf8'))[1];
-    assert(ver === '1.13.1' && appv === '1.13.1', 'I5 versions bumped together: ' + ver + ' / ' + appv);
+    assert(ver === '1.13.2' && appv === '1.13.2', 'I5 versions bumped together: ' + ver + ' / ' + appv);
   }
 
   await browser.close();

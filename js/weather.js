@@ -8,6 +8,10 @@ import { getProfiles, readProfileState } from './store.js';
 const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
 const SEARCH_URL = 'https://geocoding-api.open-meteo.com/v1/search';
 const REVERSE_URL = 'https://api.bigdatacloud.net/data/reverse-geocode-client';
+// OpenStreetMap Nominatim: city name from coordinates (official city boundaries) and ZIPs missing from zippopotam
+// (e.g. 75072, created in 2018). Its usage policy asks for an identifying Referer, so it gets the app's origin only.
+const OSM_URL = 'https://nominatim.openstreetmap.org';
+const NAME_SRC = 'osm'; // names looked up before this (BigDataCloud) are looked up again once
 const CACHE_KEY = 'dailyTracker:weatherCache';
 const POS_KEY = 'dailyTracker:weatherPos';
 export const FRESH_MS = 30 * 60 * 1000;
@@ -75,11 +79,11 @@ export function describeCode(code) {
 export const toUnits = (c, units) => Math.round(units === 'C' ? c : (c * 9) / 5 + 32);
 
 // ---------- network ----------
-async function getJson(url) {
+async function getJson(url, referrerPolicy = 'no-referrer') {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, credentials: 'omit', referrerPolicy: 'no-referrer' });
+    const res = await fetch(url, { signal: ctrl.signal, credentials: 'omit', referrerPolicy });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return await res.json();
   } finally { clearTimeout(timer); }
@@ -106,13 +110,32 @@ export async function fetchForecast(lat, lon) {
     daily: 'temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code',
     timezone: 'auto', forecast_days: String(FORECAST_DAYS), temperature_unit: 'celsius',
   });
-  const out = parseForecast(await getJson(`${FORECAST_URL}?${q}`));
+  let j;
+  try { j = await getJson(`${FORECAST_URL}?${q}`); } catch { await new Promise((r) => setTimeout(r, 1500)); j = await getJson(`${FORECAST_URL}?${q}`); }
+  const out = parseForecast(j);
   if (!out) throw new Error('Unexpected forecast response');
   return out;
 }
 
 const ZIP_URL = 'https://api.zippopotam.us/us/';
 const validCoord = (lat, lon) => Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+
+const osmJson = (path, params) => getJson(`${OSM_URL}/${path}?${new URLSearchParams({ format: 'jsonv2', 'accept-language': 'en', ...params })}`, 'strict-origin');
+/** The town an OSM address belongs to. */
+const osmTown = (a) => [a?.city, a?.town, a?.village, a?.hamlet, a?.municipality, a?.suburb, a?.county].find((x) => typeof x === 'string' && x.trim()) || '';
+
+/** US ZIP lookup in OpenStreetMap (has newer ZIPs). Returns [] when not found; throws on a network problem. */
+async function searchZipOsm(zip) {
+  const list = await osmJson('search', { postalcode: zip, countrycodes: 'us', addressdetails: '1', limit: '5' });
+  return (Array.isArray(list) ? list : []).map((r) => {
+    const lat = Number(r?.lat), lon = Number(r?.lon);
+    // display_name looks like "75072, McKinney, Collin County, Texas, United States"
+    const parts = typeof r?.display_name === 'string' ? r.display_name.split(',').map((x) => x.trim()) : [];
+    const name = osmTown(r?.address) || parts[1] || '';
+    const state = typeof r?.address?.state === 'string' ? r.address.state : (parts.length > 3 ? parts[parts.length - 2] : '');
+    return validCoord(lat, lon) && name ? { name: name.slice(0, 80), detail: [state, 'US'].filter(Boolean).join(', ').concat(' ', zip).slice(0, 80), lat: round2(lat), lon: round2(lon) } : null;
+  }).filter(Boolean).slice(0, 5);
+}
 
 /** US ZIP lookup (zippopotam.us). [] when the ZIP is unknown (HTTP 404); throws on other problems. */
 async function searchZip(zip) {
@@ -121,7 +144,7 @@ async function searchZip(zip) {
   const list = Array.isArray(j?.places) ? j.places : [];
   return list.filter((p) => p && typeof p['place name'] === 'string' && p['place name'] && validCoord(Number(p.latitude), Number(p.longitude)))
     .slice(0, 5).map((p) => ({
-      name: p['place name'].slice(0, 80),
+      name: p['place name'].replace(/\bMc (?=[A-Z])/g, 'Mc').slice(0, 80), // zippopotam writes "Mc Kinney"
       detail: ([typeof p['state abbreviation'] === 'string' ? p['state abbreviation'] : '', 'US'].filter(Boolean).join(', ') + ' ' + zip).slice(0, 80),
       lat: round2(Number(p.latitude)), lon: round2(Number(p.longitude)),
     }));
@@ -133,7 +156,10 @@ export async function searchPlaces(text) {
   if (!name) return [];
   const zm = /^(\d{5})(-\d{4})?$/.exec(name);
   if (zm) {
-    try { return await searchZip(zm[1]); } catch { /* network problem: fall back to the name search below */ }
+    let found = [];
+    try { found = await searchZip(zm[1]); } catch { /* try OpenStreetMap */ }
+    if (found.length) return found;
+    return searchZipOsm(zm[1]); // newer ZIPs; throws (→ "couldn't search") only if this fails too
   }
   const q = new URLSearchParams({ name, count: '5', language: 'en', format: 'json' });
   if (zm) q.set('countryCode', 'US');
@@ -152,6 +178,11 @@ const nameKeyOf = (lat, lon) => `${round3(lat).toFixed(3)},${round3(lon).toFixed
 /** City name only: ~100 m precision so the name doesn't land in the neighbouring city. */
 async function reverseName(lat, lon) {
   const q = new URLSearchParams({ latitude: String(round3(lat)), longitude: String(round3(lon)), localityLanguage: 'en' });
+  try {
+    const j = await osmJson('reverse', { lat: String(round3(lat)), lon: String(round3(lon)), zoom: '10', addressdetails: '1' });
+    const n = osmTown(j?.address);
+    if (n) return n.trim().slice(0, 80);
+  } catch { /* fall back to BigDataCloud */ }
   const j = await getJson(`${REVERSE_URL}?${q}`);
   const n = [j?.city, j?.locality].find((x) => typeof x === 'string' && x.trim());
   return n ? n.trim().slice(0, 80) : '';
@@ -198,11 +229,11 @@ async function refreshPosition(fresh = false) {
     // Reuse the known city name when the new fix is within ~200 m of where it was looked up (fixes jitter).
     const near = (() => {
       const m = old && typeof old.nameKey === 'string' && old.nameKey.split(',').map(Number);
-      return !!m && m.length === 2 && m.every(Number.isFinite) && Math.abs(m[0] - p.lat) <= 0.002 && Math.abs(m[1] - p.lon) <= 0.002;
+      return !!m && old.src === NAME_SRC && m.length === 2 && m.every(Number.isFinite) && Math.abs(m[0] - p.lat) <= 0.002 && Math.abs(m[1] - p.lon) <= 0.002;
     })();
     let name = old && near ? old.name || '' : '';
     if (!name) { try { name = await reverseName(p.lat, p.lon); lastError.delete('name'); } catch (e) { noteError('name', e); name = old && keyOf(old.lat, old.lon) === keyOf(lat, lon) ? old.name || '' : ''; } }
-    lsWrite(POS_KEY, { lat, lon, name, nameKey: name ? (near ? old.nameKey : nameKey) : '', acc: p.acc, at: Date.now() });
+    lsWrite(POS_KEY, { lat, lon, name, nameKey: name ? (near ? old.nameKey : nameKey) : '', src: NAME_SRC, acc: p.acc, at: Date.now() });
     lastError.delete('pos');
     return true;
   } catch (e) {

@@ -15,7 +15,12 @@ async function open(browser, { data = base(), geo = true, zip = 'ok', width = 39
   const net = { forecast: [], zip: [], reverse: [], search: [] };
   await ctx.route(/api\.open-meteo\.com\/v1\/forecast/, (r) => { net.forecast.push(r.request().url()); r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify(forecastJson()) }); });
   await ctx.route(/geocoding-api\.open-meteo\.com/, (r) => { net.search.push(r.request().url()); r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: '{}' }); });
-  await ctx.route(/api\.bigdatacloud\.net/, (r) => { net.reverse.push(r.request().url()); r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify({ city: 'McKinney', locality: 'Downtown' }) }); });
+  await ctx.route(/api\.bigdatacloud\.net/, (r) => r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify({ city: 'Celina' }) }));
+  await ctx.route(/nominatim\.openstreetmap\.org/, (r) => {
+    const u = r.request().url();
+    if (/\/search\?/.test(u)) { net.osmZip = (net.osmZip || []).concat(u); return r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: /postalcode=75072/.test(u) ? JSON.stringify([{ lat: '33.1675', lon: '-96.7266', display_name: '75072, McKinney, Collin County, Texas, United States', address: { city: 'McKinney', state: 'Texas' } }]) : '[]' }); }
+    net.reverse.push(u); r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify({ address: { city: 'McKinney', suburb: 'Downtown' } }) });
+  });
   await ctx.route(/api\.zippopotam\.us/, (r) => {
     net.zip.push(r.request().url());
     if (r.request().url().endsWith('/75070')) return r.fulfill({ status: 200, headers: CORS, contentType: 'application/json', body: JSON.stringify({ 'post code': '75070', country: 'United States', places: [{ 'place name': 'McKinney', longitude: '-96.6', latitude: '33.2', state: 'Texas', 'state abbreviation': 'TX' }] }) });
@@ -115,7 +120,10 @@ const touch = async (cdp, type, x, y) => cdp.send('Input.dispatchTouchEvent', { 
     assert(net.zip.length === 1 && net.zip[0].endsWith('/us/75070') && net.search.length === 0, 'C2 ZIP uses zippopotam only');
     assert(t.includes('McKinney') && t.includes('TX, US 75070'), 'C3 result shows McKinney: ' + t);
     await p.fill('.sheet input', '00000'); await p.press('.sheet input', 'Enter'); await p.waitForTimeout(600);
-    assert(await p.textContent('.wx-note') === 'No matches. Check the spelling or ZIP code.' && net.search.length === 0, 'C4 404 → no-match note, no throw/fallback');
+    assert(await p.textContent('.wx-note') === 'No matches. Check the spelling or ZIP code.' && net.search.length === 0, 'C4 404 everywhere → no-match note');
+    await p.fill('.sheet input', '75072'); await p.press('.sheet input', 'Enter'); await p.waitForTimeout(800);
+    const t2 = await p.textContent('.wx-results');
+    assert(net.zip.at(-1).endsWith('/us/75072') && (net.osmZip || []).some((u) => /postalcode=75072/.test(u)) && t2.includes('McKinney') && t2.includes('75072'), 'C5 ZIP missing from zippopotam (75072) → OpenStreetMap finds McKinney: ' + t2);
     await ctx.close();
   }
 
@@ -124,7 +132,7 @@ const touch = async (cdp, type, x, y) => cdp.send('Input.dispatchTouchEvent', { 
     const { ctx, p, net } = await open(browser);
     const f0 = net.forecast.length, g0 = await p.evaluate(() => window.__geo), r0 = net.reverse.length;
     assert(f0 >= 1 && g0 >= 1 && r0 >= 1, `D0 startup fetched (forecast ${f0}, geo ${g0}, reverse ${r0})`);
-    assert(/latitude=33\.197&longitude=-96\.615/.test(net.reverse[0]), 'D1 reverse geocode uses 3 decimals: ' + net.reverse[0]);
+    assert(/lat=33\.197&lon=-96\.615/.test(net.reverse[0]), 'D1 reverse geocode uses 3 decimals: ' + net.reverse[0]);
     assert(/latitude=33\.2&longitude=-96\.62/.test(net.forecast[0]), 'D2 forecast keeps 2 decimals: ' + net.forecast[0]);
     await p.evaluate(async () => { const W = await import('./js/weather.js'); const S = await import('./js/store.js'); await Promise.all([W.refreshWeather(S.getState().settings.weather), W.refreshWeather(S.getState().settings.weather)]); });
     const opts = await p.evaluate(() => window.__geoOpts);

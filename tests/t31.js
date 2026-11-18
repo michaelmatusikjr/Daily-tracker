@@ -29,7 +29,7 @@ async function open(browser, data = seed(), { width = 390 } = {}) {
     localStorage.setItem('dailyTracker:tips', '{"settingsMoved":true,"itemMenu":true}');
   }, JSON.stringify(data));
   // The weather line isn't under test here: keep the network out of it.
-  await ctx.route(/open-meteo\.com|bigdatacloud\.net/, (r) => r.abort());
+  await ctx.route(/open-meteo\.com|bigdatacloud\.net|nominatim\.openstreetmap\.org/, (r) => r.abort());
   const p = await ctx.newPage();
   await p.clock.install({ time: NOW });
   p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
