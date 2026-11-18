@@ -9,12 +9,12 @@ import { isRecurring, isTaskDone, habitTarget, habitVal, dayProgress } from './l
 import { todayKey, fmtDateShort, addDays } from './dates.js';
 import { syncHabitLink, computeRecords, exerciseById, recordToast } from './workouts.js';
 
-function celebrateIfDone(k, before, undo = null) {
+function celebrateIfDone(k, before) {
   const after = dayProgress(getState(), k);
   if (before.pct < 1 && after.pct === 1 && after.total > 0) {
     ctx.anim.add('ring');
     const message = k === todayKey() ? 'Everything done for today. Nice work!' : 'Everything done for that day';
-    setTimeout(() => takeover({ emoji: '🎉', message, confetti: true, ...(undo ? { action: 'Undo', onAction: undo } : {}) }), 50);
+    setTimeout(() => takeover({ emoji: '🎉', message, confetti: true }), 50);
     haptic([20, 40, 20]);
     return true;
   }
@@ -79,8 +79,7 @@ export function toggleTask(id, k) {
   setTaskDone(id, k, !was);
   haptic(was ? 5 : 12);
   if (was) return;
-  const undo = () => setTaskDone(id, k, was);
-  celebrateIfDone(k, before, undo);
+  celebrateIfDone(k, before);
 }
 
 export function moveToToday(ids) {
@@ -273,7 +272,7 @@ export function setHabitValue(id, k, v, { silentUndo = false } = {}) {
   const nowDone = value >= habitTarget(h);
   if (nowDone && !wasDone) {
     ctx.anim.add('h-' + id); haptic(15);
-    if (!silentUndo) celebrateIfDone(k, before, () => setHabitValue(id, k, prev, { silentUndo: true }));
+    if (!silentUndo) celebrateIfDone(k, before);
   }
   else haptic(6);
 }
@@ -502,10 +501,9 @@ function restoreSnapshot(snap) {
 
 /**
  * Save a workout (new or edited). `newExercise` = { name, type } creates the exercise first.
- * Shows a toast with Undo, or a 🏆 toast when it sets a personal record.
+ * Shows a 🏆 takeover (no Undo) when it sets a personal record.
  */
 export function saveWorkout(data, { newExercise = null } = {}) {
-  const snap = workoutSnapshot(getState());
   let id = data.id;
   // Records this entry already held, so re-saving it (or changing only a note/date) doesn't celebrate again.
   const before = getState().workouts.find((w) => w.id === id);
@@ -531,12 +529,11 @@ export function saveWorkout(data, { newExercise = null } = {}) {
   const ex = exerciseById(st, exerciseId);
   const labels = (computeRecords(st, exerciseId).records.get(id) || [])
     .filter((r) => !had.some((o) => o.kind === r.kind && o.value === r.value));
-  const undo = { action: 'Undo', onAction: () => restoreSnapshot(snap) };
   if (labels.length) {
     ctx.anim.add('w-' + id);
     haptic([20, 40, 20]);
     // e.g. '🏆 New 3×5 max: Squat 235 lbs' or '🏆 Fastest 5K: Run 24:50'
-    takeover({ emoji: '🏆', message: recordToast(labels, ex.name).replace(/^🏆\s*/, ''), ...undo });
+    takeover({ emoji: '🏆', message: recordToast(labels, ex.name).replace(/^🏆\s*/, '') });
   }
   return id;
 }
