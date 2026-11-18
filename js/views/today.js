@@ -33,7 +33,7 @@ function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
   if (hb.target) sub.push(`by ${fmtTime(hb.target, fmt)}`);
   const warnBadge = habitWarnAt(st, hb) !== null && !canFire();
   const li = h(`li.habit-row${timed ? '.timed' : ''}${isWeekly(hb) ? '.weekly' : ''}${weekMet ? '.week-done' : ''}`, { dataset: { id: hb.id, kind: 'habit' }, style: { '--c': hb.color } },
-    timed ? h('span.task-time', h('span', fmtTime(hb.target, fmt)), h('small', 'by')) : null,
+    timed ? h('span.task-time', h('small', 'by'), h('span', fmtTime(hb.target, fmt))) : null,
     h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
       h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
       h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || warnBadge ? h('span.habit-sub', streakBadge(s, hb.id), warnBadge ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
@@ -147,7 +147,7 @@ export function renderToday() {
       const list = h('ul.tasks.compact');
       for (const t of overdue) {
         const row = taskRow(t, t.date, { showDate: true });
-        row.append(h('button.btn.small.secondary.move-btn', { type: 'button', onclick: () => moveToToday([t.id]), 'aria-label': `Move “${t.title}” to today` }, icon('arrowRight', { size: 16 }), h('span.hide-xs', 'Today')));
+        row.querySelector('.check').before(h('button.btn.small.secondary.move-btn', { type: 'button', onclick: () => moveToToday([t.id]), 'aria-label': `Move “${t.title}” to today` }, icon('arrowRight', { size: 16 }), h('span.hide-xs', 'Today')));
         list.append(row);
       }
       root.append(h('section.card.overdue-card', { 'aria-label': 'Unfinished from earlier days' },

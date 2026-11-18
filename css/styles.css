@@ -347,26 +347,16 @@ p { margin: 0; }
 /* ---------- Tasks ---------- */
 .tasks, .timeline, .habit-rows, .habit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
 .task {
-  position: relative; display: flex; align-items: center; gap: 2px;
-  min-height: 58px; padding: 4px 6px 4px 4px;
+  position: relative; display: flex; align-items: center; gap: var(--s2);
+  min-height: 58px; padding: 6px 10px 6px 12px;
   background: var(--surface); border-radius: 16px; box-shadow: var(--shadow-sm); border: 1px solid var(--card-border);
   transition: opacity .25s, background-color .2s, border-color .2s;
 }
-.check {
-  position: relative; width: 44px; height: 44px; flex: none; border: none; background: none; padding: 0;
-  display: grid; place-items: center; color: transparent;
-}
-.check svg {
-  width: 26px; height: 26px; padding: 4px; border-radius: 50%;
-  border: 2px solid var(--prio, var(--text-3));
-  transition: background-color .2s, border-color .2s, color .2s, transform .2s var(--ease);
-}
-.check:hover svg { background: color-mix(in srgb, var(--accent) 10%, transparent); color: color-mix(in srgb, var(--accent) 60%, transparent); }
-.task.done .check svg { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .task-main {
-  flex: 1; min-width: 0; min-height: 44px; padding: 8px 6px; border: none; background: none; text-align: left;
+  flex: 1; min-width: 0; min-height: 44px; padding: 8px 4px; border: none; background: none; text-align: left;
   display: flex; flex-direction: column; justify-content: center; gap: 3px; border-radius: 10px;
 }
+.task-title-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .task-title { font-size: 16px; font-weight: 560; overflow-wrap: anywhere; transition: color .2s; }
 .task.done .task-title { color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--text-3); }
 .task.done { background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: none; }
@@ -379,7 +369,7 @@ p { margin: 0; }
   background: color-mix(in srgb, var(--c) 15%, transparent);
   color: color-mix(in srgb, var(--c) 70%, var(--text));
 }
-.prio-flag { color: var(--prio); display: inline-flex; padding: 0 6px; }
+.prio-flag { color: var(--prio); display: inline-flex; flex: none; padding: 0 4px; }
 .drag-handle {
   width: 40px; height: 44px; flex: none; border: none; background: none; color: var(--text-3);
   display: grid; place-items: center; touch-action: none; cursor: grab; border-radius: 10px;
@@ -402,7 +392,8 @@ p { margin: 0; }
 .now-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent); }
 .now-line::after { content: ""; flex: 1; height: 2px; background: var(--danger); border-radius: 1px; opacity: .8; }
 
-.pop .check svg, .pop.habit-check, .pop.habit-count { animation: pop .42s var(--ease); }
+.task .habit-check.done { color: var(--on-accent); }
+.pop .check, .pop.habit-check, .pop.habit-count { animation: pop .42s var(--ease); }
 .pop .check::after, .pop.habit-check::after {
   content: ""; position: absolute; inset: 6px; border-radius: 50%;
   border: 2px solid var(--c, var(--accent)); animation: burst .5s ease-out forwards; pointer-events: none;
@@ -916,7 +907,7 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
   }
 }
 @media (forced-colors: active) {
-  .task.done .check svg, .habit-check.done, .wd.done .wd-dot { forced-color-adjust: none; }
+  .habit-check.done, .wd.done .wd-dot { forced-color-adjust: none; }
 }
 
 /* =========================================================

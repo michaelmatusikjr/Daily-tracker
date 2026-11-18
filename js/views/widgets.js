@@ -114,15 +114,17 @@ export function taskRow(t, k, { draggable = false, showDate = false, nowMin = nu
   const row = h(`li.task${done ? '.done' : ''}${anim ? '.pop' : ''}${ctx.anim.has('new-' + t.id) ? '.slide-in' : ''}${isNow ? '.is-now' : ''}`, {
     dataset: { id: t.id }, style: { '--prio': PRIORITIES[t.priority || 0].color },
   },
-  h('button.check', {
-    type: 'button', 'aria-pressed': String(done), 'data-fk': 'tc-' + t.id,
+  h('button.task-main', { type: 'button', onclick: () => openTaskView(t.id, k), 'aria-label': `Open “${t.title}”` },
+    h('span.task-title-row',
+      h('span.task-title', t.title),
+      t.priority ? h('span.prio-flag', { title: PRIORITIES[t.priority].label + ' priority' }, icon('flag', { size: 14 }), h('span.sr-only', PRIORITIES[t.priority].label + ' priority')) : null),
+    meta.length ? h('span.task-meta', meta) : null),
+  // Same round check button as a habit's (on the right); `.check` stays as a stable hook for tests.
+  h(`button.habit-check.check${done ? '.done' : ''}`, {
+    type: 'button', style: { '--c': 'var(--accent)' }, 'aria-pressed': String(done), 'data-fk': 'tc-' + t.id,
     'aria-label': done ? `Mark “${t.title}” as not done` : `Complete “${t.title}”`,
     onclick: () => toggleTask(t.id, k),
-  }, icon('check', { size: 16 })),
-  h('button.task-main', { type: 'button', onclick: () => openTaskView(t.id, k), 'aria-label': `Open “${t.title}”` },
-    h('span.task-title', t.title),
-    meta.length ? h('span.task-meta', meta) : null),
-  t.priority ? h('span.prio-flag', { title: PRIORITIES[t.priority].label + ' priority' }, icon('flag', { size: 14 }), h('span.sr-only', PRIORITIES[t.priority].label + ' priority')) : null,
+  }, icon('check', { size: 22 })),
   draggable ? h('button.drag-handle', { type: 'button', 'data-fk': 'dh-' + t.id, 'aria-label': `Reorder “${t.title}” (use arrow keys)` }, icon('grip', { size: 18 })) : null);
   attachMenu(row, () => taskMenu(t.id, k), row.querySelector('.task-main'));
   return row;
