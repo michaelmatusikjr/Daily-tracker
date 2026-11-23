@@ -32,7 +32,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   await p.selectOption('.sheet select >> nth=2', 'daily');
   await p.screenshot({ path: SP + '/d-form.png' });
   await p.click('.sheet-foot .btn.primary'); await p.waitForTimeout(400);
-  const row = p.locator('.task', { hasText: 'Daily review' });
+  const row = p.locator('section:not(.future-section) .task', { hasText: 'Daily review' });
   await row.locator('.check').click(); await p.waitForTimeout(300);
   assert(await row.evaluate((e) => e.classList.contains('done')), 'recurring done today');
   await p.click('[aria-label="Next day"]'); await p.waitForTimeout(300);

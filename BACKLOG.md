@@ -23,75 +23,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Photos sync too:** task photos and habit image icons.
   - **Devices:** all of them (iPhone, iPad, computers), so test across Safari, Chrome and Firefox.
 
-### 21. Warning on a daily habit missed two or more days in a row
-- **What:** if a daily habit wasn't done for 2+ consecutive days, the next day's habit row shows that (e.g. "Missed 2 days") and changes colour to a warning colour.
-- **Size:** small.
-- **Added:** 2026-11-23
-- **Decided (2026-11-23):** days marked "missed" on purpose count toward the streak of misses; the warning clears once the habit is done. (Non-daily habits: not in scope for now.)
-
-### 22. Tell habits and tasks apart on Today
-- **What:** a coloured bar down the left edge of each Today row, one colour for habits and another for tasks, with the word "Habit" or "Task" inside the bar, rotated 90° counter-clockwise.
-- **Size:** small.
-- **Added:** 2026-11-23
-- **Decided (2026-11-23):** colours must work in light and dark mode and not clash with priority/category colours or the #21 warning colour.
-
-### 23. Move Completed tasks to the profile-avatar menu
-- **What:** move the "Completed tasks" entry point (currently a button at the top of the Calendar tab, see #9) into the menu that opens when tapping the profile avatar. It's already searchable (#7); keep search and filters.
-- **Size:** small.
-- **Added:** 2026-11-23
-- **Decided (2026-11-23):** remove the "Completed tasks" button from the Calendar tab; the rest of the Calendar tab stays the same.
-
-### 24. Remove the arrow on the profile avatar
-- **What:** drop the dropdown arrow next to the profile avatar; tapping the avatar still opens the menu.
-- **Size:** tiny.
-- **Added:** 2026-11-23
-
-### 25. Completed tasks list: wrap long task names
-- **What:** task names in the Completed list wrap onto more lines instead of being cut off.
-- **Size:** tiny.
-- **Added:** 2026-11-23
-
-### 26. "Future tasks" section at the bottom of Today
-- **What:** below the day's schedule, a "Future tasks" list of tasks scheduled for later days, each showing the date it's scheduled for, so they can be done ahead of time.
-- **Rules:**
-  - **Repeating tasks:** only the next occurrence is listed.
-  - **New task-form marker:** "Must be done on this day" (or similar). Tasks with it set are left out of Future tasks.
-  - Works like missed tasks carrying into later days, but in reverse: upcoming tasks appear early, at the bottom.
-- **Size:** medium.
-- **Added:** 2026-11-23
-- **Decided (2026-11-23):**
-  - **Window:** tasks in the next **2 weeks** are listed. Later ones sit behind a "More future tasks" expander, or a button that opens their own sheet.
-  - **Completing early:** the task is marked complete **as of the day it was completed**, so it shows as done that day and no longer appears on its scheduled day.
-  - **Stats:** not affected. Only habits are tracked in stats.
-  - **Only on today's Today view.** Other days (past or future) show only that day's habits and tasks.
-
-### 27. Notifications: show the whole habit/task name
-- **What:** iOS cuts the bold notification title to one line, so long names get cut off ("Mick: 30 minutes left to read Bi…"). Move the name into the body, which wraps over several lines.
-  - **Title:** profile + timing, e.g. "Mick · 30 min left".
-  - **Body:** name + detail, e.g. "Read Bible – complete by 12:00".
-  - Same pattern for task reminders, for both local reminders and closed-app push (`js/notify.js`, `js/push.js`, and the server's copy of the text if it builds any).
-- **Size:** small (touches reminders/push, so it gets a QA review).
-- **Added:** 2026-11-23
-
-### 28. Opening an item from a notification: Complete/Missed up front
-- **What:** iOS doesn't allow buttons on web-app notifications, so tapping the notification is the way in. When a task or habit is opened from a notification, its View sheet shows big **Complete** and **Missed** buttons first.
-- **Already done:** if it was already completed (or marked missed) in the app, make that obvious instead, e.g. a clear "Completed at 11:42" banner with an Undo option rather than the buttons.
-- **Size:** small.
-- **Added:** 2026-11-23
-
-### 29. Fixed, tighter header on every tab
-- **What:** a header that stays put while the page scrolls under it (slightly see-through), and is more compact: about 56pt plus the status bar instead of about 90pt.
-  - **Every tab, left:** the profile avatar (opens the profile menu, see #23/#24) plus the tab title at a smaller size (about 20pt instead of 28pt).
-  - **Drop the grey eyebrow line** above titles (the greeting and counts like "3 active"). On Today, the greeting can move into the top card.
-  - **Today:** ◀ ▶ arrows and the "Today" chip on the right; the week strip is pinned underneath.
-  - **Calendar:** the month and its ◀ ▶ arrows.
-  - **Habits and Workouts:** their sub-tabs (Active/Stats, Workouts/Stats) are pinned under the title.
-  - **Completed and Journal:** the search box is pinned under the title, where there is one.
-  - Detail sheets (habit detail, Settings) keep their back button in the header.
-- **Size:** medium (touches every view; needs a screenshot check on iPhone sizes).
-- **Added:** 2026-11-23
-- **Decided (2026-11-23):** go with the layout above.
-
 ## Done
 
 ### 1. Mark a habit or task as "missed"
@@ -338,3 +269,81 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Animations:** tab switches slide/fade (150–200 ms), check-off pop + progress ring animation, list items slide in / collapse out, springier sheets, long-press menu scales from the item, streak flame flicker, pull-to-refresh spinner. Reduced Motion → fades only, no confetti.
 - **Size:** medium.
 - **Shipped:** v1.13.0 (2026-11-18)
+
+### 21. Warning on a daily habit missed two or more days in a row
+- **What:** if a daily habit wasn't done for 2+ consecutive days, the next day's habit row shows that (e.g. "Missed 2 days") and changes colour to a warning colour.
+- **Size:** small.
+- **Added:** 2026-11-23
+- **Decided (2026-11-23):** days marked "missed" on purpose count toward the streak of misses; the warning clears once the habit is done. (Non-daily habits: not in scope for now.)
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 22. Tell habits and tasks apart on Today
+- **What:** a coloured bar down the left edge of each Today row, one colour for habits and another for tasks, with the word "Habit" or "Task" inside the bar, rotated 90° counter-clockwise.
+- **Size:** small.
+- **Added:** 2026-11-23
+- **Decided (2026-11-23):** colours must work in light and dark mode and not clash with priority/category colours or the #21 warning colour.
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 23. Move Completed tasks to the profile-avatar menu
+- **What:** move the "Completed tasks" entry point (currently a button at the top of the Calendar tab, see #9) into the menu that opens when tapping the profile avatar. It's already searchable (#7); keep search and filters.
+- **Size:** small.
+- **Added:** 2026-11-23
+- **Decided (2026-11-23):** remove the "Completed tasks" button from the Calendar tab; the rest of the Calendar tab stays the same.
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 24. Remove the arrow on the profile avatar
+- **What:** drop the dropdown arrow next to the profile avatar; tapping the avatar still opens the menu.
+- **Size:** tiny.
+- **Added:** 2026-11-23
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 25. Completed tasks list: wrap long task names
+- **What:** task names in the Completed list wrap onto more lines instead of being cut off.
+- **Size:** tiny.
+- **Added:** 2026-11-23
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 26. "Future tasks" section at the bottom of Today
+- **What:** below the day's schedule, a "Future tasks" list of tasks scheduled for later days, each showing the date it's scheduled for, so they can be done ahead of time.
+- **Rules:**
+  - **Repeating tasks:** only the next occurrence is listed.
+  - **New task-form marker:** "Must be done on this day" (or similar). Tasks with it set are left out of Future tasks.
+  - Works like missed tasks carrying into later days, but in reverse: upcoming tasks appear early, at the bottom.
+- **Size:** medium.
+- **Added:** 2026-11-23
+- **Decided (2026-11-23):**
+  - **Window:** tasks in the next **2 weeks** are listed. Later ones sit behind a "More future tasks" expander, or a button that opens their own sheet.
+  - **Completing early:** the task is marked complete **as of the day it was completed**, so it shows as done that day and no longer appears on its scheduled day.
+  - **Stats:** not affected. Only habits are tracked in stats.
+  - **Only on today's Today view.** Other days (past or future) show only that day's habits and tasks.
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 27. Notifications: show the whole habit/task name
+- **What:** iOS cuts the bold notification title to one line, so long names get cut off ("Mick: 30 minutes left to read Bi…"). Move the name into the body, which wraps over several lines.
+  - **Title:** profile + timing, e.g. "Mick · 30 min left".
+  - **Body:** name + detail, e.g. "Read Bible – complete by 12:00".
+  - Same pattern for task reminders, for both local reminders and closed-app push (`js/notify.js`, `js/push.js`, and the server's copy of the text if it builds any).
+- **Size:** small (touches reminders/push, so it gets a QA review).
+- **Added:** 2026-11-23
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 28. Opening an item from a notification: Complete/Missed up front
+- **What:** iOS doesn't allow buttons on web-app notifications, so tapping the notification is the way in. When a task or habit is opened from a notification, its View sheet shows big **Complete** and **Missed** buttons first.
+- **Already done:** if it was already completed (or marked missed) in the app, make that obvious instead, e.g. a clear "Completed at 11:42" banner with an Undo option rather than the buttons.
+- **Size:** small.
+- **Added:** 2026-11-23
+- **Shipped:** v1.14.0 (2026-11-23)
+
+### 29. Fixed, tighter header on every tab
+- **What:** a header that stays put while the page scrolls under it (slightly see-through), and is more compact: about 56pt plus the status bar instead of about 90pt.
+  - **Every tab, left:** the profile avatar (opens the profile menu, see #23/#24) plus the tab title at a smaller size (about 20pt instead of 28pt).
+  - **Drop the grey eyebrow line** above titles (the greeting and counts like "3 active"). On Today, the greeting can move into the top card.
+  - **Today:** ◀ ▶ arrows and the "Today" chip on the right; the week strip is pinned underneath.
+  - **Calendar:** the month and its ◀ ▶ arrows.
+  - **Habits and Workouts:** their sub-tabs (Active/Stats, Workouts/Stats) are pinned under the title.
+  - **Completed and Journal:** the search box is pinned under the title, where there is one.
+  - Detail sheets (habit detail, Settings) keep their back button in the header.
+- **Size:** medium (touches every view; needs a screenshot check on iPhone sizes).
+- **Added:** 2026-11-23
+- **Decided (2026-11-23):** go with the layout above.
+- **Shipped:** v1.14.0 (2026-11-23)
