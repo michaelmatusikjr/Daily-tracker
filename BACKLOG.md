@@ -25,21 +25,21 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 
 ### 21. Warning on a daily habit missed two or more days in a row
 - **What:** if a daily habit wasn't done for 2+ consecutive days, the next day's habit row shows that (e.g. "Missed 2 days") and changes colour to a warning colour.
-- **Open details:** whether days marked "missed" on purpose count (probably yes); whether non-daily habits get a similar rule later; clears once the habit is done.
 - **Size:** small.
 - **Added:** 2026-11-23
+- **Decided (2026-11-23):** days marked "missed" on purpose count toward the streak of misses; the warning clears once the habit is done. (Non-daily habits: not in scope for now.)
 
 ### 22. Tell habits and tasks apart on Today
 - **What:** a coloured bar down the left edge of each Today row, one colour for habits and another for tasks, with the word "Habit" or "Task" inside the bar, rotated 90° counter-clockwise.
-- **Open details:** colours must work in light and dark mode and not clash with priority/category colours or the #21 warning colour.
 - **Size:** small.
 - **Added:** 2026-11-23
+- **Decided (2026-11-23):** colours must work in light and dark mode and not clash with priority/category colours or the #21 warning colour.
 
 ### 23. Move Completed tasks to the profile-avatar menu
 - **What:** move the "Completed tasks" entry point (currently a button at the top of the Calendar tab, see #9) into the menu that opens when tapping the profile avatar. It's already searchable (#7); keep search and filters.
-- **Open details:** whether the Calendar button stays or goes (probably goes).
 - **Size:** small.
 - **Added:** 2026-11-23
+- **Decided (2026-11-23):** remove the "Completed tasks" button from the Calendar tab; the rest of the Calendar tab stays the same.
 
 ### 24. Remove the arrow on the profile avatar
 - **What:** drop the dropdown arrow next to the profile avatar; tapping the avatar still opens the menu.
