@@ -57,9 +57,40 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Repeating tasks:** only the next occurrence is listed.
   - **New task-form marker:** "Must be done on this day" (or similar). Tasks with it set are left out of Future tasks.
   - Works like missed tasks carrying into later days, but in reverse: upcoming tasks appear early, at the bottom.
-- **Open details:** how far ahead to look (all future tasks, or a limit such as 2 weeks); what completing an occurrence early means for that day and for streaks/stats; whether it shows on past/future days or only on today.
 - **Size:** medium.
 - **Added:** 2026-11-23
+- **Decided (2026-11-23):**
+  - **Window:** tasks in the next **2 weeks** are listed. Later ones sit behind a "More future tasks" expander, or a button that opens their own sheet.
+  - **Completing early:** the task is marked complete **as of the day it was completed**, so it shows as done that day and no longer appears on its scheduled day.
+  - **Stats:** not affected. Only habits are tracked in stats.
+  - **Only on today's Today view.** Other days (past or future) show only that day's habits and tasks.
+
+### 27. Notifications: show the whole habit/task name
+- **What:** iOS cuts the bold notification title to one line, so long names get cut off ("Mick: 30 minutes left to read Bi…"). Move the name into the body, which wraps over several lines.
+  - **Title:** profile + timing, e.g. "Mick · 30 min left".
+  - **Body:** name + detail, e.g. "Read Bible – complete by 12:00".
+  - Same pattern for task reminders, for both local reminders and closed-app push (`js/notify.js`, `js/push.js`, and the server's copy of the text if it builds any).
+- **Size:** small (touches reminders/push, so it gets a QA review).
+- **Added:** 2026-11-23
+
+### 28. Opening an item from a notification: Complete/Missed up front
+- **What:** iOS doesn't allow buttons on web-app notifications, so tapping the notification is the way in. When a task or habit is opened from a notification, its View sheet shows big **Complete** and **Missed** buttons first.
+- **Already done:** if it was already completed (or marked missed) in the app, make that obvious instead, e.g. a clear "Completed at 11:42" banner with an Undo option rather than the buttons.
+- **Size:** small.
+- **Added:** 2026-11-23
+
+### 29. Fixed, tighter header on every tab
+- **What:** a header that stays put while the page scrolls under it (slightly see-through), and is more compact: about 56pt plus the status bar instead of about 90pt.
+  - **Every tab, left:** the profile avatar (opens the profile menu, see #23/#24) plus the tab title at a smaller size (about 20pt instead of 28pt).
+  - **Drop the grey eyebrow line** above titles (the greeting and counts like "3 active"). On Today, the greeting can move into the top card.
+  - **Today:** ◀ ▶ arrows and the "Today" chip on the right; the week strip is pinned underneath.
+  - **Calendar:** the month and its ◀ ▶ arrows.
+  - **Habits and Workouts:** their sub-tabs (Active/Stats, Workouts/Stats) are pinned under the title.
+  - **Completed and Journal:** the search box is pinned under the title, where there is one.
+  - Detail sheets (habit detail, Settings) keep their back button in the header.
+- **Size:** medium (touches every view; needs a screenshot check on iPhone sizes).
+- **Added:** 2026-11-23
+- **Decided (2026-11-23):** go with the layout above.
 
 ## Done
 
