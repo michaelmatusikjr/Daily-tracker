@@ -1450,3 +1450,13 @@ input, textarea, [contenteditable], [contenteditable] * { -webkit-user-select: t
   .lp-hold { scale: none; transition: box-shadow .15s; }
   .lp-pop { animation: none; }
 }
+
+/* v1.14 notification open */
+.tv-quick { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+.tv-quick .tv-big { min-height: 64px; font-size: 18px; font-weight: 700; border-radius: 16px; gap: 8px; }
+.tv-quick .tv-big:only-child { grid-column: 1 / -1; }
+.tv-banner { display: flex; align-items: center; gap: 10px; padding: 12px var(--s3); border-radius: 14px; font-size: 16px; font-weight: 650; background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
+.tv-banner.missed { background: var(--surface-2); color: var(--text-2); }
+.tv-banner svg { flex: none; }
+.tv-banner-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tv-banner .tv-undo { min-height: 44px; flex: none; }

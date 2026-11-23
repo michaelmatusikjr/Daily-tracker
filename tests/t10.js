@@ -140,7 +140,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     await p.click('.avatar-btn'); await p.click('.profile-item:has-text("Alex")'); await p.waitForTimeout(300);
     assert(await S(p, () => document.documentElement.dataset.accent) === 'rose', 'P2 Alex’s accent applied');
     await p.clock.runFor(6 * 60 * 1000); await p.waitForTimeout(200);
-    assert(JSON.stringify(await S(p, () => window.__n)) === '["Sam: Dentist"]', 'P6 reminders fire for all profiles, prefixed with profile name');
+    assert(JSON.stringify(await S(p, () => window.__n)) === '["Sam · in 10 min"]', 'P6 reminders fire for all profiles, titled with the profile name + timing');
     // Photo avatar
     await p.click('.avatar-btn'); await p.click('.menu-item:has-text("Edit Alex")'); await p.waitForTimeout(250);
     await p.setInputFiles('.sheet input[type=file]', FX + '/notimage.txt'); await p.waitForTimeout(300);

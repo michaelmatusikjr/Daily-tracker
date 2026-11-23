@@ -131,7 +131,7 @@ const openForm = async (p, id) => {
     const rules = P.buildRules({ hideText: false }).rules.filter((r) => r.id.includes(':hw:h2')).map((r) => JSON.stringify(r));
     return { occ, rules };
   });
-  assert(titles.occ.length && titles.occ.every((t) => /stretch/i.test(t)) && titles.rules.every((r) => /"title":"[^"]*stretch/i.test(r) && !r.includes('data:image')), 'R9 notifications/push: text title only, no image in payloads');
+  assert(titles.occ.length && titles.occ.every((t) => /left$/.test(t)) && titles.rules.every((r) => /"title":"[^"]* left"/.test(r) && /"body":"[^"]*stretch/i.test(r) && !r.includes('data:image')), 'R9 notifications/push: text title only, no image in payloads');
 
   // ===== 5. Export / import =====
   const exp = await p.evaluate(async () => JSON.stringify((await import('./js/store.js')).exportPayload()));

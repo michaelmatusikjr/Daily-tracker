@@ -123,10 +123,10 @@ const S = '.sheet-root:last-child';
     assert(st.tasks.find((x) => x.id === 't6').reminderAt === null, 'P0 reminderAt dropped when the task has a start time');
     const r = await rules(p);
     const R = Object.fromEntries(r.map((x) => [x.id.split(':').slice(2).join(':'), x]));
-    assert(R.t1 && R.t1.time === '06:00' && R.t1.offsetDays === 0 && R.t1.recur.type === 'none' && R.t1.date === '2026-11-19' && R.t1.body === 'Due today' && R.t1.title === 'Anytime once', 'P1 one-off Anytime task → push rule at reminderAt');
+    assert(R.t1 && R.t1.time === '06:00' && R.t1.offsetDays === 0 && R.t1.recur.type === 'none' && R.t1.date === '2026-11-19' && R.t1.title === 'Today' && R.t1.body === 'Anytime once – due today', 'P1 one-off Anytime task → push rule at reminderAt');
     assert(R.t2 && R.t2.time === '07:30' && R.t2.recur.type === 'daily' && R.t2.skipDates.includes(TODAY), 'P2 recurring Anytime task → daily rule, done day skipped');
     assert(!R.t3 && !R.t4 && !R.t6, 'P3 done one-off / no reminder / timed-with-stale-reminderAt → no Anytime rule');
-    assert(R.t5 && R.t5.time === '13:00' && R.t5.body === 'Starting now', 'P4 timed task rule unchanged');
+    assert(R.t5 && R.t5.time === '13:00' && R.t5.title === 'Now' && R.t5.body.startsWith('Timed – 1:00 PM'), 'P4 timed task rule unchanged');
     const occ = await p.evaluate(async () => {
       const N = await import('./js/notify.js');
       return N.reminderOccurrences(new Date(2026, 10, 18, 0, 0).getTime(), new Date(2026, 10, 19, 23, 0).getTime()).filter((o) => /:t:t[12]:/.test(o.key)).map((o) => [o.key.split(':').slice(1).join(':'), new Date(o.at).getHours() + ':' + String(new Date(o.at).getMinutes()).padStart(2, '0'), o.body]);

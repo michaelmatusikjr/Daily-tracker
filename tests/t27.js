@@ -16,7 +16,7 @@ const base = (o = {}) => ({ version: 4, settings: { onboarded: true, theme: 'lig
 async function open(browser, { width = 390, data = base(), second = null, hash = '', notif = false, clock = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height: 820 }, serviceWorkers: 'block', colorScheme: 'light' });
   await ctx.addInitScript(([d, q, n]) => {
-    if (n) { window.__n = []; window.Notification = class { constructor(t) { window.__n.push(t); } static get permission() { return 'granted'; } static requestPermission() { return Promise.resolve('granted'); } }; }
+    if (n) { window.__n = []; window.Notification = class { constructor(t, o) { window.__n.push(String(o?.body || t).split(' – ')[0]); } static get permission() { return 'granted'; } static requestPermission() { return Promise.resolve('granted'); } }; }
     if (localStorage.getItem('dailyTracker:profiles')) return;
     const profiles = [{ id: 'p', name: 'Me', avatar: { type: 'emoji', emoji: '', color: '#6366f1' } }];
     if (q) { profiles.push({ id: 'q', name: 'Sam', avatar: { type: 'emoji', emoji: '', color: '#10b981' } }); localStorage.setItem('dailyTracker:data:q', q); }

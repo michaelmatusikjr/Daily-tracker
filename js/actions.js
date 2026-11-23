@@ -267,7 +267,13 @@ export function setHabitValue(id, k, v, { silentUndo = false } = {}) {
     if (value > 0) s.logs[id][k] = value; else delete s.logs[id][k];
     // A manual change takes over from the workout link for that day.
     if (s.autoHabit[id]) { delete s.autoHabit[id][k]; if (!Object.keys(s.autoHabit[id]).length) delete s.autoHabit[id]; }
-    if (value >= habitTarget(h)) clearFlag(s.habits.find((x) => x.id === id), 'missed', k); // done wins over "missed"
+    const hx = s.habits.find((x) => x.id === id);
+    if (value >= habitTarget(h)) clearFlag(hx, 'missed', k); // done wins over "missed"
+    // When the day was completed (optional, shown in the notification View sheet; since 1.14).
+    if (hx) {
+      if (value >= habitTarget(h)) { if (!wasDone || !hx.doneAt?.[k]) hx.doneAt = { ...(hx.doneAt || {}), [k]: Date.now() }; }
+      else if (hx.doneAt?.[k]) { delete hx.doneAt[k]; if (!Object.keys(hx.doneAt).length) delete hx.doneAt; }
+    }
   });
   const nowDone = value >= habitTarget(h);
   if (nowDone && !wasDone) {

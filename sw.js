@@ -40,6 +40,7 @@ const SHELL = [
   './js/workoutForm.js',
   './js/itemMenu.js',
   './js/taskView.js',
+  './js/habitSheet.js',
   './js/attachments.js',
   './js/views/completed.js',
   './js/habitIcon.js',

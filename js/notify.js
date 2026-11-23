@@ -3,7 +3,7 @@
 // push server (js/push.js) the same occurrences are sent from the server instead.
 import { getProfiles, readProfileState } from './store.js';
 import { todayKey, addDays, dateAt, fmtTime, timeToMin, minToTime } from './dates.js';
-import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone, habitWarnAt, warnTitle } from './logic.js';
+import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone, habitWarnAt, reminderText } from './logic.js';
 import { habitText } from './habitIcon.js';
 import { pushCoversReminders, deepLink, hideTextOn, HIDDEN_TITLE, HIDDEN_BODY } from './push.js';
 
@@ -54,10 +54,10 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
     const st = readProfileState(profile.id);
     if (!st || !st.settings.notifications) continue;
     const fmt = st.settings.timeFormat;
-    const prefix = multi ? `${profile.name}: ` : '';
-    const add = (key, at, title, body, k, stillDue) => {
+    const pname = multi ? profile.name : '';
+    const add = (key, at, text, k, stillDue) => {
       if (at < from || at > until) return;
-      out.push({ key: `${profile.id}:${key}`, at, title: prefix + title, body, url: deepLink(key[0] === 't' ? 'task' : 'habit', profile.id, key.split(':')[1], k), profileId: profile.id, stillDue });
+      out.push({ key: `${profile.id}:${key}`, at, title: text.title, body: text.body, url: deepLink(key[0] === 't' ? 'task' : 'habit', profile.id, key.split(':')[1], k), profileId: profile.id, stillDue });
     };
     for (const k of days) {
       for (const t of tasksOn(st, k)) {
@@ -67,7 +67,7 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
         // An Anytime task reminds at its own time of day (reminderAt) on its day.
         const mins = timedRem ? timeToMin(t.time) - t.reminder : timeToMin(t.reminderAt);
         const at = dateAt(addDays(k, Math.floor(mins / 1440)), minToTime(((mins % 1440) + 1440) % 1440)).getTime();
-        add(`t:${t.id}:${k}`, at, t.title, !timedRem ? 'Due today' : t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now', k,
+        add(`t:${t.id}:${k}`, at, reminderText({ kind: timedRem ? 'task' : 'anytime', name: t.title, profile: pname, lead: t.reminder || 0, time: t.time, fmt }), k,
           (s2) => { const x = s2.tasks.find((y) => y.id === t.id); return x && !isTaskDone(x, k) && !x.missedDates?.[k]; });
       }
       for (const hb of activeHabits(st)) {
@@ -77,7 +77,7 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
         const wa = habitWarnAt(st, hb);
         if (wa !== null) {
           const left = timeToMin(hb.target) - wa;
-          add(`hw:${hb.id}:${k}`, dateAt(k, minToTime(wa)).getTime(), warnTitle(hb, left), `Complete by ${fmtTime(hb.target, fmt)}`, k, stillDue);
+          add(`hw:${hb.id}:${k}`, dateAt(k, minToTime(wa)).getTime(), reminderText({ kind: 'habit', name: hb.name, profile: pname, left, time: hb.target, fmt }), k, stillDue);
         }
       }
     }
