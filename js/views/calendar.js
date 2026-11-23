@@ -3,7 +3,7 @@ import { getState } from '../store.js';
 import { hasWorkoutOn } from '../workouts.js';
 import { attachMenu, dayMenu } from '../itemMenu.js';
 import { ctx } from '../ctx.js';
-import { icon } from '../icons.js';
+import { appHeader } from '../header.js';
 import { dayProgress, tasksOn, isTaskDone, moodEmoji, PRIORITIES } from '../logic.js';
 import { todayKey, addDays, addMonths, startOfWeek, monthStart, daysInMonth, fmtMonthYear, fmtDateLong, weekdayLabels } from '../dates.js';
 
@@ -19,14 +19,14 @@ export function renderCalendar() {
   const setM = (n) => { ctx.ui.calMonth = addMonths(m, n); ctx.rerender(); };
   const root = h('div.view.view-calendar');
 
-  root.append(h('header.page-head',
-    h('div.page-head-text', h('p.eyebrow', 'Calendar'), h('h1.page-title', fmtMonthYear(m))),
-    h('div.head-actions',
+  root.append(appHeader({
+    title: fmtMonthYear(m),
+    actions: [
       m !== monthStart(today) ? h('button.chip-btn', { type: 'button', onclick: () => { ctx.ui.calMonth = monthStart(today); ctx.rerender(); } }, 'Today') : null,
       iconBtn('chevronLeft', 'Previous month', () => setM(-1)),
-      iconBtn('chevronRight', 'Next month', () => setM(1)))));
-
-  root.append(h('div.cal-top-actions', h('a.btn.secondary.small.cal-completed-btn', { href: '#completed' }, icon('check', { size: 16 }), 'Completed tasks')));
+      iconBtn('chevronRight', 'Next month', () => setM(1)),
+    ],
+  }));
 
   const names = weekdayLabels('short');
   const grid = h('div.cal-grid', { role: 'grid', 'aria-label': fmtMonthYear(m) });

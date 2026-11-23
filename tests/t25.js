@@ -223,7 +223,7 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
     ] });
     const { ctx, p } = await open(browser, { data });
     assert(await p.locator('.progress-card .completed-link').count() === 0, 'H1a no Completed link on Today’s progress card');
-    await go(p, '#calendar'); await p.click('.cal-completed-btn'); await p.waitForTimeout(400);
+    await go(p, '#calendar'); await p.click('.avatar-btn'); await p.waitForTimeout(300); await p.click('.menu-item:has-text("Completed tasks")'); await p.waitForTimeout(400);
     assert(await p.evaluate(() => location.hash) === '#completed', 'H1 reachable from Calendar');
     const count = () => p.textContent('.completed-count');
     const titles = () => p.$$eval('.completed-title', (e) => e.map((x) => x.textContent));
@@ -284,7 +284,7 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
     const st = await stored(p);
     assert(st.tasks.find((x) => x.id === 'a4').completedAt > 0 && st.tasks.find((x) => x.id === 'a3').doneAt['2026-11-15'] > 0, 'T3 completedAt / doneAt recorded');
     await go(p, '#calendar');
-    await p.click('.cal-completed-btn'); await p.waitForTimeout(400);
+    await p.click('.avatar-btn'); await p.waitForTimeout(300); await p.click('.menu-item:has-text("Completed tasks")'); await p.waitForTimeout(400);
     assert(await p.evaluate(() => location.hash) === '#completed', 'H5 reachable from Calendar');
     await ctx.close();
   }

@@ -1,5 +1,6 @@
 // Journal tab: every entry, newest first, searchable by note text. Tap an entry to edit it; long-press for Edit / Delete.
 import { h, emptyState } from '../ui.js';
+import { appHeader } from '../header.js';
 import { getState } from '../store.js';
 import { ctx } from '../ctx.js';
 import { todayKey, fmt } from '../dates.js';
@@ -27,9 +28,8 @@ export function renderJournal() {
   const st = getState();
   const total = Object.keys(st.journal).length;
   const root = h('div.view.view-journal');
-  root.append(h('header.page-head',
-    h('div.page-head-text', h('p.eyebrow', total ? `${total} entr${total === 1 ? 'y' : 'ies'}` : 'Your days in words'), h('h1.page-title', 'Journal'))));
   if (!total) {
+    root.append(appHeader({ title: 'Journal' }));
     root.append(h('section.card', emptyState('📓', 'No journal entries yet', 'Tap + and choose Journal to write about your day.')));
     return root;
   }
@@ -53,7 +53,7 @@ export function renderJournal() {
     type: 'search', value: ctx.ui.journalQuery, placeholder: 'Search your notes', 'aria-label': 'Search journal notes', 'data-fk': 'journal-search', autocomplete: 'off',
     oninput: (e) => { clearTimeout(timer); timer = setTimeout(() => { ctx.ui.journalQuery = e.target.value; draw(); }, 200); },
   });
-  root.append(h('div.completed-tools', search, countEl), results, empty);
+  root.append(appHeader({ title: 'Journal', below: [search] }), h('div.completed-tools', countEl), results, empty);
   draw();
   return root;
 }

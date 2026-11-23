@@ -119,6 +119,15 @@ function syncTheme() {
   lastSettingsSig = JSON.stringify(st.settings);
 }
 
+/** Keeps --head-h (used for scroll padding/margins) equal to the fixed header's height. */
+let headObserver = null;
+function trackHeaderHeight(head) {
+  headObserver?.disconnect();
+  const set = () => document.documentElement.style.setProperty('--head-h', (head ? head.offsetHeight + 8 : 0) + 'px');
+  set();
+  if (head && 'ResizeObserver' in window) { headObserver = new ResizeObserver(set); headObserver.observe(head); }
+}
+
 function render() {
   if (location.hash.startsWith('#open/')) { openDeepLink(); return; }
   let { name, arg } = parseRoute();
@@ -157,6 +166,7 @@ function render() {
   const failure = getLoadFailure();
   if (failure) view.prepend(loadFailureCard(failure));
   main.replaceChildren(view);
+  trackHeaderHeight(view.querySelector('.app-head'));
   ctx.anim.clear();
   const activeTab = name === 'habit' ? 'habits' : name === 'exercise' ? 'workouts' : name;
   nav.querySelectorAll('.nav-item').forEach((a) => {

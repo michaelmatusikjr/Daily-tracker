@@ -62,11 +62,9 @@ const isRed = (c) => c.r > 200 && c.b < 60, isBlue = (c) => c.b > 200 && c.r < 6
     assert(await p.locator('.progress-card .progress-sub').count() === 0 && !/halfway|keep going|nice start|fresh start|plan something|enjoy/i.test(await p.textContent('.progress-card')), 'N1 no encouragement text on Today’s progress card (2 of 3 done)');
     assert(await p.locator('.progress-card .completed-link, a[href="#completed"]').count() === 0, 'N2 no “Completed ›” link on Today');
     await go(p, '#calendar');
-    assert((await p.textContent('.view-calendar .cal-completed-btn')).includes('Completed tasks'), 'N3 Calendar has a “Completed tasks” button');
-    const first = await p.evaluate(() => { const v = document.querySelector('.view-calendar'); return [...v.children].findIndex((c) => c.querySelector?.('.cal-completed-btn') || c.matches?.('.cal-completed-btn')); });
-    assert(first >= 0 && first <= 2, 'N3 the button sits at the top of the Calendar tab');
-    await p.click('.cal-completed-btn'); await p.waitForTimeout(400);
-    assert(await p.evaluate(() => location.hash) === '#completed' && (await p.textContent('.page-title')).includes('Completed'), 'N3 button opens the Completed view');
+    assert(await p.locator('.cal-completed-btn').count() === 0, 'N3 Calendar no longer has a “Completed tasks” button (v1.14: it lives in the avatar menu)');
+    await p.click('.avatar-btn'); await p.waitForTimeout(300); await p.click('.menu-item:has-text("Completed tasks")'); await p.waitForTimeout(400);
+    assert(await p.evaluate(() => location.hash) === '#completed' && (await p.textContent('.page-title')).includes('Completed'), 'N3 avatar-menu entry opens the Completed view');
     await go(p, '#stats');
     assert(await p.locator('.completed-link').count() === 0 && await p.locator('a[href="#stats"]').count() === 0 && (await p.textContent('.page-title')).includes('Nov'), 'N4 Stats tab is gone (old #stats falls back to Today, no Completed link there)');
     // ---- #15 no zoom / no selecting UI ----

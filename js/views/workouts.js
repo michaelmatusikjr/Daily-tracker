@@ -2,6 +2,7 @@
 // and exercise management.
 import { h, s, iconBtn, segmented, emptyState, openSheet, choose, confirmDialog, toast, tabs } from '../ui.js';
 import { icon } from '../icons.js';
+import { appHeader } from '../header.js';
 import { getState, update, getActiveProfile } from '../store.js';
 import { ctx } from '../ctx.js';
 import { fmt, fmtDateShort, relativeLabel } from '../dates.js';
@@ -143,14 +144,13 @@ export function renderWorkouts() {
   const st = getState();
   const root = h('div.view.view-workouts');
   const ps = periodStats(st);
-  root.append(h('header.page-head',
-    h('div.page-head-text',
-      h('p.eyebrow', st.workouts.length ? `${ps.week} workout day${ps.week === 1 ? '' : 's'} this week` : 'Log your training'),
-      h('h1.page-title', 'Workouts')),
-    h('div.head-actions', iconBtn('list', 'Manage exercises', () => openExerciseManager()))));
   const onStats = ctx.ui.workoutsTab === 'stats';
-  root.append(tabs([{ value: 'workouts', label: 'Workouts' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'workouts',
-    (v) => { ctx.slide = v === 'stats' ? 'r' : 'l'; ctx.ui.workoutsTab = v; ctx.rerender(); }, { label: 'Workouts view', idPrefix: 'wo-tab' }));
+  root.append(appHeader({
+    title: 'Workouts',
+    actions: [iconBtn('list', 'Manage exercises', () => openExerciseManager())],
+    below: [tabs([{ value: 'workouts', label: 'Workouts' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'workouts',
+      (v) => { ctx.slide = v === 'stats' ? 'r' : 'l'; ctx.ui.workoutsTab = v; ctx.rerender(); }, { label: 'Workouts view', idPrefix: 'wo-tab' })],
+  }));
   const body = h('div.tab-panel', { id: 'wo-tab-panel', role: 'tabpanel', 'aria-labelledby': `wo-tab-${onStats ? 'stats' : 'workouts'}` });
   root.append(body);
   if (onStats) { body.append(...workoutStatsPanel(st)); return root; }
@@ -215,12 +215,12 @@ export function renderExercise(id) {
   const s = st.settings;
   const { summary, records, list } = computeRecords(st, id);
   const tot = exerciseTotals(st, id);
-  root.append(h('header.page-head.detail-head',
-    iconBtn('arrowLeft', 'Back to workouts', () => ctx.go('workouts')),
-    h('div.page-head-text',
-      h('p.eyebrow', `${TYPE_NAME[ex.type] || 'Strength'}${ex.archived ? ' · Archived' : ''}`),
-      h('h1.page-title', ex.name)),
-    iconBtn('edit', `Edit ${ex.name}`, () => openExerciseEditor(ex))));
+  root.append(appHeader({
+    cls: 'detail',
+    back: { label: 'Back to workouts', onclick: () => ctx.go('workouts') },
+    title: ex.name + (ex.archived ? ' (archived)' : ''),
+    actions: [iconBtn('edit', `Edit ${ex.name}`, () => openExerciseEditor(ex))],
+  }));
   root.append(h('button.btn.primary.block.log-btn', { type: 'button', onclick: () => openWorkoutForm(null, { exerciseId: id }) }, icon('plus', { size: 20 }), `Log ${ex.name}`));
 
   if (!list.length) {
