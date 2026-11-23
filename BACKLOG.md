@@ -46,6 +46,21 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Size:** tiny.
 - **Added:** 2026-11-23
 
+### 25. Completed tasks list: wrap long task names
+- **What:** task names in the Completed list wrap onto more lines instead of being cut off.
+- **Size:** tiny.
+- **Added:** 2026-11-23
+
+### 26. "Future tasks" section at the bottom of Today
+- **What:** below the day's schedule, a "Future tasks" list of tasks scheduled for later days, each showing the date it's scheduled for, so they can be done ahead of time.
+- **Rules:**
+  - **Repeating tasks:** only the next occurrence is listed.
+  - **New task-form marker:** "Must be done on this day" (or similar). Tasks with it set are left out of Future tasks.
+  - Works like missed tasks carrying into later days, but in reverse: upcoming tasks appear early, at the bottom.
+- **Open details:** how far ahead to look (all future tasks, or a limit such as 2 weeks); what completing an occurrence early means for that day and for streaks/stats; whether it shows on past/future days or only on today.
+- **Size:** medium.
+- **Added:** 2026-11-23
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
