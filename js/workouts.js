@@ -456,6 +456,7 @@ export function syncHabitLink(state, date) {
   } else if (auto[date]) {
     delete logs[date];
     delete auto[date];
+    if (hb.doneAt?.[date]) { delete hb.doneAt[date]; if (!Object.keys(hb.doneAt).length) delete hb.doneAt; }
   }
   if (!Object.keys(auto).length) delete state.autoHabit[hb.id];
 }

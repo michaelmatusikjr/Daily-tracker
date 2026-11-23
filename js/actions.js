@@ -9,12 +9,13 @@ import { isRecurring, isTaskDone, habitTarget, habitVal, dayProgress } from './l
 import { todayKey, fmtDateShort, addDays } from './dates.js';
 import { syncHabitLink, computeRecords, exerciseById, recordToast } from './workouts.js';
 
-function celebrateIfDone(k, before) {
+function celebrateIfDone(k, before, undo = null) {
   const after = dayProgress(getState(), k);
   if (before.pct < 1 && after.pct === 1 && after.total > 0) {
     ctx.anim.add('ring');
     const message = k === todayKey() ? 'Everything done for today. Nice work!' : 'Everything done for that day';
-    setTimeout(() => takeover({ emoji: '🎉', message, confetti: true }), 50);
+    // The takeover replaces any toast, so an Undo that toast offered moves onto it.
+    setTimeout(() => takeover({ emoji: '🎉', message, confetti: true, ...(undo ? { action: 'Undo', onAction: undo } : {}) }), 50);
     haptic([20, 40, 20]);
     return true;
   }
@@ -74,6 +75,7 @@ export function toggleTask(id, k) {
   const t = st.tasks.find((x) => x.id === id);
   if (!t) return;
   const was = isTaskDone(t, k);
+  if (was && t.earlyOf && !isRecurring(t)) { giveBackEarly(t); return; }
   const before = dayProgress(st, k);
   if (!was) ctx.anim.add('t-' + id);
   setTaskDone(id, k, !was);
@@ -101,8 +103,8 @@ export function completeTaskEarly(id, k) {
     const copyId = uid();
     const copy = JSON.parse(JSON.stringify(t));
     // Photos stay with the series; the copy is just the record of today's completion.
-    for (const f of ['attachments', 'doneAt', 'missedDates', 'fixedDay', 'todayOrder']) delete copy[f];
-    Object.assign(copy, { id: copyId, date: today, recur: { type: 'none', days: [], interval: 2 }, exceptions: [], doneDates: {}, done: true, completedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now(), order: (t.order || 0) + 0.5 });
+    for (const f of ['attachments', 'doneAt', 'missedDates', 'fixedDay', 'todayOrder', 'reminderAt']) delete copy[f];
+    Object.assign(copy, { id: copyId, reminder: null, earlyOf: { id, date: k }, date: today, recur: { type: 'none', days: [], interval: 2 }, exceptions: [], doneDates: {}, done: true, completedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now(), order: (t.order || 0) + 0.5 });
     update((s) => {
       const x = s.tasks.find((y) => y.id === id);
       if (!x) return;
@@ -130,8 +132,24 @@ export function completeTaskEarly(id, k) {
     });
   }
   haptic(12);
-  toast(`Done early: “${t.title}” counts as completed today`, { action: 'Undo', onAction: undo });
-  celebrateIfDone(today, before);
+  if (!celebrateIfDone(today, before, undo)) toast(`Done early: “${t.title}” counts as completed today`, { action: 'Undo', onAction: undo });
+}
+
+/** Un-checking a repeating task's "done early" copy: remove the copy and put the occurrence back on its day. */
+function giveBackEarly(copy) {
+  const snap = JSON.parse(JSON.stringify(copy));
+  const { id: seriesId, date } = copy.earlyOf;
+  update((s) => {
+    s.tasks = s.tasks.filter((y) => y.id !== copy.id);
+    const x = s.tasks.find((y) => y.id === seriesId);
+    if (x) { x.exceptions = x.exceptions.filter((d) => d !== date); x.updatedAt = Date.now(); }
+  });
+  haptic(5);
+  toast(`“${copy.title}” is back on ${fmtDateShort(date)}`, { action: 'Undo', onAction: () => update((s) => {
+    if (!s.tasks.some((y) => y.id === snap.id)) s.tasks.push(snap);
+    const x = s.tasks.find((y) => y.id === seriesId);
+    if (x && !x.exceptions.includes(date)) { x.exceptions.push(date); x.updatedAt = Date.now(); }
+  }) });
 }
 
 export function moveToToday(ids) {
@@ -195,12 +213,21 @@ export async function deleteTask(id, k) {
   const snapshot = JSON.parse(JSON.stringify(t));
   const index = st.tasks.indexOf(t);
   const ghost = prepareGhost(document.querySelector(`li.task[data-id="${CSS.escape(id)}"]`));
-  update((s) => { s.tasks = s.tasks.filter((x) => x.id !== id); });
+  // Deleting a "done early" copy gives the occurrence back to its series (Undo consumes it again).
+  const early = !isRecurring(t) && t.earlyOf ? t.earlyOf : null;
+  const setException = (s, on) => {
+    const x = early && s.tasks.find((y) => y.id === early.id);
+    if (!x) return;
+    x.exceptions = x.exceptions.filter((d) => d !== early.date);
+    if (on) x.exceptions.push(early.date);
+    x.updatedAt = Date.now();
+  };
+  update((s) => { s.tasks = s.tasks.filter((x) => x.id !== id); setException(s, false); });
   ghost.play();
   deleteFilesLater(id, (t.attachments || []).map((a) => a.id));
   toast(`Deleted “${t.title}”`, {
     action: 'Undo',
-    onAction: () => update((s) => { s.tasks.splice(Math.min(index, s.tasks.length), 0, snapshot); }),
+    onAction: () => update((s) => { s.tasks.splice(Math.min(index, s.tasks.length), 0, snapshot); setException(s, true); }),
   });
   return true;
 }
@@ -395,7 +422,12 @@ export function saveHabit(data) {
 function clearAutoChecks(s, hid) {
   const auto = s.autoHabit[hid];
   if (!auto) return;
-  for (const d of Object.keys(auto)) if (s.logs[hid]) delete s.logs[hid][d];
+  const hb = s.habits.find((x) => x.id === hid);
+  for (const d of Object.keys(auto)) {
+    if (s.logs[hid]) delete s.logs[hid][d];
+    if (hb?.doneAt) delete hb.doneAt[d]; // no stale "Completed at" time once the check is gone
+  }
+  if (hb?.doneAt && !Object.keys(hb.doneAt).length) delete hb.doneAt;
   delete s.autoHabit[hid];
 }
 

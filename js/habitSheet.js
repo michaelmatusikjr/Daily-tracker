@@ -7,7 +7,7 @@ import { icon } from './icons.js';
 import { getState, subscribe } from './store.js';
 import { habitVal, habitTarget, isHabitMissed, scheduleLabel } from './logic.js';
 import { todayKey, relativeLabel, fmtDateLong, weekdayLabels, fmtTime } from './dates.js';
-import { setHabitValue, setMissed } from './actions.js';
+import { setHabitValue, setMissed, resetHabitDay } from './actions.js';
 import { habitMenu, showMenu } from './itemMenu.js';
 import { habitTitle } from './habitIcon.js';
 import { notifyActions } from './taskView.js';
@@ -16,7 +16,7 @@ import { ctx } from './ctx.js';
 export function openHabitView(id, k = todayKey(), { fromNotification = true } = {}) {
   if (!getState().habits.some((x) => x.id === id)) return null;
   const body = h('div.task-view.habit-view');
-  let before = 0; // the count before Complete was tapped (Undo restores it)
+  let before = null; // the count before Complete was tapped in this sheet (Undo restores it)
   const render = () => {
     const st = getState();
     const hb = st.habits.find((x) => x.id === id);
@@ -32,7 +32,13 @@ export function openHabitView(id, k = todayKey(), { fromNotification = true } = 
       state: done ? 'done' : missed ? 'missed' : 'open', at: hb.doneAt?.[k], fmt: st.settings.timeFormat,
       onDone: () => { before = v; setHabitValue(id, k, target); },
       onMissed: () => setMissed('habit', id, k, true),
-      onUndo: () => (done ? setHabitValue(id, k, before < target ? before : 0) : setMissed('habit', id, k, false)),
+      // Done before the sheet opened: reset like the menu does (with its own Undo toast), never silently.
+      onUndo: () => {
+        if (!done) return setMissed('habit', id, k, false);
+        if (before === null) return resetHabitDay(id, k);
+        const b = before; before = null;
+        return setHabitValue(id, k, b < target ? b : 0);
+      },
     }) : null;
     body.replaceChildren(...[
       quick,

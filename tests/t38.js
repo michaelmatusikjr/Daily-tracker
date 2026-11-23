@@ -166,6 +166,14 @@ const occ = (p) => p.evaluate(async () => (await import('./js/notify.js')).remin
     await go(p, '#open/habit/p/h3/2026-11-18');
     assert((await q('.tv-banner-text').textContent()) === 'Completed', 'H7 legacy done habit → "Completed"');
     await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+    // QA fix: a count habit already done (11 of 8) before the sheet opened — Undo resets with its own Undo toast, never silently
+    await p.evaluate(async () => { const S = await import('./js/store.js'); S.update((s) => { s.logs.h2 = { '2026-11-18': 11 }; }); });
+    await go(p, '#open/habit/p/h2/2026-11-18');
+    await q('.tv-undo').click(); await p.waitForTimeout(400);
+    assert(!(await stored(p)).logs.h2?.[TODAY] && await p.locator('#toasts .toast-action').count() === 1, 'H8 Undo on an already-done count habit resets with an Undo toast');
+    await p.click('#toasts .toast-action'); await p.waitForTimeout(400);
+    assert((await stored(p)).logs.h2[TODAY] === 11, 'H9 toast Undo brings the count back (11)');
+    await p.keyboard.press('Escape'); await p.waitForTimeout(400);
 
     // Another profile's notification still switches profile (and opens its sheet with actions)
     await go(p, '#open/task/q/s1/2026-11-18');

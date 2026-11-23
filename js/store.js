@@ -143,6 +143,8 @@ function normTask(t, i) {
     done: !!t.done,
     // "Must be done on this day": kept out of Today's Future tasks. Optional (absent = false), so no migration.
     ...(t.fixedDay === true ? { fixedDay: true } : {}),
+    // A repeating task's occurrence completed early (#26): this done copy records it; un-checking or deleting it gives the occurrence back.
+    ...(isObj(t.earlyOf) && typeof t.earlyOf.id === 'string' && isValidKey(t.earlyOf.date) ? { earlyOf: { id: t.earlyOf.id.slice(0, 100), date: t.earlyOf.date } } : {}),
     doneDates: isObj(t.doneDates) ? t.doneDates : {},
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.filter(isValidKey) : [],
     // "Mark as missed": dates the user gave up on (hidden from Today; still counts as not done).

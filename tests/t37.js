@@ -183,7 +183,9 @@ const ids = (p, sel) => p.locator(sel).evaluateAll((els) => els.map((e) => e.dat
     assert(await p.locator('.future-section li[data-id="f1"]').count() === 1, 'D4 back in Future tasks after Undo');
     await p.click('.future-section li[data-id="f1"] .check'); await p.waitForTimeout(400);
 
-    // early completion: repeating
+    // early completion: repeating (an open task today keeps the day unfinished, so the Undo is a toast; G9 covers the celebration)
+    await p.evaluate(async (t) => { const S = await import('./js/store.js'); S.update((s) => { s.tasks.push(t); }); }, task('open1', 'Still open today', { order: 9 }));
+    await p.waitForTimeout(200);
     const before = await stored(p);
     await p.click('.future-section li[data-id="r1"] .check'); await p.waitForTimeout(400);
     s = await stored(p);
@@ -195,15 +197,17 @@ const ids = (p, sel) => p.locator(sel).evaluateAll((els) => els.map((e) => e.dat
     assert(await p.locator('.future-section li[data-id="r1"] .future-date').innerText() === new Date(NOWD.getFullYear(), NOWD.getMonth(), NOWD.getDate() + 2).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), 'E4 repeating: next Future occurrence moves on to the day after');
     const occ = await p.evaluate(async ([t, k]) => (await import('./js/logic.js')).occursOn(t, k), [r1, day(1)]);
     assert(occ === false, 'E5 consumed occurrence no longer occurs on its scheduled day');
-    await p.click('.head-actions button[aria-label="Next day"]'); await p.waitForTimeout(300);
-    assert(await p.locator('.task[data-id="r1"]').count() === 0, 'E6 not on tomorrow\'s list');
-    await p.click('.chip-btn'); await p.waitForTimeout(300);
     // push rules: the consumed day is an exception that rules carry
     assert(r1.exceptions.includes(day(1)), 'E7 exceptions are what js/push.js sends to the server rules');
     await undo(p);
     s = await stored(p);
     assert(!s.tasks.find((t) => t.id === 'r1').exceptions.includes(day(1)) && !s.tasks.some((t) => t.title === 'Repeats daily' && t.id !== 'r1'), 'E8 Undo removes the copy and the exception');
     assert(JSON.stringify(s.tasks.find((t) => t.id === 'r1')) === JSON.stringify(before.tasks.find((t) => t.id === 'r1')).replace(/"updatedAt":\d+/, (m) => m) || s.tasks.find((t) => t.id === 'r1').exceptions.length === 0, 'E9 series back to its original state');
+    // Navigating days clears toasts, so check tomorrow's list after completing early again.
+    await p.click('.future-section li[data-id="r1"] .check'); await p.waitForTimeout(400);
+    await p.click('.head-actions button[aria-label="Next day"]'); await p.waitForTimeout(300);
+    assert(await p.locator('.task[data-id="r1"]').count() === 0, 'E6 not on tomorrow\'s list');
+    await p.click('.chip-btn'); await p.waitForTimeout(300);
     await ctx.close();
   }
 
@@ -225,6 +229,47 @@ const ids = (p, sel) => p.locator(sel).evaluateAll((els) => els.map((e) => e.dat
     const kept = await p.evaluate(async (t) => { const m = await import('./js/store.js'); return m.normalize({ version: 6, tasks: [t] }).tasks[0].fixedDay; }, task('z', 'Z', { fixedDay: true }));
     const dropped = await p.evaluate(async (t) => { const m = await import('./js/store.js'); return m.normalize({ version: 6, tasks: [t] }).tasks[0].fixedDay; }, task('z', 'Z', { fixedDay: 'yes' }));
     assert(kept === true && dropped === undefined, 'F6 normalize keeps fixedDay:true, drops junk');
+    await ctx.close();
+  }
+
+  // ===== G. v1.14 QA fixes: early copy un-check/delete gives the occurrence back; Undo survives the celebration; next free occurrence =====
+  {
+    const { ctx, p } = await open(browser, base({ tasks: [task('r1', 'Water plants', { date: day(-5), recur: { type: 'daily', days: [], interval: 2 }, reminder: 10, time: '18:00' }), task('t0', 'Today thing')] }));
+    await p.evaluate(async (k) => { const A = await import('./js/actions.js'); A.completeTaskEarly('r1', k); }, day(1));
+    await p.waitForTimeout(300);
+    let st = await stored(p);
+    const copy = st.tasks.find((t) => t.earlyOf);
+    assert(copy && copy.earlyOf.id === 'r1' && copy.earlyOf.date === day(1) && copy.reminder === null, 'G1 copy records earlyOf and has no reminder');
+    assert(st.tasks.find((t) => t.id === 'r1').exceptions.includes(day(1)), 'G2 occurrence consumed');
+    await p.evaluate(async ([id, k]) => { const A = await import('./js/actions.js'); A.toggleTask(id, k); }, [copy.id, TODAY]);
+    await p.waitForTimeout(300);
+    st = await stored(p);
+    assert(!st.tasks.some((t) => t.id === copy.id) && !st.tasks.find((t) => t.id === 'r1').exceptions.includes(day(1)), 'G3 un-checking the copy removes it and gives the occurrence back');
+    assert(/back on/.test(await p.locator('#toasts').innerText()), 'G4 toast says it is back');
+    await undo(p);
+    st = await stored(p);
+    assert(st.tasks.some((t) => t.id === copy.id) && st.tasks.find((t) => t.id === 'r1').exceptions.includes(day(1)), 'G5 Undo restores copy and exception');
+    await p.evaluate(async (id) => { const A = await import('./js/actions.js'); await A.deleteTask(id, null); }, copy.id);
+    await p.waitForTimeout(300);
+    st = await stored(p);
+    assert(!st.tasks.some((t) => t.id === copy.id) && !st.tasks.find((t) => t.id === 'r1').exceptions.includes(day(1)), 'G6 deleting the copy gives the occurrence back');
+    await undo(p);
+    st = await stored(p);
+    assert(st.tasks.some((t) => t.id === copy.id) && st.tasks.find((t) => t.id === 'r1').exceptions.includes(day(1)), 'G7 Undo of delete consumes it again');
+    const n = await p.evaluate(async (k) => { const L = await import('./js/logic.js'); const S = await import('./js/store.js'); const st = S.getState(); const t = st.tasks.find((x) => x.id === 'r1'); t.doneDates[k] = true; const r = L.futureTasks(st).soon.filter((x) => x.t.id === 'r1').map((x) => x.date); delete t.doneDates[k]; return r; }, day(2));
+    assert(n.length === 1 && n[0] === day(3), 'G8 Future tasks skips a done occurrence to the next free one: ' + n);
+    await ctx.close();
+  }
+  {
+    // Early completion that finishes the day: the celebration carries the Undo.
+    const { ctx, p } = await open(browser, base({ tasks: [task('o1', 'Renew passport', { date: day(3) })] }));
+    await p.evaluate(async (k) => { const A = await import('./js/actions.js'); A.completeTaskEarly('o1', k); }, day(3));
+    await p.waitForTimeout(400);
+    const btn = p.locator('.takeover-action');
+    assert(await btn.count() === 1 && /Undo/.test(await btn.innerText()), 'G9 celebration offers Undo');
+    await btn.click(); await p.waitForTimeout(300);
+    const t = (await stored(p)).tasks.find((x) => x.id === 'o1');
+    assert(t.date === day(3) && !t.done, 'G10 Undo from the celebration restores date and state');
     await ctx.close();
   }
 

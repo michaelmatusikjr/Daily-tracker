@@ -49,7 +49,7 @@ export function futureTasks(state, today = todayKey()) {
     if (!isRecurring(t)) {
       if (t.date > today) date = t.date;
     } else {
-      for (let i = 1; i <= 800; i++) { const k = addDays(today, i); if (occursOn(t, k)) { date = k; break; } }
+      for (let i = 1; i <= 800; i++) { const k = addDays(today, i); if (occursOn(t, k) && !isTaskDone(t, k) && !t.missedDates?.[k]) { date = k; break; } }
     }
     if (!date || isTaskDone(t, date) || t.missedDates?.[date]) continue;
     out.push({ t, date });
