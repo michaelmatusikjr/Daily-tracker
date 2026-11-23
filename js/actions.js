@@ -82,6 +82,58 @@ export function toggleTask(id, k) {
   celebrateIfDone(k, before);
 }
 
+/**
+ * Complete a not-yet-due task ahead of time (Today's "Future tasks"): it counts as completed today.
+ * One-off: marked done and moved to today (Undo restores its date and state exactly).
+ * Repeating: the scheduled occurrence `k` is consumed with an exception (so it never shows on its day,
+ * and the push server's rules skip it), and a completed one-off copy dated today carries the "done today".
+ * Tasks have no streaks or stats, so nothing else is touched.
+ */
+export function completeTaskEarly(id, k) {
+  const st = getState();
+  const t = st.tasks.find((x) => x.id === id);
+  const today = todayKey();
+  if (!t || k <= today) return;
+  const before = dayProgress(st, today);
+  ctx.anim.add('t-' + id);
+  let undo;
+  if (isRecurring(t)) {
+    const copyId = uid();
+    const copy = JSON.parse(JSON.stringify(t));
+    // Photos stay with the series; the copy is just the record of today's completion.
+    for (const f of ['attachments', 'doneAt', 'missedDates', 'fixedDay', 'todayOrder']) delete copy[f];
+    Object.assign(copy, { id: copyId, date: today, recur: { type: 'none', days: [], interval: 2 }, exceptions: [], doneDates: {}, done: true, completedAt: Date.now(), createdAt: Date.now(), updatedAt: Date.now(), order: (t.order || 0) + 0.5 });
+    update((s) => {
+      const x = s.tasks.find((y) => y.id === id);
+      if (!x) return;
+      if (!x.exceptions.includes(k)) x.exceptions.push(k);
+      x.updatedAt = Date.now();
+      s.tasks.push(copy);
+    });
+    undo = () => update((s) => {
+      s.tasks = s.tasks.filter((y) => y.id !== copyId);
+      const x = s.tasks.find((y) => y.id === id);
+      if (x) { x.exceptions = x.exceptions.filter((d) => d !== k); x.updatedAt = Date.now(); }
+    });
+  } else {
+    const prev = { date: t.date, done: t.done, completedAt: t.completedAt };
+    update((s) => {
+      const x = s.tasks.find((y) => y.id === id);
+      if (!x) return;
+      x.date = today; x.done = true; x.completedAt = Date.now(); x.updatedAt = Date.now();
+    });
+    undo = () => update((s) => {
+      const x = s.tasks.find((y) => y.id === id);
+      if (!x) return;
+      x.date = prev.date; x.done = prev.done; x.updatedAt = Date.now();
+      if (prev.completedAt) x.completedAt = prev.completedAt; else delete x.completedAt;
+    });
+  }
+  haptic(12);
+  toast(`Done early: “${t.title}” counts as completed today`, { action: 'Undo', onAction: undo });
+  celebrateIfDone(today, before);
+}
+
 export function moveToToday(ids) {
   const today = todayKey();
   const prev = new Map();

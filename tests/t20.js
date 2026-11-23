@@ -66,7 +66,7 @@ const openMissed = async (p) => { if ((await p.getAttribute('.missed-section .co
   await menu(p, '.task:has-text("Water plants") .task-main'); await pick(p, 'Mark as missed');
   let st = await stored(p);
   assert(st.tasks.find((x) => x.id === 't1').missedDates[TODAY] && st.tasks.find((x) => x.id === 't2').missedDates[TODAY], 'M5 tasks store missedDates[date] (one-off and recurring)');
-  assert(await p.locator('.task:has-text("Buy milk")').count() === 0 && await p.locator('.task:has-text("Water plants")').count() === 0 && (await p.textContent('.missed-section .collapse-btn')).includes('Missed (3)'), 'M6 both tasks hidden; Missed (3)');
+  assert(await p.locator('.task:has-text("Buy milk")').count() === 0 && await p.locator('section:not(.future-section) .task:has-text("Water plants")').count() === 0 && (await p.textContent('.missed-section .collapse-btn')).includes('Missed (3)'), 'M6 both tasks hidden; Missed (3)');
   await openMissed(p);
   const listed = await p.$$eval('.missed-list .missed-name', (e) => e.map((x) => x.textContent));
   assert(JSON.stringify(listed) === JSON.stringify(['Water', 'Buy milk', 'Water plants']), 'M7 Missed list: ' + listed.join(', '));
@@ -78,7 +78,7 @@ const openMissed = async (p) => { if ((await p.getAttribute('.missed-section .co
   assert(mi.includes('Unmark missed') && (await p.textContent('.task-view-sheet')).includes('Mark done'), 'M8 tapping a missed task opens View task: Mark done, and More › Unmark missed');
   await pick(p, 'Unmark missed');
   await p.keyboard.press('Escape'); await p.waitForTimeout(350);
-  assert(await p.locator('.task:has-text("Water plants")').count() === 1 && !(await stored(p)).tasks.find((x) => x.id === 't2').missedDates, 'M9 Unmark missed puts it back');
+  assert(await p.locator('section:not(.future-section) .task:has-text("Water plants")').count() === 1 && !(await stored(p)).tasks.find((x) => x.id === 't2').missedDates, 'M9 Unmark missed puts it back');
   // Mark done from the Missed list clears missed (done wins)
   await openMissed(p);
   await p.click('.missed-item:has-text("Buy milk")'); await p.waitForTimeout(400);

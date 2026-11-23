@@ -32,6 +32,33 @@ export const isTaskDone = (t, k) => (isRecurring(t) ? !!t.doneDates?.[k] : !!t.d
 /** Marked "missed" for day k (and not done: done always wins). Only hides it from Today's lists. */
 export const isTaskMissed = (t, k) => !!t.missedDates?.[k] && !isTaskDone(t, k);
 
+/** Window (days after today) for Today's "Future tasks"; later ones sit behind an expander. */
+export const FUTURE_DAYS = 14;
+
+/**
+ * Tasks that can be done ahead of time: scheduled after `today`, not "Must be done on this day"
+ * (fixedDay), not done or missed. One-offs list on their date; repeating tasks only their next
+ * occurrence after today. Returns { soon, later } of { t, date }, sorted by date, time, order;
+ * `soon` is tomorrow..today+FUTURE_DAYS.
+ */
+export function futureTasks(state, today = todayKey()) {
+  const out = [];
+  for (const t of state.tasks) {
+    if (t.fixedDay) continue;
+    let date = null;
+    if (!isRecurring(t)) {
+      if (t.date > today) date = t.date;
+    } else {
+      for (let i = 1; i <= 800; i++) { const k = addDays(today, i); if (occursOn(t, k)) { date = k; break; } }
+    }
+    if (!date || isTaskDone(t, date) || t.missedDates?.[date]) continue;
+    out.push({ t, date });
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date) || (a.t.time || '99').localeCompare(b.t.time || '99') || (a.t.order || 0) - (b.t.order || 0));
+  const edge = addDays(today, FUTURE_DAYS);
+  return { soon: out.filter((x) => x.date <= edge), later: out.filter((x) => x.date > edge) };
+}
+
 export const tasksOn = (state, k) => state.tasks.filter((t) => occursOn(t, k));
 
 export function splitTasks(tasks) {
@@ -114,6 +141,25 @@ export const habitTarget = (h) => (h.goal?.type === 'count' ? Math.max(1, h.goal
 export const habitVal = (state, h, k) => state.logs[h.id]?.[k] || 0;
 export const habitDone = (state, h, k) => habitVal(state, h, k) >= habitTarget(h);
 export const isHabitMissed = (state, h, k) => !!h.missed?.[k] && !habitDone(state, h, k);
+
+/** A habit scheduled every single day (the "Every day" schedule, or all seven weekdays picked). */
+export const isDailyHabit = (h) => !h.schedule || h.schedule.type === 'daily' || (h.schedule.type === 'days' && new Set(h.schedule.days || []).size === 7);
+
+/**
+ * How many days in a row, ending yesterday, a daily habit was not done (days marked "missed" count as
+ * not done). Today doesn't count until it's over, and done today clears it. Days before the habit
+ * existed aren't counted. Archived and non-daily habits give 0.
+ */
+export function missedDaysRun(state, h, today = todayKey()) {
+  if (h.archived || !isDailyHabit(h) || habitDone(state, h, today)) return 0;
+  const start = habitStart(state, h);
+  let n = 0;
+  for (let k = addDays(today, -1); k >= start && n < 3650; k = addDays(k, -1)) {
+    if (habitDone(state, h, k)) break;
+    n++;
+  }
+  return n;
+}
 
 /** Is the habit expected on that weekday (for day-based schedules)? perWeek: any day counts. */
 export function isScheduled(h, k) {
