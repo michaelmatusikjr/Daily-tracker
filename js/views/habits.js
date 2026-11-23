@@ -1,5 +1,6 @@
 import { h, iconBtn, makeSortable, emptyState, sectionHead, tabs } from '../ui.js';
 import { icon } from '../icons.js';
+import { appHeader } from '../header.js';
 import { getState } from '../store.js';
 import { ctx } from '../ctx.js';
 import { activeHabits, streaks, scheduleLabel, habitVal, habitTarget } from '../logic.js';
@@ -26,14 +27,14 @@ export function renderHabits() {
   const root = h('div.view.view-habits');
   const dayNames = weekdayLabels('short');
 
-  root.append(h('header.page-head',
-    h('div.page-head-text', h('p.eyebrow', habits.length ? `${habits.length} active` : 'Build routines'), h('h1.page-title', 'Habits')),
-    h('div.head-actions',
-      !onStats && habits.length > 1 ? h(`button.chip-btn${reorder ? '.active' : ''}`, {
-        type: 'button', 'aria-pressed': String(reorder), onclick: () => { ctx.ui.habitsReorder = !reorder; ctx.rerender(); },
-      }, icon(reorder ? 'check' : 'reorder', { size: 16 }), reorder ? 'Done' : 'Reorder') : null)));
-  root.append(tabs([{ value: 'active', label: 'Active habits' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'active',
-    (v) => { ctx.slide = v === 'stats' ? 'r' : 'l'; ctx.ui.habitsTab = v; ctx.ui.habitsReorder = false; ctx.rerender(); }, { label: 'Habits view', idPrefix: 'habits-tab' }));
+  root.append(appHeader({
+    title: 'Habits',
+    actions: [!onStats && habits.length > 1 ? h(`button.chip-btn${reorder ? '.active' : ''}`, {
+      type: 'button', 'aria-pressed': String(reorder), onclick: () => { ctx.ui.habitsReorder = !reorder; ctx.rerender(); },
+    }, icon(reorder ? 'check' : 'reorder', { size: 16 }), reorder ? 'Done' : 'Reorder') : null],
+    below: [tabs([{ value: 'active', label: 'Active habits' }, { value: 'stats', label: 'Stats' }], onStats ? 'stats' : 'active',
+      (v) => { ctx.slide = v === 'stats' ? 'r' : 'l'; ctx.ui.habitsTab = v; ctx.ui.habitsReorder = false; ctx.rerender(); }, { label: 'Habits view', idPrefix: 'habits-tab' })],
+  }));
   const body = h('div.tab-panel', { id: 'habits-tab-panel', role: 'tabpanel', 'aria-labelledby': `habits-tab-${onStats ? 'stats' : 'active'}` });
   root.append(body);
   if (onStats) { body.append(habitStatsPanel(st)); return root; }

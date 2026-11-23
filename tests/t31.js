@@ -230,7 +230,7 @@ const undo = async (p) => { await p.click('#toasts .toast-action'); await p.wait
   {
     const { ctx, p } = await open(browser);
     await go(p, '#calendar');
-    assert(await p.locator('a[href="#stats"]').count() === 0 && await p.locator('.cal-completed-btn').count() === 1, 'F1 Calendar keeps Completed link, none to Stats');
+    assert(await p.locator('a[href="#stats"]').count() === 0 && await p.locator('.cal-completed-btn').count() === 0, 'F1 Calendar has no Completed link (moved to avatar menu in v1.14), none to Stats');
     await ctx.close();
   }
 

@@ -1,3 +1,4 @@
+import { appHeader } from '../header.js';
 import { h, segmented, toast, confirmDialog, iconBtn, choose } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState, update, replaceState, exportPayload, validateImport, defaultState, APP_VERSION, isStorageOk, getActiveProfile, getProfiles, addProfile, replaceAllProfiles, unreadableProfiles, mutateProfileData } from '../store.js';
@@ -31,9 +32,7 @@ export function renderSettings() {
   const set = st.settings;
   const root = h('div.view.view-settings');
   const profile = getActiveProfile();
-  root.append(h('header.page-head.detail-head',
-    iconBtn('arrowLeft', 'Back to Today', () => ctx.go('today')),
-    h('div.page-head-text', h('p.eyebrow', `${profile.name}’s settings`), h('h1.page-title', 'Settings'))));
+  root.append(appHeader({ cls: 'detail', back: { label: 'Back to Today', onclick: () => ctx.go('today') }, title: 'Settings' }));
 
   // Profile
   root.append(group('Profile',

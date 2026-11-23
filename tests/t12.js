@@ -273,7 +273,7 @@ const go = (p, hash) => p.evaluate((x) => { location.hash = x; }, hash).then(() 
     await ctx.addInitScript(`(() => { if (sessionStorage.getItem('s')) return; ${Object.entries(seed).map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join('')} sessionStorage.setItem('s', 1); })();`);
     const p = await page(ctx);
     assert(await p.locator('.nav-item[data-tab="settings"]').isVisible(), '9 desktop side nav has Settings');
-    assert(await p.locator('.avatar-btn[aria-label^="Profile and settings"] .avatar-chevron').count() === 1, '9 avatar has a chevron and "Profile and settings" label');
+    assert(await p.locator('.avatar-btn[aria-label^="Profile and settings"]').count() === 1 && await p.locator('.avatar-chevron').count() === 0, '9 avatar has no chevron (v1.14) and a "Profile and settings" label');
     assert(await p.locator('.coach-tip').isVisible() && (await p.textContent('.coach-tip')).includes('Settings moved here'), '9 one-time “Settings moved here” tip');
     await p.click('.coach-tip .link-btn'); await p.reload(); await p.waitForTimeout(400);
     assert(await p.locator('.coach-tip').count() === 0, '9 tip not shown again');

@@ -1,5 +1,6 @@
 // "Completed" history (#completed): every completed task occurrence, searchable and filterable.
 import { h, iconBtn, openSheet, segmented } from '../ui.js';
+import { appHeader } from '../header.js';
 import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { ctx } from '../ctx.js';
@@ -85,9 +86,6 @@ export function renderCompleted() {
   const f = filters();
   const today = todayKey();
   const root = h('div.view.view-completed');
-  root.append(h('header.page-head.detail-head',
-    iconBtn('arrowLeft', 'Back', () => (history.length > 1 ? history.back() : ctx.go('today'))),
-    h('div.page-head-text', h('p.eyebrow', 'History'), h('h1.page-title', 'Completed'))));
 
   const all = completedEntries(st);
   const results = h('div.completed-results');
@@ -118,7 +116,11 @@ export function renderCompleted() {
       segmented([{ value: 'all', label: 'All' }, { value: 'one', label: 'One-off' }, { value: 'repeat', label: 'Repeating' }], f.type, (v) => { f.type = v; rerender(); }, { label: 'Task type' }))),
     chip('📎 Has photos', f.photos, () => { f.photos = !f.photos; rerender(); }));
   const n = activeCount(f);
-  root.append(h('div.completed-tools', search, chips,
+  root.append(appHeader({
+    cls: 'detail', back: { label: 'Back', onclick: () => (history.length > 1 ? history.back() : ctx.go('today')) },
+    title: 'Completed', below: [search],
+  }));
+  root.append(h('div.completed-tools', chips,
     n ? h('div.completed-active', h('span.muted.small', `${n} filter${n === 1 ? '' : 's'} on`),
       h('button.link-btn', { type: 'button', onclick: () => { Object.assign(f, { cats: [], range: 'all', from: '', to: '', prios: [], type: 'all', photos: false, q: f.q }); rerender(); } }, 'Clear filters')) : null),
     countEl, results);

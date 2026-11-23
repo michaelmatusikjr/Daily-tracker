@@ -1,7 +1,7 @@
 import { h, iconBtn, ring, onSwipe, makeSortable, emptyState, sectionHead, toast, isSheetOpen } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
-import { avatarEl, openProfileMenu } from '../profiles.js';
+import { appHeader } from '../header.js';
 import { ctx } from '../ctx.js';
 import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
 import { fmt as fmtDate, diffDays, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, greeting, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
@@ -88,26 +88,7 @@ export function renderToday() {
   const prog = dayProgress(st, k);
   const root = h('div.view.view-today');
 
-  // ---- Header ----
-  const profile = getActiveProfile();
-  root.append(h('header.page-head.today-head',
-    h('div.page-head-text',
-      // Avatar sits top-left beside the greeting, so the date title keeps the full width.
-      h('div.eyebrow-row',
-        h('button.avatar-btn', { type: 'button', onclick: () => { markTipSeen(); openProfileMenu(); }, 'aria-label': `Profile and settings (${profile.name})`, title: 'Profile and settings' },
-          avatarEl(profile, 34), h('span.avatar-chevron', { 'aria-hidden': 'true' }, icon('chevronDown', { size: 10 }))),
-        h('p.eyebrow', isToday ? greeting() : eyebrowLabel(k, today))),
-      settingsTip(),
-      // With the "Today" chip showing, narrow screens get a short date (swapped in CSS).
-      h('h1.page-title',
-        h('span.title-long', fmtDateLong(k)),
-        !isToday ? h('span.title-short', fmtDate(k, { weekday: 'short', month: 'short', day: 'numeric' })) : null)),
-    h('div.head-actions',
-      !isToday ? h('button.chip-btn', { type: 'button', onclick: () => ctx.setDate(today) }, 'Today') : null,
-      iconBtn('chevronLeft', 'Previous day', () => ctx.setDate(addDays(k, -1))),
-      iconBtn('chevronRight', 'Next day', () => ctx.setDate(addDays(k, 1))))));
-
-  // ---- Week strip ----
+  // ---- Header (v1.14: fixed; week strip pinned under the title row) ----
   const ws = startOfWeek(k, st.settings.weekStart);
   const strip = h('div.week-strip.no-swipe', { role: 'group', 'aria-label': 'Week' });
   const longNames = weekdayLabels('long');
@@ -124,7 +105,19 @@ export function renderToday() {
     h('span.ws-bar', { style: { '--p': p.total ? p.pct : 0 }, 'data-empty': p.total ? null : '' })));
   }
   onSwipe(strip, { left: () => ctx.setDate(addDays(k, 7)), right: () => ctx.setDate(addDays(k, -7)) });
-  root.append(strip);
+  root.append(appHeader({
+    cls: 'today-head', onAvatar: () => markTipSeen(),
+    // With the "Today" chip showing, narrow screens get a short date (swapped in CSS).
+    title: [h('span.title-long', fmtDateLong(k)), !isToday ? h('span.title-short', fmtDate(k, { weekday: 'short', month: 'short', day: 'numeric' })) : null],
+    actions: [
+      !isToday ? h('button.chip-btn', { type: 'button', onclick: () => ctx.setDate(today) }, 'Today') : null,
+      iconBtn('chevronLeft', 'Previous day', () => ctx.setDate(addDays(k, -1))),
+      iconBtn('chevronRight', 'Next day', () => ctx.setDate(addDays(k, 1))),
+    ],
+    below: [strip],
+  }));
+  const tip = settingsTip();
+  if (tip) root.append(tip);
   root.append(weatherSlot(k));
 
   // ---- Progress card ----
@@ -135,6 +128,7 @@ export function renderToday() {
   root.append(h(`section.card.progress-card${ringAnim ? '.celebrate' : ''}`, { 'aria-label': 'Day progress' },
     ring(prog.pct, { size: 84, stroke: 9, label: pctLabel, cls: 'day-ring', from: ringFrom }),
     h('div.progress-text',
+      h('p.progress-greet', isToday ? greeting() : eyebrowLabel(k, today)),
       h('p.progress-big', prog.total ? `${prog.done} of ${prog.total} done` : 'A clear day'),
       prog.total ? h('p.progress-break',
         h('span', icon('check', { size: 13 }), `${prog.tasks.done}/${prog.tasks.total} tasks`),

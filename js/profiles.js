@@ -91,6 +91,7 @@ export function openProfileMenu() {
     h('div.menu-items',
       action('plus', 'Add profile', () => { sheet.close(); openProfileEditor(null); }),
       action('edit', `Edit ${active.name}`, () => { sheet.close(); openProfileEditor(active); }),
+      action('check', 'Completed tasks', () => { sheet.close(); ctx.go('completed'); }),
       action('settings', 'Settings', () => { sheet.close(); ctx.go('settings'); }),
       profiles.length > 1 ? action('trash', `Delete ${active.name}`, async () => {
         sheet.close();

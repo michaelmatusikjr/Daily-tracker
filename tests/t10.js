@@ -115,7 +115,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert(JSON.stringify(tabs) === '["Today","Habits","Workouts","Calendar","Journal"]', 'N tabs: Today, Habits, Workouts, Calendar, Journal');
     assert(await p.locator('.avatar-btn').count() === 1, 'N avatar on Today');
     await go(p, '#habits');
-    assert(await p.locator('.avatar-btn').count() === 0, 'N no avatar on other pages');
+    assert(await p.locator('.avatar-btn').count() === 1, 'N avatar on every tab (v1.14 fixed header)');
     await go(p, '#settings');
     assert((await p.textContent('.page-title')) === 'Settings', 'N #settings route still works');
     await go(p, '#today');

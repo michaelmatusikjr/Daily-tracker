@@ -23,6 +23,7 @@ const SHELL = [
   './js/store.js',
   './js/theme.js',
   './js/ui.js',
+  './js/header.js',
   './js/views/calendar.js',
   './js/views/habitDetail.js',
   './js/views/habits.js',

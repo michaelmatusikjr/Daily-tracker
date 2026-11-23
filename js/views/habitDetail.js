@@ -1,3 +1,4 @@
+import { appHeader } from '../header.js';
 import { h, iconBtn, confirmDialog, onSwipe } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState } from '../store.js';
@@ -26,12 +27,12 @@ export function renderHabitDetail(id) {
   const target = habitTarget(hb);
   const dayNames = weekdayLabels('short');
 
-  root.append(h('header.page-head.detail-head',
-    iconBtn('arrowLeft', 'Back to habits', () => ctx.go('habits')),
-    h('div.page-head-text', { style: { '--c': hb.color } },
-      h('p.eyebrow', scheduleLabel(hb, dayNames) + (hb.archived ? ' · Archived' : '')),
-      h('h1.page-title', h('span.title-emoji', { 'aria-hidden': 'true' }, habitIcon(hb)), ' ', hb.name)),
-    iconBtn('edit', 'Edit habit', () => openHabitForm(hb))));
+  root.append(appHeader({
+    cls: 'detail', back: { label: 'Back to habits', onclick: () => ctx.go('habits') },
+    title: [h('span.title-emoji', { 'aria-hidden': 'true' }, habitIcon(hb)), ' ', hb.name],
+    actions: [iconBtn('edit', 'Edit habit', () => openHabitForm(hb))],
+  }));
+  root.append(h('p.detail-sub', { style: { '--c': hb.color } }, scheduleLabel(hb, dayNames) + (hb.archived ? ' · Archived' : '')));
 
   // Hero: today's control
   const status = v >= target ? 'Done for today' : hb.goal.type === 'count' ? `${v} of ${target}${hb.goal.unit ? ' ' + hb.goal.unit : ''} today` : 'Not done yet today';
