@@ -102,7 +102,7 @@ const touch = async (cdp, type, x, y) => cdp.send('Input.dispatchTouchEvent', { 
     const { ctx, p } = await open(browser, { data });
     const info = await p.evaluate(async () => {
       const N = await import('./js/notify.js'); const P = await import('./js/push.js');
-      return { occ: N.reminderOccurrences(new Date(2026, 10, 18, 0, 0).getTime(), new Date(2026, 10, 19, 23, 0).getTime()).map((o) => o.key), rules: P.buildRules({ today: '2026-11-18' }).rules.map((r) => r.id) };
+      return { occ: (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return N.reminderOccurrences(d.getTime(), d.getTime() + 47 * 3600000); })().map((o) => o.key), rules: P.buildRules({ today: '2026-11-18' }).rules.map((r) => r.id) };
     });
     assert(info.occ.some((k) => /:hw:h1:/.test(k)) && !info.occ.some((k) => /:h:h1:/.test(k)), 'B7 warning timer exists, reminder timer does not: ' + info.occ.join(','));
     assert(info.rules.some((id) => /:hw:h1$/.test(id)) && !info.rules.some((id) => /:h:h1$/.test(id)), 'B8 warning push rule exists, reminder rule does not: ' + info.rules.join(','));
@@ -152,8 +152,10 @@ const touch = async (cdp, type, x, y) => cdp.send('Input.dispatchTouchEvent', { 
     const b = await p.evaluate(() => { const r = (s) => document.querySelector(s)?.getBoundingClientRect(); const L = r('.weather-line'); const P = r('.wx-pill'), T = r('.wx-temps'), O = r('.wx-pop'); return { L, P, T, O, txt: document.querySelector('.wx-temps')?.textContent, pop: document.querySelector('.wx-pop')?.textContent }; });
     assert(b.P && b.T && b.O && b.P.right <= b.T.left && b.T.right <= b.O.left, 'F1 pill | temps | pop in order, no overlap');
     const cx = (r) => (r.left + r.right) / 2;
-    assert(Math.abs(cx(b.T) - cx(b.L)) < 2, 'F2a temps centred on the line');
-    assert(Math.abs(cx(b.P) - (b.L.left + b.T.left) / 2) < 12 && Math.abs(cx(b.O) - (b.T.right + b.L.right) / 2) < 12, 'F2b pill centred left of temps, pop centred right of temps');
+    void cx;
+    assert(Math.abs(b.P.left - b.L.left) < 2, 'F2a pill at the left edge (v1.13.6)');
+    const g1 = b.T.left - b.P.right, g2 = b.O.left - b.T.right, g3 = b.L.right - b.O.right;
+    assert(Math.abs(g1 - g2) < 3 && Math.abs(g2 - g3) < 3, `F2b temps and rain evenly spaced: ${g1.toFixed(1)} / ${g2.toFixed(1)} / ${g3.toFixed(1)}`);
     assert(/72° \/ 51°/.test(b.txt) && /10%/.test(b.pop) && b.P.height < 40, `F3 contents: ${b.txt} / ${b.pop}`);
     assert(!/null|undefined/.test(await p.textContent('.weather-slot')), 'F5 no stray null/undefined text in the slot');
     const mid = (b.T.left + b.T.right) / 2, lmid = (b.L.left + b.L.right) / 2;
