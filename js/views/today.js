@@ -3,11 +3,11 @@ import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { avatarEl, openProfileMenu } from '../profiles.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
+import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, missedDaysRun, futureTasks, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
 import { fmt as fmtDate, diffDays, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, greeting, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
 import { taskRow, habitControl, streakBadge, timeRange, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
-import { moveToToday, reorderToday, bumpHabit } from '../actions.js';
+import { moveToToday, reorderToday, bumpHabit, completeTaskEarly } from '../actions.js';
 import { openQuickAdd } from '../forms.js';
 import { attachMenu, habitMenu, taskMenu, showMenu, journalMenu } from '../itemMenu.js';
 import { openJournalForm, entryBody } from '../journalForm.js';
@@ -32,15 +32,25 @@ function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
   if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
   if (hb.target) sub.push(`by ${fmtTime(hb.target, fmt)}`);
   const warnBadge = habitWarnAt(st, hb) !== null && !canFire();
-  const li = h(`li.habit-row${timed ? '.timed' : ''}${isWeekly(hb) ? '.weekly' : ''}${weekMet ? '.week-done' : ''}`, { dataset: { id: hb.id, kind: 'habit' }, style: { '--c': hb.color } },
+  // A daily habit missed 2+ days in a row (ending yesterday): warning text + colour until it's done.
+  const missRun = k === today ? missedDaysRun(st, hb, today) : 0;
+  const missWarn = missRun >= 2;
+  const li = h(`li.habit-row${missWarn ? '.miss-warn' : ''}${timed ? '.timed' : ''}${isWeekly(hb) ? '.weekly' : ''}${weekMet ? '.week-done' : ''}`, { dataset: { id: hb.id, kind: 'habit' }, style: { '--c': hb.color } },
     timed ? h('span.task-time', h('small', 'by'), h('span', fmtTime(hb.target, fmt))) : null,
     h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
       h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
-      h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || warnBadge ? h('span.habit-sub', streakBadge(s, hb.id), warnBadge ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
+      h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || warnBadge || missWarn ? h('span.habit-sub', missWarn ? h('span.miss-text', `Missed ${missRun} days`) : null, streakBadge(s, hb.id), warnBadge ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
     hb.goal.type === 'count' && v > 0 && k <= today ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, k, -1), 'minus-btn') : null,
     habitControl(hb, k),
     draggable ? h('button.drag-handle', { type: 'button', 'data-fk': 'dh-' + hb.id, 'aria-label': `Reorder ${hb.name} (use arrow keys)` }, icon('grip', { size: 18 })) : null);
-  return attachLi(li, () => habitMenu(hb.id, k));
+  return typeBar(attachLi(li, () => habitMenu(hb.id, k)), 'Habit');
+}
+
+/** The coloured left-edge bar that tells habits from tasks (its text doubles as the row's type for screen readers). */
+function typeBar(li, label) {
+  li.classList.add('has-bar');
+  li.prepend(h(`span.type-bar.${label === 'Habit' ? 'bar-habit' : 'bar-task'}`, h('span', label)));
+  return li;
 }
 
 /** "Tomorrow", "In 3 days", "12 days ago" (+ year when it differs) — never repeats the title. */
@@ -146,7 +156,7 @@ export function renderToday() {
     if (overdue.length) {
       const list = h('ul.tasks.compact');
       for (const t of overdue) {
-        const row = taskRow(t, t.date, { showDate: true });
+        const row = typeBar(taskRow(t, t.date, { showDate: true }), 'Task');
         row.querySelector('.check').before(h('button.btn.small.secondary.move-btn', { type: 'button', onclick: () => moveToToday([t.id]), 'aria-label': `Move “${t.title}” to today` }, icon('arrowRight', { size: 16 }), h('span.hide-xs', 'Today')));
         list.append(row);
       }
@@ -192,9 +202,9 @@ export function renderToday() {
       if (!nowPlaced && e.min > now) { list.append(nowLine()); nowPlaced = true; }
       if (e.kind === 'habit') { list.append(habitRow(st, e.hb, k, today, { timed: true })); continue; }
       const t = e.t;
-      const row = taskRow(t, k, { nowMin: now });
+      const row = typeBar(taskRow(t, k, { nowMin: now }), 'Task');
       row.classList.add('timed');
-      row.prepend(h('span.task-time', h('span', fmtTime(t.time, fmt)), t.duration ? h('small', timeRange(t, fmt).split(' – ')[1] || '') : null));
+      row.querySelector('.type-bar').after(h('span.task-time', h('span', fmtTime(t.time, fmt)), t.duration ? h('small', timeRange(t, fmt).split(' – ')[1] || '') : null));
       list.append(row);
     }
     if (!nowPlaced) list.append(nowLine());
@@ -210,7 +220,7 @@ export function renderToday() {
   if (anyItems.length) {
     const list = h('ul.tasks');
     const drag = anyItems.length > 1;
-    for (const x of anyItems) list.append(x.kind === 'task' ? taskRow(x.item, k, { draggable: drag }) : habitRow(st, x.item, k, today, { draggable: drag }));
+    for (const x of anyItems) list.append(x.kind === 'task' ? typeBar(taskRow(x.item, k, { draggable: drag }), 'Task') : habitRow(st, x.item, k, today, { draggable: drag }));
     makeSortable(list, { onReorder: (ids) => reorderToday(ids) });
     const doneCount = anyItems.filter((x) => (x.kind === 'task' ? isTaskDone(x.item, k) : habitDone(st, x.item, k))).length;
     root.append(h('section.section', sectionHead('Anytime', h('span.muted.small', `${doneCount}/${anyItems.length}`), 'list'), list));
@@ -221,12 +231,36 @@ export function renderToday() {
   // ---- Missed (collapsed) ----
   if (missedHabits.length || missedTasks.length) root.append(missedSection(k, missedHabits, missedTasks));
 
+  // ---- Future tasks (today's view only) ----
+  if (isToday) { const fut = futureSection(st, today); if (fut) root.append(fut); }
+
   // ---- Journal entry (added from +; read-only here) ----
   const jc = journalEntryCard(k);
   if (jc) root.append(jc);
 
   onSwipe(root, { left: () => ctx.setDate(addDays(k, 1)), right: () => ctx.setDate(addDays(k, -1)) });
   return root;
+}
+
+/** "Future tasks": tasks scheduled after today; the next 14 days listed, the rest behind "More future tasks". Check = done early. */
+function futureSection(st, today) {
+  const { soon, later } = futureTasks(st, today);
+  if (!soon.length && !later.length) return null;
+  const row = ({ t, date }) => {
+    const li = typeBar(taskRow(t, date, { dateLabel: fmtDate(date, { weekday: 'short', month: 'short', day: 'numeric' }), onCheck: () => completeTaskEarly(t.id, date) }), 'Task');
+    li.classList.add('future-row');
+    return li;
+  };
+  const sec = h('section.section.future-section', { 'aria-label': 'Future tasks' }, sectionHead('Future tasks', h('span.muted.small', String(soon.length + later.length)), 'calendar'));
+  if (soon.length) sec.append(h('ul.tasks', soon.map(row)));
+  else sec.append(h('p.hint-line', 'Nothing in the next 2 weeks.'));
+  if (later.length) {
+    const open = !!ctx.ui.futureOpen;
+    sec.append(h('button.collapse-btn.future-more', { type: 'button', 'aria-expanded': String(open), onclick: () => { ctx.ui.futureOpen = !open; ctx.rerender(); } },
+      'More future tasks', h('span.muted.small', ` (${later.length})`), h('span.chev', icon('chevronDown', { size: 16 }))));
+    if (open) sec.append(h('ul.tasks', later.map(row)));
+  }
+  return sec;
 }
 
 /** Collapsed "Missed (n)": items given up on for this day. Tap one for Unmark missed / Mark done. */

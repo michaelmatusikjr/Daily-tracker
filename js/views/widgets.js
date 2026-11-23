@@ -84,13 +84,14 @@ export function streakBadge(s, id = null) {
 }
 
 /** Task row with one-tap completion. */
-export function taskRow(t, k, { draggable = false, showDate = false, nowMin = null } = {}) {
+export function taskRow(t, k, { draggable = false, showDate = false, nowMin = null, dateLabel = null, onCheck = null } = {}) {
   const st = getState();
   const done = isTaskDone(t, k);
   const cat = t.category ? st.categories.find((c) => c.id === t.category) : null;
   const fmt = st.settings.timeFormat;
   const anim = ctx.anim.has('t-' + t.id);
   const meta = [];
+  if (dateLabel) meta.unshift(h('span.meta.future-date', icon('calendar', { size: 13 }), dateLabel));
   if (showDate) meta.push(h('span.meta', icon('calendar', { size: 13 }), fmtDateShort(t.date)));
   if (t.time && !showDate) {
     // time shown in the rail; show duration only
@@ -123,7 +124,7 @@ export function taskRow(t, k, { draggable = false, showDate = false, nowMin = nu
   h(`button.habit-check.check${done ? '.done' : ''}`, {
     type: 'button', style: { '--c': 'var(--accent)' }, 'aria-pressed': String(done), 'data-fk': 'tc-' + t.id,
     'aria-label': done ? `Mark “${t.title}” as not done` : `Complete “${t.title}”`,
-    onclick: () => toggleTask(t.id, k),
+    onclick: () => (onCheck ? onCheck() : toggleTask(t.id, k)),
   }, icon('check', { size: 22 })),
   draggable ? h('button.drag-handle', { type: 'button', 'data-fk': 'dh-' + t.id, 'aria-label': `Reorder “${t.title}” (use arrow keys)` }, icon('grip', { size: 18 })) : null);
   attachMenu(row, () => taskMenu(t.id, k), row.querySelector('.task-main'));

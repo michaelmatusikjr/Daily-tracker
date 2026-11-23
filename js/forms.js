@@ -372,6 +372,9 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
     intervalRow.hidden = recur.type !== 'interval';
   };
   recurSel.addEventListener('change', syncRecur);
+  // "Must be done on this day": keeps the task out of Today's Future tasks (can't be done ahead of time).
+  const fixedDay = h('input', { type: 'checkbox', checked: !!d.fixedDay, id: 'task-fixed-day' });
+  const fixedRow = h('label.check-row', { for: 'task-fixed-day' }, fixedDay, h('span', 'Must be done on this day'));
 
   // Photos: added files are stored right away (IndexedDB) but only kept if you save;
   // removals apply on save. Cancel undoes both.
@@ -432,6 +435,7 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
     groupField('Category', catWrap),
     field('Repeat', recurSel),
     daysRow, intervalRow,
+    fixedRow,
     err);
   time.id = 'task-time';
   syncTime(); syncRecur();
@@ -450,6 +454,7 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
       priority, category: category === '__new' ? (pendingCat ? ensureCategory(pendingCat) : null) : category,
       recur: { type: recur.type, days: recur.days, interval: Math.max(2, Math.min(365, parseInt(intervalInput.value, 10) || 2)) },
     };
+    data.fixedDay = fixedDay.checked;
     if (!isNew) {
       // Deleted in another window while this form was open: don't bring it back.
       if (!getState().tasks.some((x) => x.id === task.id)) { sheet.close(); toast('This task was deleted in another window, so the changes weren’t saved.'); return; }

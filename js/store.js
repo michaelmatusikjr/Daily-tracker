@@ -141,6 +141,8 @@ function normTask(t, i) {
       interval: Number.isInteger(recur.interval) && recur.interval > 0 ? recur.interval : 2,
     },
     done: !!t.done,
+    // "Must be done on this day": kept out of Today's Future tasks. Optional (absent = false), so no migration.
+    ...(t.fixedDay === true ? { fixedDay: true } : {}),
     doneDates: isObj(t.doneDates) ? t.doneDates : {},
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.filter(isValidKey) : [],
     // "Mark as missed": dates the user gave up on (hidden from Today; still counts as not done).
