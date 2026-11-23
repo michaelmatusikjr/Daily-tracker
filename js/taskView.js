@@ -3,9 +3,9 @@
 import { h, openSheet, toast } from './ui.js';
 import { icon } from './icons.js';
 import { getState, subscribe } from './store.js';
-import { isTaskDone, isTaskMissed, isRecurring, recurrenceLabel, PRIORITIES, occursOn } from './logic.js';
+import { clockText, isTaskDone, isTaskMissed, isRecurring, recurrenceLabel, PRIORITIES, occursOn } from './logic.js';
 import { todayKey, relativeLabel, fmtDateShort, fmtDateLong, weekdayLabels, fmtTime } from './dates.js';
-import { toggleTask } from './actions.js';
+import { toggleTask, setMissed } from './actions.js';
 import { openTaskForm } from './forms.js';
 import { taskMenu, showMenu } from './itemMenu.js';
 import { timeRange, reminderWarnBadge } from './views/widgets.js';
@@ -113,8 +113,27 @@ export function openPhotoViewer(title, list, start = 0) {
   return { close, go, root };
 }
 
-/** Open the View sheet for task `id` on day `k` (the occurrence for repeating tasks). */
-export function openTaskView(id, k = null) {
+/**
+ * Top block of a View sheet opened from a notification: big Complete / Missed buttons, or – when
+ * already done or marked missed – a banner with Undo. state: 'open' | 'done' | 'missed'.
+ * `at` is the completion time (ms) when known.
+ */
+export function notifyActions({ state, at = null, fmt = '12', canMiss = true, onDone, onMissed, onUndo }) {
+  if (state === 'open') {
+    return h('div.tv-quick', { role: 'group', 'aria-label': 'Quick actions' },
+      h('button.btn.primary.tv-big.tv-complete', { type: 'button', onclick: onDone }, icon('check', { size: 22 }), 'Complete'),
+      canMiss ? h('button.btn.secondary.tv-big.tv-missed', { type: 'button', onclick: onMissed }, icon('skip', { size: 22 }), 'Missed') : null);
+  }
+  const text = state === 'missed' ? 'Marked missed'
+    : at ? `Completed at ${(() => { const d = new Date(at); return clockText(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, fmt); })()}` : 'Completed';
+  return h(`div.tv-banner.${state}`, { role: 'status' },
+    icon(state === 'missed' ? 'skip' : 'check', { size: 20 }), h('span.tv-banner-text', text),
+    h('button.btn.secondary.tv-undo', { type: 'button', onclick: onUndo }, icon('undo', { size: 16 }), 'Undo'));
+}
+
+/** Open the View sheet for task `id` on day `k` (the occurrence for repeating tasks).
+ *  { fromNotification: true } puts Complete / Missed (or a Completed / Missed banner) first. */
+export function openTaskView(id, k = null, { fromNotification = false } = {}) {
   let t = getState().tasks.find((x) => x.id === id);
   if (!t) { toast('That task was deleted.'); return null; }
   k = k || t.date;
@@ -153,7 +172,15 @@ export function openTaskView(id, k = null) {
     let status = null;
     if (isTaskMissed(t, k)) status = h('p.tv-status.missed', icon('skip', { size: 15 }), 'Marked as missed for this day – it still counts as not done.');
     else if (!done && !rec && t.date < today) status = h('p.tv-status.overdue', icon('alert', { size: 15 }), `Overdue – it was due ${relativeLabel(t.date, today).toLowerCase()}.`);
+    const doneAt = rec ? t.doneAt?.[k] : t.completedAt;
+    const quick = fromNotification ? notifyActions({
+      state: done ? 'done' : isTaskMissed(t, k) ? 'missed' : 'open', at: doneAt, fmt, canMiss: k <= today,
+      onDone: () => toggleTask(id, k),
+      onMissed: () => setMissed('task', id, k, true),
+      onUndo: () => (done ? toggleTask(id, k) : setMissed('task', id, k, false)),
+    }) : null;
     body.replaceChildren(...[
+      quick,
       h(`div.tv-state${done ? '.done' : ''}`, done ? icon('check', { size: 14 }) : null, done ? 'Done' : 'Not done', rec ? ` · ${fmtDateShort(k)}` : ''),
       status,
       h('section.tv-section', { 'aria-label': 'When' }, h('h3.tv-head', 'When'), ...when),

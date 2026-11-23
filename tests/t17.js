@@ -128,7 +128,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
   assert((await db.prepare('SELECT tz FROM devices').first()).tz === await p.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone), 'E4 device time zone stored');
   assert(await p.evaluate(async () => (await import('./js/push.js')).pushCoversReminders()), 'E5 local timers are skipped while the server has the rules');
   await cron(r[0].next_at);
-  assert(pushed.length === 1 && pushed[0].payload.title === 'Dentist' && pushed[0].payload.url === `./#open/task/p/t1/${soonKey}` && pushed[0].payload.tag === `p:t:t1:${soonKey}` && pushed[0].url === SUB.endpoint, 'E6 cron sent the encrypted push with the deep link: ' + JSON.stringify(pushed[0]?.payload));
+  assert(pushed.length === 1 && pushed[0].payload.title === 'Now' && pushed[0].payload.body.startsWith('Dentist – ') && pushed[0].payload.url === `./#open/task/p/t1/${soonKey}` && pushed[0].payload.tag === `p:t:t1:${soonKey}` && pushed[0].url === SUB.endpoint, 'E6 cron sent the encrypted push with the deep link: ' + JSON.stringify(pushed[0]?.payload));
 
   // ===== Debounce: several quick changes → one PUT about 2 s later =====
   calls.length = 0;
@@ -141,20 +141,20 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
   await p.waitForTimeout(1800);
   assert(calls.filter((c) => c === 'PUT /api/schedule').length === 1, 'D2 one PUT after ~2 s: ' + calls.join(', '));
   r = await rules();
-  const ruleA = r.find((x) => x.def.title === 'A');
-  assert(r.length === 4 && ruleA.def.recur.type === 'daily' && ruleA.def.body.startsWith('Starts at ') && ruleA.def.time !== hm(soon), 'D3 full replacement rule set (daily, 10-min lead) ' + JSON.stringify([r.length, ruleA?.def]));
+  const ruleA = r.find((x) => x.def.body.startsWith('A – '));
+  assert(r.length === 4 && ruleA.def.recur.type === 'daily' && ruleA.def.title === 'in 10 min' && ruleA.def.time !== hm(soon), 'D3 full replacement rule set (daily, 10-min lead) ' + JSON.stringify([r.length, ruleA?.def]));
 
   // ===== Completing today's occurrence skips it; the rule keeps going =====
   await p.evaluate(async (k) => { const S = await import('./js/store.js'); const A = await import('./js/actions.js'); const t = S.getState().tasks.find((x) => x.title === 'A'); A.toggleTask(t.id, k); }, soonKey);
   await p.waitForTimeout(2600);
   r = await rules();
-  const a2 = r.find((x) => x.def.title === 'A');
+  const a2 = r.find((x) => x.def.body.startsWith('A – '));
   assert(a2.def.skipDates.includes(soonKey) && a2.next_date > soonKey, 'D4 done today → skipDates, next fire moves to the next day');
   // Rules fire weeks later without the app (no new PUT).
   const later = a2.next_at + 35 * 86400000;
   pushed.length = 0;
   for (let i = 0; i <= 35; i++) await cron(a2.next_at + i * 86400000 + 3600000 * 0);
-  assert(pushed.filter((x) => x.payload.title === 'A').length === 36, 'D5 daily rule keeps firing 35 days later with no new PUT');
+  assert(pushed.filter((x) => x.payload.body.startsWith('A – ')).length === 36, 'D5 daily rule keeps firing 35 days later with no new PUT');
   void later;
 
   // ===== Hide text =====
@@ -163,7 +163,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
   r = await rules();
   assert(r.length && r.every((x) => x.def.title === 'Daily Tracker' && x.def.body === 'You have a reminder – tap to open' && /^\.\/#open\/task\/p\/[^/]+\/\{date\}$/.test(x.def.url)), 'H1 hide text: generic text, same deep link, no names reach the server');
   await p.click('[aria-label="Hide reminder text"]'); await p.waitForTimeout(1200);
-  assert((await rules()).some((x) => x.def.title === 'Dentist'), 'H2 hide text off again');
+  assert((await rules()).some((x) => x.def.body.startsWith('Dentist – ')), 'H2 hide text off again');
 
   // ===== Offline queue =====
   await ctx.setOffline(true);
@@ -173,7 +173,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
   assert((await p.textContent('.push-status')).startsWith('Waiting to sync (offline)'), 'O1 status: Waiting to sync (offline)');
   assert(!(await p.evaluate(async () => (await import('./js/push.js')).pushCoversReminders())), 'O2 local timers take over while unsynced');
   await ctx.setOffline(false); await p.waitForTimeout(1500);
-  assert((await rules()).some((x) => x.def.title === 'Offline task') && (await p.textContent('.push-status')).startsWith('On'), 'O3 synced when back online');
+  assert((await rules()).some((x) => x.def.body.startsWith('Offline task – ')) && (await p.textContent('.push-status')).startsWith('On'), 'O3 synced when back online');
 
   // ===== Server error → retry with backoff =====
   let fail = true;
@@ -183,7 +183,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
   assert((await p.textContent('.push-status')).includes('Couldn’t sync: Your server had a problem'), 'R1 error status in plain words');
   fail = false;
   await p.waitForTimeout(5500);
-  assert((await rules()).some((x) => x.def.title === 'Retry task') && (await p.textContent('.push-status')).startsWith('On'), 'R2 retried automatically (backoff 5 s)');
+  assert((await rules()).some((x) => x.def.body.startsWith('Retry task – ')) && (await p.textContent('.push-status')).startsWith('On'), 'R2 retried automatically (backoff 5 s)');
   await p.unroute(PUSH + '/api/schedule');
 
   // ===== Subscription rotation on open =====
@@ -274,7 +274,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
       assert(run.recur.type === 'daily' && run.skipDates.includes(today), `P4 ${tz}: per-week habit met this week → rest of week in skipDates`);
       const night = res.rules.find((x) => x.id === 'a:t:r6');
       assert(night.time === '23:40' && night.offsetDays === -1, `P5 ${tz}: lead crossing midnight → 23:40 the day before`);
-      assert(res.rules.find((x) => x.id === 'b:t:b1')?.title === 'Bob: Bob task' && res.rules.find((x) => x.id === 'a:t:r1').title === 'Ann: Stretch daily', `P6 ${tz}: multi-profile prefixes, all profiles in one set`);
+      assert(res.rules.find((x) => x.id === 'b:t:b1')?.title === 'Bob · Now' && res.rules.find((x) => x.id === 'b:t:b1')?.body.startsWith('Bob task – ') && res.rules.find((x) => x.id === 'a:t:r1').title === 'Ann · Now' && res.rules.find((x) => x.id === 'a:t:r1').body.startsWith('Stretch daily – '), `P6 ${tz}: multi-profile prefixes, all profiles in one set`);
       assert(!ids.some((x) => x.startsWith('c:')) && !ids.includes('a:t:o2'), `P7 ${tz}: notifications-off profile and reminder-less tasks excluded`);
       assert(ids.includes('a:t:o1'), `P8 ${tz}: one-off 20 days ahead is included (no 14-day window)`);
       await c2.close();
@@ -298,7 +298,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
     assert(await q.locator('.sheet.action-menu, .task-view-sheet').count() === 0, 'K2 reload does not reopen it');
     await q.evaluate(async () => { const S = await import('./js/store.js'); S.switchProfile('p'); }); await q.waitForTimeout(300);
     await q.evaluate((k) => { location.hash = '#open/habit/sam/sh/' + k; }, today); await q.waitForTimeout(900);
-    assert(await q.evaluate(() => JSON.parse(localStorage.getItem('dailyTracker:profiles')).activeId) === 'sam' && await q.locator('.habit-row[data-id="sh"].pulse').count() === 1 && (await q.textContent('.sheet.action-menu')).includes('Mark done'), 'K3 habit deep link: profile switched, row highlighted, menu open');
+    assert(await q.evaluate(() => JSON.parse(localStorage.getItem('dailyTracker:profiles')).activeId) === 'sam' && await q.locator('.habit-row[data-id="sh"].pulse').count() === 1 && (await q.textContent('.task-view-sheet')).includes('Complete'), 'K3 habit deep link: profile switched, row highlighted, habit sheet with Complete open');
     await q.keyboard.press('Escape'); await q.waitForTimeout(300);
     await q.evaluate(() => { location.hash = '#open/task/sam/gone/2026-12-03'; }); await q.waitForTimeout(700);
     assert((await q.textContent('#toasts')).includes('That reminder’s item was deleted.') && await q.evaluate(() => location.hash) === '#today' && (await q.textContent('.page-title')).includes(new Date().toLocaleDateString('en-US', { month: 'short' })), 'K4 deleted item → Today + toast');

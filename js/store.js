@@ -172,6 +172,8 @@ function normHabit(hb, i) {
     name: str(hb.name, 100).trim(),
     emoji: str(hb.emoji, 16) || '✅',
     ...(dateFlags(hb.missed) ? { missed: dateFlags(hb.missed) } : {}),
+    // When each day was completed (ms), optional; recorded since 1.14.
+    ...(dateTimes(hb.doneAt) ? { doneAt: dateTimes(hb.doneAt) } : {}),
     // Optional image icon (e.g. a Genmoji): PNG/JPEG/WebP data URL up to 60 KB, else dropped.
     ...(imageIcon(hb.icon) ? { icon: imageIcon(hb.icon) } : {}),
     color: /^#[0-9a-f]{6}$/i.test(hb.color) ? hb.color : '#6366f1',

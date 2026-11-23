@@ -128,8 +128,8 @@ const rules = (p) => p.evaluate(async (today) => (await import('./js/push.js')).
     const { ctx, p } = await open(browser, { data: base({ habits: hs, logs: { h1: { [TODAY]: 1 }, h6: { [TODAY]: 1 } } }) });
     const r = await rules(p);
     const byId = Object.fromEntries(r.map((x) => [x.id.split(':').slice(1).join(':'), x]));
-    assert(byId['hw:h1']?.time === '07:30' && byId['hw:h1'].title === '30 minutes left to floss' && byId['hw:h1'].body === 'Complete by 8 AM', 'R1 default 30 min → 07:30 "30 minutes left to floss"');
-    assert(byId['hw:h2']?.time === '08:00' && byId['hw:h2'].title === '1 hour left to stretch' && !byId['h:h2'], 'R2 own 60 min → "1 hour left"; a legacy time-of-day reminder is ignored');
+    assert(byId['hw:h1']?.time === '07:30' && byId['hw:h1'].title === '30 min left' && byId['hw:h1'].body === 'Floss – complete by 8:00 AM', 'R1 default 30 min → 07:30 "30 minutes left to floss"');
+    assert(byId['hw:h2']?.time === '08:00' && byId['hw:h2'].title === '1 hr left' && byId['hw:h2'].body === 'Stretch – complete by 9:00 AM' && !byId['h:h2'], 'R2 own 60 min → "1 hour left"; a legacy time-of-day reminder is ignored');
     assert(!byId['hw:h3'] && !byId['hw:h4'], 'R3 warn none / before midnight → no rule');
     assert(!byId['hw:h5'] && !byId['h:h5'], 'R4 Anytime habit with a legacy reminder: no rules');
     assert(byId['hw:h1'].skipDates.includes(TODAY), 'R5 done today → warning skipped for today (skipDates)');
@@ -152,7 +152,7 @@ const rules = (p) => p.evaluate(async (today) => (await import('./js/push.js')).
       return N.reminderOccurrences(new Date(2026, 10, 18, 0, 0).getTime(), new Date(2026, 10, 19, 23, 0).getTime()).filter((o) => /:hw:/.test(o.key)).map((o) => [o.key, new Date(o.at).getHours() + ':' + new Date(o.at).getMinutes(), o.title, o.body]);
     });
     const tomorrowFloss = occ.find((o) => o[0].endsWith('hw:h1:2026-11-19'));
-    assert(tomorrowFloss && tomorrowFloss[1] === '7:30' && tomorrowFloss[2] === '30 minutes left to floss', 'L1 local occurrence: 7:30 "30 minutes left to floss"');
+    assert(tomorrowFloss && tomorrowFloss[1] === '7:30' && tomorrowFloss[2] === '30 min left' && tomorrowFloss[3] === 'Floss – complete by 8:00 AM', 'L1 local occurrence: 7:30 "30 minutes left to floss"');
     assert(!occ.some((o) => o[0].endsWith('hw:h1:2026-11-18')), 'L2 done today → no local warning today');
     assert(occ.some((o) => o[0].endsWith('hw:h2:2026-11-19')) && !occ.some((o) => o[0].endsWith('hw:h2:2026-11-18')), 'L3 missed today skipped, tomorrow kept');
     // Text helpers

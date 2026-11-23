@@ -7,7 +7,7 @@ import { PUSH_SERVER_URL, VAPID_PUBLIC_KEY } from './pushConfig.js';
 import { getProfiles, readProfileState, getState, update } from './store.js';
 import { reschedule } from './notify.js';
 import { todayKey, addDays, timeToMin, minToTime, startOfWeek, fmtTime } from './dates.js';
-import { activeHabits, habitDone, weekCount, habitWarnAt, warnTitle } from './logic.js';
+import { activeHabits, habitDone, weekCount, habitWarnAt, reminderText } from './logic.js';
 import { isIOS, isStandalone } from './pwa.js';
 import { blockedHelp } from './reminders.js';
 import { habitText } from './habitIcon.js';
@@ -167,8 +167,8 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
     const st = readProfileState(profile.id);
     if (!st || !st.settings.notifications) continue;
     const fmt = st.settings.timeFormat;
-    const prefix = multi ? `${profile.name}: ` : '';
-    const text = (title, body) => (hideText ? { title: HIDDEN_TITLE, body: HIDDEN_BODY } : { title: (prefix + title).slice(0, 120), body: body.slice(0, 240) });
+    const pname = multi ? profile.name : '';
+    const text = (o) => { if (hideText) return { title: HIDDEN_TITLE, body: HIDDEN_BODY }; const r = reminderText({ ...o, profile: pname, fmt }); return { title: r.title.slice(0, 120), body: r.body.slice(0, 240) }; };
     for (const t of st.tasks) {
       // A timed task reminds `reminder` minutes before its start; an Anytime one at its reminderAt time of day.
       const timedRem = !!t.time && t.reminder !== null && t.reminder !== undefined;
@@ -178,7 +178,7 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
       const mins = timedRem ? timeToMin(t.time) - (t.reminder || 0) : timeToMin(t.reminderAt);
       const r = {
         id: safeId(`${profile.id}:t:${t.id}`).slice(0, 128), kind: 'task',
-        ...text(t.title, !timedRem ? 'Due today' : t.reminder ? `Starts at ${fmtTime(t.time, fmt)}` : 'Starting now'),
+        ...text({ kind: timedRem ? 'task' : 'anytime', name: t.title, lead: t.reminder || 0, time: t.time }),
         url: deepLink('task', profile.id, t.id), tag: `${profile.id}:t:${t.id}:{date}`.slice(0, 128),
         time: minToTime(((mins % 1440) + 1440) % 1440), offsetDays: Math.floor(mins / 1440),
         recur: recur === 'none' ? { type: 'none' } : { type: recur, start: t.date, ...(recur === 'weekly' ? { days: t.recur.days || [] } : {}), ...(recur === 'interval' ? { interval: Math.max(1, t.recur.interval || 1) } : {}) },
@@ -208,7 +208,7 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
       if (warnAt !== null) {
         rules.push({
           id: safeId(`${profile.id}:hw:${hb.id}`).slice(0, 128), kind: 'habit',
-          ...text(warnTitle(hb, timeToMin(hb.target) - warnAt), `Complete by ${fmtTime(hb.target, fmt)}`),
+          ...text({ kind: 'habit', name: hb.name, left: timeToMin(hb.target) - warnAt, time: hb.target }),
           url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:hw:${hb.id}:{date}`.slice(0, 128),
           time: minToTime(warnAt), offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
         });

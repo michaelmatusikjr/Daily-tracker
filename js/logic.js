@@ -1,5 +1,5 @@
 // Pure domain logic: recurrence, completion, streaks, stats.
-import { addDays, diffDays, dow, daysInMonth, startOfWeek, todayKey, timeToMin, fmtSpan } from './dates.js';
+import { addDays, diffDays, dow, daysInMonth, startOfWeek, todayKey, timeToMin, fmtSpan, fmtTime } from './dates.js';
 
 // ---------- Tasks ----------
 export const isRecurring = (t) => (t.recur?.type || 'none') !== 'none';
@@ -85,6 +85,37 @@ export function warnTitle(hb, left) {
   const n = hb.name;
   const lower = n.length > 1 && n[1] === n[1].toUpperCase() && n[1] !== n[1].toLowerCase() ? n : n.charAt(0).toLowerCase() + n.slice(1);
   return `${fmtSpan(left)} left to ${lower}`;
+}
+
+/** Short span for notification titles: "15 min", "1 hr", "1 hr 30 min", "2 days". */
+export function shortSpan(min) {
+  if (min >= 1440 && min % 1440 === 0) { const d = min / 1440; return `${d} day${d === 1 ? '' : 's'}`; }
+  const h = Math.floor(min / 60), m = min % 60;
+  return [h ? `${h} hr` : '', m || !h ? `${m} min` : ''].filter(Boolean).join(' ');
+}
+
+/** Clock text with minutes always shown in 12-hour mode: "6:00 PM" (24-hour: "18:00"). */
+export function clockText(time, fmt) {
+  if (!time) return '';
+  if (fmt === '24') return fmtTime(time, fmt);
+  const [h, m] = time.split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+}
+
+/**
+ * Notification wording (shared by local reminders and the push rules).
+ * Title = [profile · ]timing; body = name + detail. Single-profile setups leave the profile off.
+ *   task at its time      "Now"            body "Dentist – 6:00 PM"
+ *   task with a lead      "in 15 min"      body "Dentist – 6:00 PM"
+ *   anytime task          "Today"          body "Dentist – due today"
+ *   habit running out     "30 min left"    body "Read Bible – complete by 12:00 PM"
+ */
+export function reminderText({ kind, name, profile = '', lead = 0, left = 0, time = '', fmt }) {
+  const pre = profile ? `${profile} · ` : '';
+  const at = clockText(time, fmt);
+  if (kind === 'habit') return { title: `${pre}${shortSpan(left)} left`, body: `${name} – complete by ${at}` };
+  if (kind === 'anytime') return { title: `${pre}Today`, body: `${name} – due today` };
+  return { title: `${pre}${lead ? `in ${shortSpan(lead)}` : 'Now'}`, body: `${name} – ${at}` };
 }
 
 /** Reminder fields a NEW task gets from the profile's defaults (settings.taskDefaults). */

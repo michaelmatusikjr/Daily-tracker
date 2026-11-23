@@ -112,7 +112,7 @@ const active = (p) => p.evaluate(() => { const i = JSON.parse(localStorage.getIt
     await p.evaluate(() => window.__grant());
     await p.clock.runFor(61000); await p.waitForTimeout(100);
     await p.clock.runFor(4 * 60000); await p.waitForTimeout(100);
-    assert(JSON.stringify(await p.evaluate(() => window.__n)) === '["Call"]', 'N permission granted later → reminder scheduled without a data change');
+    assert(JSON.stringify(await p.evaluate(() => window.__n)) === '["Now"]', 'N permission granted later → reminder scheduled without a data change');
     await ctx.close();
   }
 

@@ -22,8 +22,8 @@ import { openWorkoutForm } from './workoutForm.js';
 import { openJournalForm } from './journalForm.js';
 import { openProfileEditor } from './profiles.js';
 import { APP_VERSION as APP_VERSION_STR, getProfiles, readProfileState, switchProfile } from './store.js';
-import { showMenu, habitMenu } from './itemMenu.js';
 import { openTaskView } from './taskView.js';
+import { openHabitView } from './habitSheet.js';
 import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
 import { initNoZoom } from './noZoom.js';
@@ -107,9 +107,8 @@ function openDeepLink(hash = location.hash) {
     (row.querySelector('.task-main, .habit-row-main') || row.querySelector('button'))?.focus({ preventScroll: true });
   }
   // A task opens its View sheet (the row stays highlighted behind it); a habit opens its menu.
-  if (kind === 'task') { setTimeout(() => openTaskView(id, date), row ? 350 : 0); return; }
-  const menu = habitMenu(id, date);
-  if (menu) setTimeout(() => showMenu(menu.title, menu.items, { mode: 'touch' }), row ? 350 : 0);
+  if (kind === 'task') { setTimeout(() => openTaskView(id, date, { fromNotification: true }), row ? 350 : 0); return; }
+  setTimeout(() => openHabitView(id, date, { fromNotification: true }), row ? 350 : 0);
 }
 
 /** Apply the active profile's theme + accent (no-op when unchanged). */
