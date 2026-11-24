@@ -127,6 +127,68 @@ const pickSeg = async (p, name) => { await p.locator('.clear-sheet [role=radio],
     assert(await p.evaluate(() => { const r = document.getElementById('set-storage').getBoundingClientRect(); return r.top < 300; }), 'and scrolls to it');
     await ctx.close();
 
+
+    // ===== Running repeating tasks: old completions are cleared, the task keeps its schedule =====
+    {
+      const d = mkData();
+      const days = []; { let x = new Date(2026, 6, 1, 12); for (let i = 0; i < 100; i++) { days.push(`${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`); x.setDate(x.getDate() + 1); } }
+      d.tasks = [
+        task('dd', 'Daily', { date: '2026-07-01', recur: { type: 'daily', days: [], interval: 1 }, doneDates: Object.fromEntries(days.map((k) => [k, true])), doneAt: Object.fromEntries(days.map((k) => [k, at(k)])), exceptions: ['2026-07-05', '2026-10-30'] }),
+        task('wk', 'Weekly', { date: '2026-01-05', recur: { type: 'weekly', days: [1], interval: 1 }, doneDates: { '2026-03-02': true } }),
+        task('mo', 'Monthly', { date: '2026-01-31', recur: { type: 'monthly', days: [], interval: 1 }, doneDates: { '2026-02-28': true } }),
+        task('iv', 'Every 3', { date: '2026-01-01', recur: { type: 'interval', days: [], interval: 3 }, doneDates: { '2026-01-04': true } }),
+      ];
+      ({ ctx, p } = await open(browser, { data: d }));
+      await openSheet(p); await pickSeg(p, '3 months'); t = await preview(p);
+      assert(/Also clears 51 completions? of 4 repeating tasks before Aug 18, 2026\. The tasks keep repeating\./.test(t) && /0 completed tasks/.test(t), 'preview: completions of repeating tasks, tasks keep repeating: ' + t);
+      assert(/Also clears 51 completions of 4 repeating/.test(t), '48 daily + 3 others... exact count: ' + t);
+      await p.getByRole('button', { name: /^Clear…/ }).click(); await p.waitForTimeout(300);
+      assert(/old completions of repeating tasks \(the tasks stay\)/.test(await sheetText(p)), 'confirm wording mentions completions');
+      await p.locator('.sheet-root.open .btn.danger').last().click(); await p.waitForTimeout(500);
+      let st = await stored(p);
+      const dd = st.tasks.find((x) => x.id === 'dd');
+      assert(st.tasks.length === 4 && dd.clearedBefore === '2026-08-18' && dd.date === '2026-07-01', 'tasks kept, clearedBefore set, date anchor untouched');
+      assert(Object.keys(dd.doneDates).length === 52 && Object.keys(dd.doneAt).length === 52 && Object.keys(dd.doneDates).every((k) => k >= '2026-08-18') && !dd.exceptions.includes('2026-07-05') && dd.exceptions.includes('2026-10-30'), 'old completions/exceptions removed, later ones kept');
+      assert(st.tasks.find((x) => x.id === 'wk').date === '2026-01-05' && st.tasks.find((x) => x.id === 'mo').date === '2026-01-31' && st.tasks.find((x) => x.id === 'iv').date === '2026-01-01', 'weekly/monthly/interval anchors unchanged');
+      const chk = await p.evaluate(async () => {
+        const L = await import('./js/logic.js'), S = await import('./js/store.js'), C = await import('./js/views/completed.js');
+        const s = S.getState(); const g = (id) => s.tasks.find((x) => x.id === id);
+        return {
+          before: s.tasks.map((t) => L.occursOn(t, '2026-07-10') || L.occursOn(t, '2026-08-17') || L.occursOn(t, '2026-03-02')),
+          overdue: L.overdueTasks(s, '2026-11-18').length,
+          wk: [L.occursOn(g('wk'), '2026-09-07'), L.occursOn(g('wk'), '2026-09-08')], mo: [L.occursOn(g('mo'), '2026-09-30'), L.occursOn(g('mo'), '2026-09-29')],
+          iv: [L.occursOn(g('iv'), '2026-09-07'), L.occursOn(g('iv'), '2026-09-08')], dd: L.occursOn(g('dd'), '2026-08-18'),
+          completedBefore: C.completedEntries(s).filter((e) => e.k < '2026-08-18').length, future: L.futureTasks(s, '2026-11-18').soon.length,
+        };
+      });
+      assert(chk.before.every((x) => !x) && chk.overdue === 0 && chk.completedBefore === 0, 'no occurrences, overdue or completed entries before the date');
+      assert(chk.wk[0] && !chk.wk[1] && chk.mo[0] && !chk.mo[1] && chk.iv[0] && !chk.iv[1] && chk.dd, 'weekly Mon, monthly 31st->30th, every-3-days and daily still land on their days');
+      await go(p, 'completed'); const ctext = await p.locator('.view-completed').innerText();
+      assert(!/Jul \d|Aug 1[0-7]\b/.test(ctext), 'Completed screen shows nothing before the date');
+      await go(p, 'calendar');
+      // Undo, with a completion added meanwhile
+      await p.evaluate(async () => { (await import('./js/store.js')).update((s) => { s.tasks.find((x) => x.id === 'dd').doneDates['2026-11-18'] = true; }); });
+      await p.locator('#toasts .toast-action').click(); await p.waitForTimeout(400);
+      st = await stored(p);
+      const d2 = st.tasks.find((x) => x.id === 'dd');
+      assert(d2.clearedBefore === undefined && Object.keys(d2.doneDates).length === 101 && d2.doneDates['2026-11-18'] === true && d2.doneDates['2026-07-01'] && d2.exceptions.includes('2026-07-05') && Object.keys(d2.doneAt).length === 100, 'Undo restores the cleared state and keeps a completion added since');
+      await ctx.close();
+    }
+
+    // ===== A v6 backup still imports; clearedBefore survives import =====
+    {
+      ({ ctx, p } = await open(browser));
+      const r = await p.evaluate(async () => {
+        const S = await import('./js/store.js');
+        const v6 = { version: 6, settings: { onboarded: true }, tasks: [{ id: 'x', title: 'Old', date: '2026-01-01', recur: { type: 'daily' } }], habits: [], logs: {}, journal: {}, exercises: [], workouts: [] };
+        const a = S.validateImport(v6);
+        const v7 = S.validateImport({ ...v6, version: 7, tasks: [{ ...v6.tasks[0], clearedBefore: '2026-05-05' }, { id: 'y', title: 'Bad', date: '2026-01-01', recur: { type: 'daily' }, clearedBefore: 'soon' }] });
+        return { v: a.data.version, title: a.data.tasks[0].title, cb: v7.data.tasks[0].clearedBefore, bad: v7.data.tasks[1].clearedBefore, sv: S.SCHEMA_VERSION };
+      });
+      assert(r.v === 7 && r.title === 'Old' && r.cb === '2026-05-05' && r.bad === undefined && r.sv === 7, 'v6 backup imports; clearedBefore validated and kept: ' + JSON.stringify(r));
+      await ctx.close();
+    }
+
     // Synced profile wording
     ({ ctx, p } = await open(browser, { synced: true }));
     await openSheet(p); await pickSeg(p, '1 year'); await preview(p);

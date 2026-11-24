@@ -33,7 +33,7 @@ export function completedEntries(state) {
       out.push({ t, k: t.date, day: t.completedAt ? toKey(new Date(at)) : t.date, at });
     } else {
       for (const k of Object.keys(t.doneDates || {})) {
-        if (!t.doneDates[k]) continue;
+        if (!t.doneDates[k] || (t.clearedBefore && k < t.clearedBefore)) continue;
         const ts = t.doneAt?.[k];
         out.push({ t, k, day: ts ? toKey(new Date(ts)) : k, at: ts || noon(k) });
       }

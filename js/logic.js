@@ -6,6 +6,7 @@ export const isRecurring = (t) => (t.recur?.type || 'none') !== 'none';
 
 export function occursOn(t, k) {
   if (k < t.date) return false;
+  if (t.clearedBefore && k < t.clearedBefore) return false; // history cleared (Settings › Storage): those days no longer exist
   if (t.exceptions?.includes(k)) return false;
   const r = t.recur || { type: 'none' };
   switch (r.type) {

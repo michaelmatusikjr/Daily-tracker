@@ -52,7 +52,7 @@ A synced profile is flattened into records. Record keys (`k`), `<pid>` = profile
 - **Latest edit wins:** a record replaces another when `(t, dev)` is greater (compare `t`, then `dev` as a string).
 - `rid` = b64url(HMAC-SHA-256(macKey, k)) – opaque to the server, stable for a key.
 - `blob` = b64url(iv12 || AES-256-GCM(encKey, JSON.stringify({k, v, t, dev, sv}), additionalData = UTF-8 rid)).
-- Applying a remote record: validate/normalize the value through the same normalizers imports use (`normTask`, `normHabit`, …, exported from `store.js` for this) – a record that fails validation is skipped and logged, never applied. A record with `sv > SCHEMA_VERSION` pauses sync and shows "Update the app to keep syncing" (Reload button).
+- Applying a remote record: validate/normalize the value through the same normalizers imports use (`normTask`, `normHabit`, …, exported from `store.js` for this) – a record that fails validation is skipped and logged, never applied. A record with `sv > SCHEMA_VERSION` pauses sync and shows "Update the app to keep syncing" (Reload button). Schema 7 (1.16.0) added the optional task field `clearedBefore` (a repeating task's history cleared in Settings › Storage; occurrences before it no longer exist). It is a schema bump on purpose: an older app would drop the unknown field and re-upload the task, bringing the cleared days back as missed. Every record a 1.16 device uploads carries `sv: 7`, so an older app pauses on them instead.
 - A remote `<pid>/meta` tombstone deletes that profile on this device (with its photos, like deleteProfile) – except a kept copy just resumed (see "Kept copies"), which stays as a device-only profile. A profile **missing** locally is never treated as deleted – only explicit tombstones delete.
 
 ## Clock

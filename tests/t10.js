@@ -77,7 +77,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert(i && i.profiles.length === 1 && i.profiles[0].introPending === true, 'P1 legacy data became the first profile');
     assert(await S(p, () => localStorage.getItem('dailyTracker:data')) === null, 'P1 legacy key moved (removed)');
     const st = await stored(p);
-    assert(st.version === 6 && Array.isArray(st.workouts) && st.tasks[0].title === 'Old task' && st.logs.h1['2026-11-11'] === 1 && st.journal['2026-11-11'].note === 'ok', 'P1 v3→v4 migration keeps everything');
+    assert(st.version === 7 && Array.isArray(st.workouts) && st.tasks[0].title === 'Old task' && st.logs.h1['2026-11-11'] === 1 && st.journal['2026-11-11'].note === 'ok', 'P1 v3→v4 migration keeps everything');
     assert(await S(p, () => document.documentElement.dataset.theme) === 'dark', 'P1 theme kept');
     assert((await p.textContent('.sheet-title')) === 'Who’s this?', 'P1 friendly intro sheet on first open');
     await p.screenshot({ path: SP + '/p-intro.png' });

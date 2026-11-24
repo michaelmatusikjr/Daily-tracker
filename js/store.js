@@ -3,7 +3,7 @@
 import { todayKey, isValidKey } from './dates.js';
 
 export const APP_VERSION = '1.15.1';
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
 // Copy of the pre-1.3 data as it was when it was moved, so a later merge can tell what an
@@ -90,6 +90,9 @@ const migrations = {
   }),
   // v5 → v6: profile setting `weather` (units, selected location, saved cities); normalize() fills in the default.
   5: (data) => data,
+  // v6 → v7: optional task `clearedBefore` (repeating task history cleared before that day). The bump makes older apps
+  // (which would drop the field and bring the days back as missed) pause syncing instead of re-uploading the task.
+  6: (data) => data,
 };
 const TOD_TARGET = { morning: '12:00', afternoon: '17:00', evening: '21:00' };
 
@@ -145,6 +148,7 @@ function normTask(t, i) {
     ...(t.fixedDay === true ? { fixedDay: true } : {}),
     // A repeating task's occurrence completed early (#26): this done copy records it; un-checking or deleting it gives the occurrence back.
     ...(isObj(t.earlyOf) && typeof t.earlyOf.id === 'string' && isValidKey(t.earlyOf.date) ? { earlyOf: { id: t.earlyOf.id.slice(0, 100), date: t.earlyOf.date } } : {}),
+    ...(isValidKey(t.clearedBefore) ? { clearedBefore: t.clearedBefore } : {}),
     doneDates: isObj(t.doneDates) ? t.doneDates : {},
     exceptions: Array.isArray(t.exceptions) ? t.exceptions.filter(isValidKey) : [],
     // "Mark as missed": dates the user gave up on (hidden from Today; still counts as not done).
