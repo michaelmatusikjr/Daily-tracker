@@ -9,6 +9,12 @@ set -u
 # even from several checkouts/worktrees. Other runs wait here.
 exec 9>/tmp/daily-tracker-tests.lock
 flock 9
+# Never test against another checkout's server: the ports must be free once we hold the lock.
+for port in 8080 8081; do
+  if python3 -c "import socket,sys; s=socket.socket(); sys.exit(0 if s.connect_ex(('127.0.0.1',$port))==0 else 1)"; then
+    echo "Port $port is already in use (another server outside run-all.sh?): stop it first (pgrep -af http.server)." >&2; exit 2
+  fi
+done
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TESTS="$ROOT/tests"
 TMP="$(mktemp -d)"
