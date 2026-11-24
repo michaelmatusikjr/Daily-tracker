@@ -16,7 +16,7 @@ import { pushConfig, scheduleSync as schedulePush } from './push.js';
 import { reschedule } from './notify.js';
 import {
   SCHEMA_VERSION, getProfiles, getActiveProfile, subscribe, readProfileForSync, applyRemoteProfile, addRemoteProfile,
-  updateProfileRemote, reorderProfiles, removeProfileLocal, reIdProfile, migrate, normalize, defaultState, defaultSettings,
+  updateProfileRemote, removeProfileLocal, reIdProfile, migrate, normalize, defaultState, defaultSettings,
   normalizers, hashStr, uid, ensureStored, readProfileState, mutateProfileData,
 } from './store.js';
 import { isValidKey } from './dates.js';
@@ -157,10 +157,14 @@ function canon(v) {
 }
 const hashOf = (v) => hashStr(canon(v));
 
-/** A profile as records: Map k → v. order = position among the synced profiles. */
-export function flatten(pid, meta, order, s) {
+/**
+ * A profile as records: Map k → v. The meta record holds only the name and avatar: the profile list's
+ * order is per device (cosmetic), so reordering never writes a meta record – a meta record with a newer
+ * time than a profile delete therefore always means a real edit (rename/avatar), see SYNC.md.
+ */
+export function flatten(pid, meta, s) {
   const m = new Map();
-  m.set(`${pid}/meta`, { name: meta.name, avatar: meta.avatar, order });
+  m.set(`${pid}/meta`, { name: meta.name, avatar: meta.avatar });
   for (const t of s.tasks) m.set(`${pid}/task/${t.id}`, t);
   for (const x of s.habits) m.set(`${pid}/habit/${x.id}`, x);
   s.categories.forEach((c, i) => m.set(`${pid}/cat/${c.id}`, { id: c.id, name: c.name, color: c.color, order: i }));
@@ -202,7 +206,7 @@ export function validateValue(p, v, sv) {
     switch (p.kind) {
       case 'meta': {
         if (!isObj(v) || typeof v.name !== 'string' || !v.name.trim()) return { ok: false };
-        return { ok: true, v: { name: v.name.trim().slice(0, 40), avatar: normalizers.avatar(v.avatar), order: Number.isFinite(v.order) ? v.order : 0 } };
+        return { ok: true, v: { name: v.name.trim().slice(0, 40), avatar: normalizers.avatar(v.avatar) } }; // an older record's `order` is ignored
       }
       case 'task': case 'habit': case 'ex': case 'wo': {
         if (!isObj(v) || v.id !== p.id) return { ok: false };
@@ -410,11 +414,11 @@ async function cycle() {
   }
 }
 
-/** Profiles that sync, readable or not: { pid, meta, order, data|null }. */
+/** Profiles that sync, readable or not: { pid, meta, data|null }. */
 function syncedProfiles(s) {
   const ids = new Set(s.synced || []);
   const list = getProfiles().filter((p) => ids.has(p.id));
-  return list.map((p, order) => ({ pid: p.id, meta: p, order, data: readProfileForSync(p.id) }));
+  return list.map((p) => ({ pid: p.id, meta: p, data: readProfileForSync(p.id) }));
 }
 
 async function runCycle(my, token, keys, dev) {
@@ -568,8 +572,8 @@ function nextT(e) {
   return after > now + FUTURE_CAP ? now : Math.max(now, after);
 }
 /** Record local edits of one profile in its shadow (new/changed → pending, gone → pending tombstone). */
-function diffProfile(pid, meta, order, data, sh, dev) {
-  const pre = flatten(pid, meta, order, data);
+function diffProfile(pid, meta, data, sh, dev) {
+  const pre = flatten(pid, meta, data);
   let changedHere = false;
   for (const [k, v] of pre) {
     const h = hashOf(v), e = sh[k];
@@ -586,7 +590,7 @@ function diffAll(s, shadows, dev) {
     if (!prof.data || fresh[prof.pid] || merge[prof.pid]) continue;
     const sh = shadows.get(prof.pid) || {};
     shadows.set(prof.pid, sh);
-    if (diffProfile(prof.pid, prof.meta, prof.order, prof.data, sh, dev)) out.add(prof.pid);
+    if (diffProfile(prof.pid, prof.meta, prof.data, sh, dev)) out.add(prof.pid);
   }
   return out;
 }
@@ -707,7 +711,6 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     byPid.get(r.p.pid).push(e);
   }
   const localIds = () => new Set(getProfiles().map((p) => p.id));
-  const remoteOrder = new Map();
   const forget = (pid) => { synced.delete(pid); delete fresh[pid]; delete waitReadable[pid]; shadows.delete(pid); dropped.add(pid); dirty.delete(pid); };
 
   /** Shadow after applying: applied keys take the remote (t, dev); normalization drift is never pushed. */
@@ -721,7 +724,6 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     for (const k of Object.keys(sh)) if (!post.has(k) && (applied.has(k) || sh[k][0] !== null)) delete sh[k];
   };
   const dataOf = (recs) => recs.filter((r) => r.p.kind !== 'meta');
-  const orderOf = (pid) => [...synced].filter((id) => localIds().has(id)).sort((a, b) => getProfiles().findIndex((p) => p.id === a) - getProfiles().findIndex((p) => p.id === b)).indexOf(pid);
 
   /** Create (or rebuild) a profile from the account's records. Only on a full pull, so nothing is missing. */
   const build = (pid, recs, meta) => {
@@ -734,10 +736,8 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     const sh = {};
     const applied = new Map(recs.map((r) => [r.k, r]));
     const prof = getProfiles().find((p) => p.id === pid);
-    settle(sh, flatten(pid, prof, Math.max(0, orderOf(pid)), data), applied);
-    if (meta && sh[meta.k]) sh[meta.k][0] = hashOf(meta.v); // the order may differ until re-sorted below
+    settle(sh, flatten(pid, prof, data), applied);
     shadows.set(pid, sh); dirty.add(pid);
-    if (meta) remoteOrder.set(pid, meta.v.order);
     appliedOther.v = true;
     return true;
   };
@@ -804,7 +804,6 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     const data = readProfileForSync(pid);
     if (!data) { if (recs.length) waitReadable[pid] = 1; continue; } // unreadable: never diffed, never applied
     const prof = getProfiles().find((p) => p.id === pid);
-    const order = orderOf(pid);
     if (merge[pid]) {
       // Readable again (see runCycle): apply everything the account has, then upload what's only here.
       if (!full) { needFull = true; continue; }
@@ -813,17 +812,16 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
       if (dataRecs.length && !applyRemoteProfile(pid, next)) { cursorOk = false; continue; }
       const metaR = recs.find((r) => r.p.kind === 'meta' && r.v);
       if (metaR) updateProfileRemote(pid, metaR.v);
-      const post = flatten(pid, getProfiles().find((p) => p.id === pid), order, next);
+      const post = flatten(pid, getProfiles().find((p) => p.id === pid), next);
       for (const r of recs) if (post.has(r.k)) sh[r.k] = [hashOf(post.get(r.k)), r.t, r.dev, 0];
-      diffProfile(pid, getProfiles().find((p) => p.id === pid), order, next, sh, dev);
+      diffProfile(pid, getProfiles().find((p) => p.id === pid), next, sh, dev);
       delete merge[pid];
       dirty.add(pid);
       if (pid !== getActiveProfile()?.id) appliedOther.v = true;
-      if (metaR) remoteOrder.set(pid, metaR.v.order);
       continue;
     }
     // Edits made while the pull was in flight are recorded before anything remote is applied.
-    const changedHere = diffProfile(pid, prof, order, data, sh, dev);
+    const changedHere = diffProfile(pid, prof, data, sh, dev);
     const win = recs.filter((r) => { const e = sh[r.k]; return !e || newer(r.t, r.dev, e[1], e[2]); });
     if (changedHere) dirty.add(pid);
     if (!win.length) continue;
@@ -838,19 +836,10 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     }
     const metaWin = win.find((r) => r.p.kind === 'meta');
     if (metaWin) {
-      if (updateProfileRemote(pid, metaWin.v)) { applied.set(metaWin.k, metaWin); remoteOrder.set(pid, metaWin.v.order); } else cursorOk = false;
+      if (updateProfileRemote(pid, metaWin.v)) applied.set(metaWin.k, metaWin); else cursorOk = false;
     }
-    settle(sh, flatten(pid, getProfiles().find((p) => p.id === pid), order, next), applied);
-    if (metaWin && applied.has(metaWin.k)) sh[metaWin.k][0] = hashOf(metaWin.v); // order may differ until re-sorted below
+    settle(sh, flatten(pid, getProfiles().find((p) => p.id === pid), next), applied);
     dirty.add(pid);
-  }
-
-  // Profile order from the account (only among synced profiles; device-only ones keep their place).
-  if (remoteOrder.size) {
-    const ids = getProfiles().map((p) => p.id).filter((id) => synced.has(id));
-    const pos = (id, i) => (remoteOrder.has(id) ? remoteOrder.get(id) : i);
-    const want = ids.map((id, i) => ({ id, o: pos(id, i), i })).sort((a, b) => a.o - b.o || a.i - b.i).map((x) => x.id);
-    reorderProfiles(want);
   }
 
   for (const id of Object.keys(merge)) if (!synced.has(id)) delete merge[id];
@@ -869,7 +858,7 @@ async function pushPending(my, token, keys, dev, shadows) {
     if (!prof.data) continue; // unreadable: its pending edits wait
     const sh = shadows.get(prof.pid) || await loadShadow(prof.pid);
     shadows.set(prof.pid, sh);
-    const flat = flatten(prof.pid, prof.meta, prof.order, prof.data);
+    const flat = flatten(prof.pid, prof.meta, prof.data);
     for (const [k, e] of Object.entries(sh)) {
       // Refused twice before (pending = 3): tried again once per app start, otherwise set aside.
       if (e[3] === 3 && !triedRefused.has(k)) triedRefused.add(k);
@@ -1434,7 +1423,7 @@ async function unsyncedReport() {
     if (!prof.data) { out.unreadable.push(prof.meta.name); continue; }
     if ((s.merge || {})[prof.pid] || (s.waitReadable || {})[prof.pid] || (s.fresh || {})[prof.pid]) { out.pending++; continue; }
     const sh = await loadShadow(prof.pid);
-    const flat = flatten(prof.pid, prof.meta, prof.order, prof.data);
+    const flat = flatten(prof.pid, prof.meta, prof.data);
     for (const [k, v] of flat) {
       const e = sh[k];
       if (!e || e[0] !== hashOf(v) || e[3] === 1) out.pending++;
