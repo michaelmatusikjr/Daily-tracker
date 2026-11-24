@@ -100,3 +100,34 @@ CREATE TABLE IF NOT EXISTS challenges (
   expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS challenges_expiry ON challenges (expires_at);
+-- Encrypted task photos (SYNC.md › Phase 2). fid is an opaque HMAC; the file is one AES-GCM
+-- ciphertext (base64url), stored in chunks of at most 512 KiB characters (a D1 value is limited
+-- to ~2 MB). An upload is only visible once committed (a row in files); until then its chunks
+-- belong to a row in file_uploads, which the daily purge removes after a day.
+CREATE TABLE IF NOT EXISTS files (
+  account_id TEXT NOT NULL,
+  fid        TEXT NOT NULL,          -- 32 bytes base64url (HMAC)
+  upload     TEXT NOT NULL,          -- the upload whose chunks hold the data
+  size       INTEGER NOT NULL,       -- total characters (counted in accounts.bytes)
+  chunks     INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (account_id, fid)
+);
+CREATE INDEX IF NOT EXISTS files_upload ON files (account_id, upload);
+CREATE TABLE IF NOT EXISTS file_uploads (
+  account_id TEXT NOT NULL,
+  upload     TEXT NOT NULL,          -- random 16 bytes base64url
+  fid        TEXT NOT NULL,
+  size       INTEGER NOT NULL,
+  chunks     INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (account_id, upload)
+);
+CREATE INDEX IF NOT EXISTS file_uploads_age ON file_uploads (created_at);
+CREATE TABLE IF NOT EXISTS file_chunks (
+  account_id TEXT NOT NULL,
+  upload     TEXT NOT NULL,
+  n          INTEGER NOT NULL,       -- 0-based chunk number
+  data       TEXT NOT NULL,          -- base64url characters
+  PRIMARY KEY (account_id, upload, n)
+);
