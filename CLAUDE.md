@@ -13,7 +13,7 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
 - `js/actions.js` – all mutations (with Undo). `js/forms.js` task/habit forms. `js/taskView.js` View-task sheet. `js/itemMenu.js` long-press menus. `js/ui.js` sheets/toasts/gestures.
 - `js/workouts.js` + `js/workoutForm.js` – workouts and records (1RM, 3×5 rules, bodyweight periods, cardio standard distances). `js/attachments.js` – task photos in IndexedDB (`dailyTracker-files`). `js/habitIcon.js` – habit image/Genmoji icons.
 - `js/push.js` + `js/pushConfig.js` + `js/reminders.js` + `js/notify.js` – reminders: local timers, plus closed-app Web Push via the server.
-- `js/sync.js` + `js/syncCrypto.js` + `js/account.js` – accounts and end-to-end encrypted sync (phase 1, see `SYNC.md`): records, shadows/keys in IndexedDB `dailyTracker-sync`, state in `dailyTracker:sync`, Settings › Account UI. Tests: `tests/t39.js` (real Worker in Miniflare, app on `http://localhost:8080` for passkeys).
+- `js/sync.js` + `js/syncCrypto.js` + `js/account.js` – accounts and end-to-end encrypted sync (phase 1, see `SYNC.md`): records, shadows/keys in IndexedDB `dailyTracker-sync`, state in `dailyTracker:sync`, Settings › Account UI. Tests: `tests/t39.js`–`t41.js` (real Worker in Miniflare, app on `http://localhost:8080` for passkeys).
 - `js/views/*.js` – today, habits, habitDetail, workouts, calendar, stats, completed, settings, widgets.
 - `server/` – Cloudflare Worker + D1 push server (rules-based recurrence in `src/recur.js`, mirrored from `js/logic.js`; VAPID/aes128gcm in `src/webpush.js`). Has its own `README.md` and `npm test`.
 - `tests/` – Playwright browser suites + `run-all.sh`. `BACKLOG.md` – roadmap and decisions.
@@ -28,7 +28,7 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
 ## Testing
 - `tests/run-all.sh` runs every suite (servers on 127.0.0.1:8080 root and :8081 sub-path are started automatically). `tests/run-all.sh t21 t25` runs specific ones. Chromium + `require('playwright')` are preinstalled in cloud sessions; don't reinstall.
 - t17 (push client) needs `cd server && npm ci` first. Server tests: `cd server && npm test`.
-- Known flake: t12's "storage event → sheet appears" occasionally times out under full-suite load; re-run it alone.
+- Known flake: t12's "storage event → sheet appears" occasionally timed out under full-suite load; likely caused by http.servers left running by older `run-all.sh` versions (fixed: the servers are now direct children the trap kills). If it recurs, check `ss -ltnp | grep 808` / `pgrep -af http.server`, kill leftovers, re-run it alone.
 - Add a new `tests/tNN.js` for each feature; update expectations in older suites when behaviour changes on purpose.
 
 ## Release workflow (tiered – keep it token-efficient)

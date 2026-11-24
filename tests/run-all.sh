@@ -12,13 +12,14 @@ trap 'kill $P1 $P2 2>/dev/null; rm -rf "$TMP"' EXIT
 
 # 8080 serves the app at the site root; 8081 serves it under a sub-path, like GitHub Pages.
 ln -s "$ROOT" "$TMP/Daily-tracker-"
-(cd "$ROOT" && python3 -m http.server 8080 --bind 127.0.0.1 >/dev/null 2>&1) & P1=$!
-(cd "$TMP" && python3 -m http.server 8081 --bind 127.0.0.1 >/dev/null 2>&1) & P2=$!
+# The servers are direct children (no subshell), so the trap's kill really stops them.
+python3 -m http.server 8080 --bind 127.0.0.1 --directory "$ROOT" >/dev/null 2>&1 & P1=$!
+python3 -m http.server 8081 --bind 127.0.0.1 --directory "$TMP" >/dev/null 2>&1 & P2=$!
 sleep 1
 
 SUITES=("$@")
 if [ ${#SUITES[@]} -eq 0 ]; then
-  SUITES=(parse t1 t3 t4 t5 t6 t9 t10 t12 t13 t14 t15 t16 t17 t17-sw t18 t19 t20 t21 t23 t24 t25 t26 t27 t28 t29 t30 t31 t32 t33 t34 t35 t36 t37 t38 t39 t40 nullcheck)
+  SUITES=(parse t1 t3 t4 t5 t6 t9 t10 t12 t13 t14 t15 t16 t17 t17-sw t18 t19 t20 t21 t23 t24 t25 t26 t27 t28 t29 t30 t31 t32 t33 t34 t35 t36 t37 t38 t39 t40 t41 nullcheck)
 fi
 
 fail=0
