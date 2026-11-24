@@ -52,6 +52,8 @@ export const putFile = (rec) => tx('readwrite', (s) => { s.put(rec); });
 export const getFile = (id) => tx('readonly', (s) => reqP(s.get(id)));
 export const deleteFiles = (ids) => (ids.length ? tx('readwrite', (s) => { ids.forEach((id) => s.delete(id)); }) : Promise.resolve());
 export const allFiles = () => tx('readonly', (s) => reqP(s.getAll()));
+/** Ids of every stored file (no image data is read). */
+export const fileIds = () => tx('readonly', (s) => reqP(s.getAllKeys())).then((k) => new Set(k));
 export const filesForProfile = (profileId) => tx('readonly', (s) => reqP(s.index('profileId').getAll(profileId)));
 /** Attachment ids referenced by the tasks of every readable profile except exceptId: Map id → profileId. */
 function referencedElsewhere(exceptId) {

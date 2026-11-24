@@ -51,6 +51,7 @@ const SHELL = [
   './js/pushConfig.js',
   './js/sync.js',
   './js/syncCrypto.js',
+  './js/fileSync.js',
   './js/account.js',
   './js/workouts.js',
   './icons/icon.svg',

@@ -45,6 +45,54 @@ export function pushConfig() {
   return { serverUrl, publicKey, registerKey: String(o.registerKey || '').trim(), overridden: !!(o.serverUrl || o.publicKey || o.registerKey) };
 }
 export const pushConfigured = () => { const c = pushConfig(); return !!(c.serverUrl && c.publicKey); };
+
+// ---------- the register key travels with the account (SYNC.md › Register key) ----------
+// The key's edit time and device (registerKeyT / registerKeyDev) are kept next to it, so syncing
+// compares real edit times (latest wins) and a key that wasn't just typed never gets a new time.
+// A key stored before this existed has t = 0 (any key typed anywhere wins over it).
+let stamper = (prevT) => ({ t: Math.max(Date.now(), (prevT || 0) + 1), dev: '' });
+/** sync.js stamps edits with its clock (server-corrected) and device id. */
+export function setRegisterKeyStamper(fn) { stamper = fn; }
+/** { key, t, dev } of this device's register key ('' when none). */
+export function registerKeyMeta() {
+  const o = readJSON(CONFIG_KEY) || {};
+  return { key: String(o.registerKey || '').trim(), t: Number.isSafeInteger(o.registerKeyT) && o.registerKeyT >= 0 ? o.registerKeyT : 0, dev: typeof o.registerKeyDev === 'string' ? o.registerKeyDev : '' };
+}
+export const validRegisterKey = (k) => typeof k === 'string' && /^[\x21-\x7e]{8,200}$/.test(k);
+function writeKeyMeta(o, key, t, dev) {
+  if (key) o.registerKey = key; else delete o.registerKey;
+  o.registerKeyT = t; o.registerKeyDev = dev;
+}
+/** The account's copy is newer: take it (keeping its edit time). */
+export function applyRegisterKey(key, t, dev) {
+  if (!validRegisterKey(key)) return false;
+  const o = readJSON(CONFIG_KEY) || {};
+  const same = String(o.registerKey || '').trim() === key;
+  writeKeyMeta(o, key, t, dev);
+  writeJSON(CONFIG_KEY, o);
+  if (!same) changed();
+  return true;
+}
+/** Give the key (unchanged) a new edit time / device – only when the server refused its time, or to name the device. */
+export function restampRegisterKey(t, dev) {
+  const o = readJSON(CONFIG_KEY) || {};
+  if (!o.registerKey) return;
+  o.registerKeyT = t; o.registerKeyDev = dev;
+  writeJSON(CONFIG_KEY, o);
+}
+/** Set only the register key (e.g. the one typed when creating an account). */
+export function setRegisterKey(key) {
+  key = String(key || '').trim();
+  if (!validRegisterKey(key)) return false;
+  const o = readJSON(CONFIG_KEY) || {};
+  if (String(o.registerKey || '').trim() === key) return true;
+  const st = stamper(registerKeyMeta().t);
+  writeKeyMeta(o, key, st.t, st.dev);
+  writeJSON(CONFIG_KEY, o);
+  changed();
+  return true;
+}
+
 export function setPushConfig({ serverUrl = '', publicKey = '', registerKey = '' }) {
   serverUrl = serverUrl.trim().replace(/\/+$/, '');
   publicKey = publicKey.trim();
@@ -57,7 +105,10 @@ export function setPushConfig({ serverUrl = '', publicKey = '', registerKey = ''
   const o = {};
   if (serverUrl && serverUrl !== String(PUSH_SERVER_URL || '').trim().replace(/\/+$/, '')) o.serverUrl = serverUrl;
   if (publicKey && publicKey !== String(VAPID_PUBLIC_KEY || '').trim()) o.publicKey = publicKey;
-  if (registerKey) o.registerKey = registerKey;
+  // A changed key is a new edit (it syncs to the account); an unchanged one keeps its edit time.
+  const prev = registerKeyMeta();
+  if (registerKey !== prev.key) { const st = stamper(prev.t); writeKeyMeta(o, registerKey, st.t, st.dev); }
+  else if (registerKey || prev.t) writeKeyMeta(o, registerKey, prev.t, prev.dev);
   writeJSON(CONFIG_KEY, Object.keys(o).length ? o : null);
   changed();
 }
