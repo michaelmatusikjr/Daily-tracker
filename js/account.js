@@ -1,0 +1,502 @@
+// Settings › Account (SYNC.md › Client flows): create / sign in / passkeys / recovery, the profile
+// picker, devices, password, sign out and delete. All text goes through h() (never innerHTML).
+import { h, openSheet, toast, confirmDialog, choose } from './ui.js';
+import { icon } from './icons.js';
+import { getProfiles, updateProfile, readProfileForSync } from './store.js';
+import { pushConfig } from './push.js';
+import { fmtDateShort, toKey } from './dates.js';
+import * as S from './sync.js';
+import { avatarEl } from './profiles.js';
+import { ctx } from './ctx.js';
+
+const nameKey = (n) => String(n || '').trim().toLowerCase();
+const dateOf = (ms) => (Number.isFinite(ms) ? fmtDateShort(toKey(new Date(ms))) : '');
+
+function field(label, input, hint = null) {
+  return h('label.field.acct-field', h('span.field-label', label), input, hint ? h('span.field-hint', hint) : null);
+}
+const pwInput = (label, auto = 'current-password') => h('input.input', { type: 'password', autocomplete: auto, 'aria-label': label, spellcheck: false });
+
+/** Run an async action with the button disabled and a busy label; errors go to errEl. */
+async function busy(btn, label, errEl, fn) {
+  const old = [...btn.childNodes];
+  btn.disabled = true;
+  btn.replaceChildren(label);
+  if (errEl) errEl.textContent = '';
+  try { return await fn(); } catch (e) {
+    if (errEl) errEl.textContent = e?.message || 'Something went wrong';
+    else toast(e?.message || 'Something went wrong', { force: true, duration: 6000 });
+    return undefined;
+  } finally { btn.disabled = false; btn.replaceChildren(...old); }
+}
+
+// ---------------- The panel (Settings section and the Account sheet) ----------------
+/** Settings › Account. null when no server is set up (the app stays fully local). */
+export function accountSection() {
+  if (!S.accountsAvailable()) return null;
+  return h('section.set-group.acct-group', { id: 'set-account' }, h('h2.set-title', 'Account'), h('div.card.set-card.acct-card', accountPanel()));
+}
+
+/** "On this device only" label → this sheet. */
+export function openAccountSheet() {
+  const sheet = openSheet({ title: 'Account', content: h('div.acct-sheet', accountPanel({ onNavigate: () => sheet.close() })), cls: 'acct' });
+  return sheet;
+}
+
+function accountPanel({ onNavigate = null } = {}) {
+  const root = h('div.acct-panel');
+  // Full render only when what's shown changes shape; otherwise just the status line (no refetch).
+  const sig = () => { const s = S.syncState(); const st = S.syncStatus(); return JSON.stringify([S.hasAccount(), s.username, st?.kind === 'busy' ? 'ok' : st?.kind, s.synced, getProfiles().map((p) => [p.id, p.name])]); };
+  let last = null;
+  const render = () => { last = sig(); root.replaceChildren(...(S.hasAccount() ? signedInView(render) : signedOutView())); };
+  render();
+  // Keep the status fresh while it's on screen.
+  const off = S.onSyncChange(() => {
+    if (!root.isConnected) { off(); return; }
+    // Don't wipe what someone is typing (inline rename / unlock).
+    if (root.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return;
+    if (sig() !== last) { render(); return; }
+    const line = root.querySelector('.acct-status');
+    const next = statusLine();
+    if (line && next) line.replaceWith(next);
+  });
+  void onNavigate;
+  return root;
+}
+
+function deviceOnlyCount() {
+  return getProfiles().filter((p) => S.isDeviceOnly(p.id)).length;
+}
+
+function signedOutView() {
+  const n = deviceOnlyCount();
+  return [
+    h('div.set-row.col',
+      h('div.set-text',
+        h('span.set-label', 'Sync across your devices'),
+        h('span.set-desc', 'One account for your household holds your profiles and keeps them the same on every device. It’s end-to-end encrypted: only your devices can read it.'),
+        n ? h('span.set-desc.acct-warn', icon('phone', { size: 14 }), ` ${n === 1 ? 'Your profile is' : `${n} profiles are`} on this device only.`) : null),
+      h('div.set-actions.acct-actions',
+        h('button.btn.primary', { type: 'button', onclick: () => openCreate() }, 'Create account'),
+        h('button.btn.secondary', { type: 'button', onclick: () => openSignIn() }, 'Sign in'),
+        S.passkeysSupported() ? h('button.btn.secondary', { type: 'button', onclick: (e) => passkeyFlow(e.currentTarget) }, icon('key', { size: 16 }), 'Sign in with passkey') : null),
+      h('button.link-btn.acct-link', { type: 'button', onclick: () => openRecovery() }, 'Forgot password? Use recovery key')),
+  ];
+}
+
+function statusLine() {
+  const st = S.syncStatus();
+  if (!st) return null;
+  const kids = [h('span', st.text)];
+  if (st.kind === 'update') kids.push(h('button.btn.primary.small', { type: 'button', onclick: () => location.reload() }, icon('refresh', { size: 16 }), 'Reload'));
+  return h(`p.acct-status.${st.kind}`, { role: 'status', 'aria-live': 'polite' }, ...kids);
+}
+
+function signedInView(rerender) {
+  const s = S.syncState();
+  const st = S.syncStatus();
+  const out = [];
+  out.push(h('div.set-row.acct-head',
+    h('span.acct-user', icon('user', { size: 20 })),
+    h('div.set-text', h('span.set-label', s.username || 'Account'), statusLine()),
+    st && ['ok', 'error', 'offline'].includes(st.kind) ? h('button.btn.ghost.small', { type: 'button', onclick: async (e) => { await busy(e.currentTarget, 'Syncing…', null, () => S.syncNow()); rerender(); } }, icon('refresh', { size: 16 }), 'Sync now') : null));
+  if (st?.kind === 'expired') {
+    out.push(h('div.set-actions.pad',
+      h('button.btn.primary.small', { type: 'button', onclick: () => openSignIn({ username: s.username }) }, 'Sign in again'),
+      S.passkeysSupported() ? h('button.btn.secondary.small', { type: 'button', onclick: (e) => passkeyFlow(e.currentTarget) }, icon('key', { size: 16 }), 'Passkey') : null,
+      h('button.btn.ghost.small', { type: 'button', onclick: () => openSignOut() }, 'Sign out')));
+    out.push(profilesBlock(rerender));
+    return out;
+  }
+  if (st?.kind === 'locked') { out.push(unlockForm(rerender)); return out; }
+  out.push(profilesBlock(rerender));
+  out.push(detailsBlock(rerender));
+  out.push(h('div.set-actions.pad.acct-bottom',
+    h('button.btn.secondary.small', { type: 'button', onclick: () => openChangePassword() }, 'Change password'),
+    h('button.btn.secondary.small', { type: 'button', onclick: () => openSignOut() }, icon('logOut', { size: 16 }), 'Sign out'),
+    h('button.btn.danger-ghost.small', { type: 'button', onclick: () => openDeleteAccount() }, 'Delete account')));
+  return out;
+}
+
+/** Each profile with "Synced" or "On this device only" + "Sync to account". */
+function profilesBlock(rerender) {
+  const list = h('ul.acct-profiles', { role: 'list' }, getProfiles().map((p) => {
+    const synced = S.isSynced(p.id);
+    const readable = !!readProfileForSync(p.id);
+    const li = h('li.acct-prof');
+    const err = h('p.form-error', { role: 'alert' });
+    const syncBtn = h('button.btn.secondary.small', { type: 'button', onclick: () => syncOne(p, li, err, rerender) }, icon('cloud', { size: 16 }), 'Sync to account');
+    li.append(...[avatarEl(p, 32), h('div.acct-prof-text', h('span.acct-prof-name', p.name),
+      synced ? h('span.badge.ok.small-badge', icon('cloud', { size: 13 }), 'Synced') : h('span.device-only-tag', icon('phone', { size: 13 }), 'On this device only')),
+    !synced && readable && S.isSignedIn() && !S.syncState().locked ? syncBtn : null, err].filter(Boolean));
+    return li;
+  }));
+  return h('div.set-row.col.acct-block', h('span.set-label', 'Profiles'), list);
+}
+
+function syncOne(p, li, err, rerender) {
+  const clash = S.accountNameClash(p.name, p.id);
+  if (!clash) { S.syncProfiles([p.id]); toast(`${p.name} will sync to your account`, { force: true }); rerender(); return; }
+  // Names are unique in an account: rename first, inline.
+  if (li.querySelector('.acct-rename')) return;
+  const input = h('input.input', { type: 'text', maxlength: 40, value: p.name, 'aria-label': `New name for ${p.name}` });
+  const go = () => {
+    const n = input.value.trim();
+    if (!n) { err.textContent = 'Please enter a name.'; return; }
+    if (S.accountNameClash(n, p.id)) { err.textContent = `Another profile in your account is called “${n}”. Choose a different name.`; return; }
+    if (!updateProfile(p.id, { name: n })) { err.textContent = 'Couldn’t save – storage is full.'; return; }
+    S.syncProfiles([p.id]);
+    toast(`${n} will sync to your account`, { force: true });
+    rerender();
+  };
+  err.textContent = `Your account already has a profile called “${clash.name}”. Rename this one to sync it.`;
+  li.append(h('form.acct-rename.inline-form', { onsubmit: (e) => { e.preventDefault(); go(); } }, input, h('button.btn.primary.small', { type: 'submit' }, 'Rename and sync')));
+  input.focus();
+}
+
+/** Passkeys and signed-in devices (loaded from the server). */
+function detailsBlock(rerender) {
+  const box = h('div.acct-details', h('p.set-desc.pad', 'Loading passkeys and devices…'));
+  S.accountInfo().then((info) => {
+    const pk = h('div.set-row.col.acct-block',
+      h('span.set-label', 'Passkeys'),
+      h('span.set-desc', 'Sign in with Face ID, Touch ID or your device’s screen lock.'),
+      info.passkeys.length ? h('ul.acct-list', { role: 'list' }, info.passkeys.map((k) => h('li',
+        h('div.set-text', h('span', k.name), h('span.set-desc', `Added ${dateOf(k.createdAt)}${k.prf ? '' : ' · needs your password on a new device'}`)),
+        h('button.btn.ghost.small', { type: 'button', 'aria-label': `Remove passkey ${k.name}`, onclick: async (e) => {
+          if (!(await confirmDialog('Remove this passkey?', `“${k.name}” won’t sign in to your account any more.`, { ok: 'Remove', danger: true }))) return;
+          const ok = await busy(e.currentTarget, 'Removing…', null, async () => { await S.removePasskey(k.id); return true; });
+          if (ok) toast('Passkey removed', { force: true });
+          rerender();
+        } }, 'Remove')))) : null,
+      S.passkeysSupported() ? h('div.set-actions', h('button.btn.secondary.small', { type: 'button', onclick: () => openAddPasskey(rerender) }, icon('key', { size: 16 }), 'Add a passkey')) : null);
+    const dv = h('div.set-row.col.acct-block',
+      h('span.set-label', 'Signed-in devices'),
+      h('ul.acct-list', { role: 'list' }, info.sessions.map((d) => h('li',
+        h('div.set-text', h('span', d.deviceName), h('span.set-desc', d.current ? 'This device' : `Last used ${dateOf(d.lastSeen)}`)),
+        d.current ? null : h('button.btn.ghost.small', { type: 'button', 'aria-label': `Sign out ${d.deviceName}`, onclick: async () => {
+          if (!(await confirmDialog(`Sign out ${d.deviceName}?`, 'That device stops syncing until someone signs in there again. Its data stays on it.', { ok: 'Sign out', danger: true }))) return;
+          try { await S.signOutDevice(d.id); toast('Signed out that device', { force: true }); } catch (x) { toast(x.message, { force: true }); }
+          rerender();
+        } }, 'Sign out')))));
+    box.replaceChildren(pk, dv);
+  }).catch((e) => { box.replaceChildren(h('p.set-desc.pad', `Couldn’t load passkeys and devices: ${e.message}`)); });
+  return box;
+}
+
+function unlockForm(rerender) {
+  const pw = pwInput('Password');
+  const err = h('p.form-error', { role: 'alert' });
+  let useRec = false;
+  const rec = h('input.input.mono', { type: 'text', autocomplete: 'off', spellcheck: false, 'aria-label': 'Recovery key', placeholder: 'XXXX XXXX …', hidden: true });
+  const label = h('span.field-label', 'Password');
+  const btn = h('button.btn.primary.small', { type: 'submit' }, 'Unlock');
+  const toggle = h('button.link-btn', { type: 'button', onclick: () => { useRec = !useRec; pw.hidden = useRec; rec.hidden = !useRec; label.textContent = useRec ? 'Recovery key' : 'Password'; toggle.textContent = useRec ? 'Use password instead' : 'Use recovery key instead'; } }, 'Use recovery key instead');
+  const form = h('form.set-row.col', { onsubmit: async (e) => {
+    e.preventDefault();
+    const r = await busy(btn, 'Unlocking…', err, () => S.unlock(useRec ? { recovery: rec.value } : { password: pw.value }));
+    if (r) { rerender(); afterSignIn({ created: false }); }
+  } },
+  h('span.set-desc', 'This passkey can’t unlock your data on this device by itself. Enter your password once (or your recovery key).'),
+  h('label.field.acct-field', label, pw, rec), err, h('div.set-actions', btn, toggle));
+  return form;
+}
+
+// ---------------- Flows ----------------
+function openCreate() {
+  const user = h('input.input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxlength: 40, 'aria-label': 'Username', autofocus: true });
+  const pw = pwInput('Password', 'new-password'), pw2 = pwInput('Confirm password', 'new-password');
+  const reg = h('input.input', { type: 'password', autocomplete: 'off', spellcheck: false, 'aria-label': 'Register key', value: pushConfig().registerKey || '' });
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, 'Create account');
+  const submit = async () => {
+    if (!user.value.trim()) { err.textContent = 'Choose a username.'; return; }
+    if (pw.value.length < 10) { err.textContent = 'The password needs at least 10 characters.'; return; }
+    if (pw.value !== pw2.value) { err.textContent = 'The passwords don’t match.'; return; }
+    if (!reg.value.trim()) { err.textContent = 'Enter the server’s register key.'; return; }
+    const r = await busy(btn, 'Creating…', err, () => S.createAccount({ username: user.value, password: pw.value, registerKey: reg.value }));
+    if (!r) return;
+    sheet.close();
+    showRecovery(r.recovery);
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Create account', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      h('p.set-desc', 'Your data is encrypted on this device before it’s uploaded. Only your devices can read it.'),
+      field('Username', user, '3–40 letters, digits, dots, dashes or underscores.'),
+      field('Password', pw, 'At least 10 characters. It never leaves this device.'),
+      field('Confirm password', pw2),
+      field('Register key', reg, 'The key of your server (the same one as for reminders).'),
+      err, h('button', { type: 'submit', hidden: true })),
+    footer: [h('span'), btn],
+  });
+}
+
+/** The recovery key, shown once. Continuing needs the "I've saved it" box. */
+function showRecovery(text) {
+  const box = h('input', { type: 'checkbox', id: 'rec-saved' });
+  const next = h('button.btn.primary', { type: 'button', disabled: true }, 'Continue');
+  box.addEventListener('change', () => { next.disabled = !box.checked; });
+  const keyEl = h('p.recovery-key.mono', { 'aria-label': 'Recovery key' }, text);
+  const copy = h('button.btn.secondary.small', { type: 'button', onclick: async () => {
+    try { await navigator.clipboard.writeText(text); toast('Recovery key copied', { force: true }); } catch { toast('Couldn’t copy – select the key and copy it', { force: true }); }
+  } }, icon('copy', { size: 16 }), 'Copy');
+  let done = false;
+  next.onclick = () => { if (!box.checked) return; done = true; sheet.close(); afterSignIn({ created: true }); };
+  const sheet = openSheet({
+    title: 'Your recovery key', cls: 'acct',
+    content: [
+      h('p.set-desc', 'If you forget your password, this key is the only way back into your data. Save it somewhere safe (a password manager, or on paper). It’s shown only now.'),
+      keyEl, h('div.set-actions', copy),
+      h('label.check-row', { for: 'rec-saved' }, box, h('span', 'I’ve saved my recovery key')),
+    ],
+    footer: [h('span'), next],
+    onClose: () => { if (!done) setTimeout(() => afterSignIn({ created: true }), 300); },
+  });
+}
+
+function openSignIn({ username = '' } = {}) {
+  const user = h('input.input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxlength: 40, 'aria-label': 'Username', value: username, autofocus: !username });
+  const pw = pwInput('Password');
+  if (username) pw.setAttribute('autofocus', '');
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, 'Sign in');
+  const submit = async () => {
+    if (!user.value.trim() || !pw.value) { err.textContent = 'Enter your username and password.'; return; }
+    const r = await busy(btn, 'Signing in…', err, () => S.signIn({ username: user.value, password: pw.value }));
+    if (!r) return;
+    sheet.close();
+    afterSignIn({ created: false, error: r.error });
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Sign in', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      field('Username', user), field('Password', pw), err,
+      h('button.link-btn', { type: 'button', onclick: () => { sheet.close(); openRecovery(user.value); } }, 'Forgot password? Use recovery key'),
+      h('button', { type: 'submit', hidden: true })),
+    footer: [h('span'), btn],
+  });
+}
+
+async function passkeyFlow(btn) {
+  const r = await busy(btn, 'Waiting for passkey…', null, () => S.passkeySignIn());
+  if (!r) return;
+  if (r.needsUnlock) { openUnlock(); return; }
+  afterSignIn({ created: false, error: r.error });
+}
+
+function openUnlock() {
+  const pw = pwInput('Password');
+  pw.setAttribute('autofocus', '');
+  const rec = h('input.input.mono', { type: 'text', autocomplete: 'off', spellcheck: false, 'aria-label': 'Recovery key', hidden: true });
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, 'Unlock');
+  let useRec = false;
+  const label = h('span.field-label', 'Password');
+  const toggle = h('button.link-btn', { type: 'button', onclick: () => { useRec = !useRec; pw.hidden = useRec; rec.hidden = !useRec; label.textContent = useRec ? 'Recovery key' : 'Password'; toggle.textContent = useRec ? 'Use password instead' : 'Use recovery key instead'; } }, 'Use recovery key instead');
+  const submit = async () => {
+    const r = await busy(btn, 'Unlocking…', err, () => S.unlock(useRec ? { recovery: rec.value } : { password: pw.value }));
+    if (!r) return;
+    sheet.close();
+    afterSignIn({ created: false, error: r.error });
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Unlock your data', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      h('p.set-desc', `Signed in as ${S.syncState().username}. This passkey can’t unlock your encrypted data by itself, so enter your password once on this device.`),
+      h('label.field.acct-field', label, pw, rec), err, toggle, h('button', { type: 'submit', hidden: true })),
+    footer: [h('span'), btn],
+  });
+}
+
+function openRecovery(username = '') {
+  const user = h('input.input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxlength: 40, 'aria-label': 'Username', value: username, autofocus: true });
+  const rec = h('textarea.input.mono', { rows: 2, autocomplete: 'off', spellcheck: false, autocapitalize: 'characters', 'aria-label': 'Recovery key' });
+  const pw = pwInput('New password', 'new-password'), pw2 = pwInput('Confirm new password', 'new-password');
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, 'Recover');
+  const submit = async () => {
+    if (pw.value.length < 10) { err.textContent = 'The new password needs at least 10 characters.'; return; }
+    if (pw.value !== pw2.value) { err.textContent = 'The passwords don’t match.'; return; }
+    const r = await busy(btn, 'Recovering…', err, () => S.recoverAccount({ username: user.value, recovery: rec.value, newPassword: pw.value }));
+    if (!r) return;
+    sheet.close();
+    toast('Password changed. Other devices were signed out.', { force: true, duration: 6000 });
+    afterSignIn({ created: false, error: r.error });
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Use recovery key', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      h('p.set-desc', 'Sets a new password. Every other device is signed out and needs the new password.'),
+      field('Username', user), field('Recovery key', rec), field('New password', pw, 'At least 10 characters.'), field('Confirm new password', pw2), err,
+      h('button', { type: 'submit', hidden: true })),
+    footer: [h('span'), btn],
+  });
+}
+
+/**
+ * After signing in or up: the account's profiles are on this device now. Ask which of this device's
+ * own profiles to sync (rename step for name clashes), then offer a passkey (new accounts).
+ */
+function afterSignIn({ created, error = null }) {
+  if (error) toast(`Signed in, but syncing didn’t finish: ${error}`, { force: true, duration: 7000 });
+  const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
+  const then = () => { if (created && S.passkeysSupported()) offerPasskey(); else ctx.rerender?.(); };
+  if (!candidates.length) { then(); return; }
+  openPicker(candidates, { preselect: created, onDone: then });
+}
+
+function openPicker(candidates, { preselect, onDone }) {
+  const rows = candidates.map((p) => {
+    const box = h('input', { type: 'checkbox', checked: preselect, 'aria-label': `Sync ${p.name}` });
+    const rename = h('input.input', { type: 'text', maxlength: 40, value: p.name, 'aria-label': `New name for ${p.name}` });
+    const note = h('p.field-hint');
+    const renameWrap = h('div.picker-rename', { hidden: true }, note, rename);
+    const li = h('li.picker-row', h('label.check-row', box, avatarEl(p, 32), h('span.picker-name', p.name)), renameWrap);
+    return { p, box, rename, renameWrap, note, li };
+  });
+  const err = h('p.form-error', { role: 'alert' });
+  const refresh = () => {
+    for (const r of rows) {
+      const clash = r.box.checked && S.accountNameClash(r.p.name, r.p.id);
+      r.renameWrap.hidden = !clash && nameKey(r.rename.value) === nameKey(r.p.name);
+      if (clash) r.note.textContent = `Your account already has “${clash.name}”. Rename this profile to sync it:`;
+    }
+  };
+  rows.forEach((r) => r.box.addEventListener('change', refresh));
+  refresh();
+  const btn = h('button.btn.primary', { type: 'button' }, 'Sync selected');
+  let finished = false;
+  btn.onclick = () => {
+    err.textContent = '';
+    const chosen = rows.filter((r) => r.box.checked);
+    const taken = new Set(S.syncedIds().map((id) => nameKey(getProfiles().find((p) => p.id === id)?.name)));
+    for (const r of chosen) {
+      const n = (r.renameWrap.hidden ? r.p.name : r.rename.value).trim();
+      if (!n) { err.textContent = 'Every profile needs a name.'; r.rename.focus(); return; }
+      if (taken.has(nameKey(n))) { r.renameWrap.hidden = false; r.note.textContent = `“${n}” is already used in your account. Choose another name:`; err.textContent = 'Names must be unique in your account.'; r.rename.focus(); return; }
+      taken.add(nameKey(n));
+      r.newName = n;
+    }
+    for (const r of chosen) if (r.newName !== r.p.name && !updateProfile(r.p.id, { name: r.newName })) { err.textContent = 'Couldn’t rename – storage is full.'; return; }
+    if (chosen.length) S.syncProfiles(chosen.map((r) => r.p.id));
+    finished = true;
+    sheet.close();
+    if (chosen.length) toast(`${chosen.length === 1 ? chosen[0].newName : `${chosen.length} profiles`} will sync to your account`, { force: true });
+    onDone?.();
+  };
+  const sheet = openSheet({
+    title: 'Sync this device’s profiles?', cls: 'acct',
+    content: [
+      h('p.set-desc', 'Profiles already in your account are on this device now. Choose which of this device’s profiles to add to the account. The others stay on this device only (you can sync them later in Settings › Account).'),
+      h('ul.picker-list', { role: 'list' }, rows.map((r) => r.li)),
+      err,
+    ],
+    footer: [h('button.btn.ghost', { type: 'button', onclick: () => sheet.close() }, 'Not now'), btn],
+    onClose: () => { if (!finished) onDone?.(); },
+  });
+}
+
+async function offerPasskey() {
+  const yes = await confirmDialog('Add a passkey?', 'Sign in on your other devices with Face ID, Touch ID or the screen lock instead of typing your password.', { ok: 'Add a passkey' });
+  if (!yes) { ctx.rerender?.(); return; }
+  try {
+    const r = await S.addPasskey({});
+    toast(r.prf ? 'Passkey added' : 'Passkey added. New devices will ask for your password once.', { force: true, duration: 6000 });
+  } catch (e) { toast(e.message, { force: true }); }
+  ctx.rerender?.();
+}
+
+function openAddPasskey(rerender) {
+  if (S.hasFlowKey()) {
+    S.addPasskey({}).then((r) => toast(r.prf ? 'Passkey added' : 'Passkey added. New devices will ask for your password once.', { force: true, duration: 6000 }))
+      .catch((e) => toast(e.message, { force: true })).finally(() => rerender());
+    return;
+  }
+  const pw = pwInput('Password');
+  pw.setAttribute('autofocus', '');
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, 'Add passkey');
+  const submit = async () => {
+    if (!pw.value) { err.textContent = 'Enter your password.'; return; }
+    const r = await busy(btn, 'Adding…', err, () => S.addPasskey({ password: pw.value }));
+    if (!r) return;
+    sheet.close();
+    toast(r.prf ? 'Passkey added' : 'Passkey added. New devices will ask for your password once.', { force: true, duration: 6000 });
+    rerender();
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Add a passkey', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      h('p.set-desc', 'Your password lets the new passkey unlock your encrypted data on other devices.'),
+      field('Password', pw), err, h('button', { type: 'submit', hidden: true })),
+    footer: [h('span'), btn],
+  });
+}
+
+function openChangePassword() {
+  const cur = pwInput('Current password'), next = pwInput('New password', 'new-password'), next2 = pwInput('Confirm new password', 'new-password');
+  cur.setAttribute('autofocus', '');
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, 'Change password');
+  const submit = async () => {
+    if (next.value.length < 10) { err.textContent = 'The new password needs at least 10 characters.'; return; }
+    if (next.value !== next2.value) { err.textContent = 'The new passwords don’t match.'; return; }
+    const r = await busy(btn, 'Changing…', err, async () => { await S.changePassword({ current: cur.value, next: next.value }); return true; });
+    if (!r) return;
+    sheet.close();
+    toast('Password changed', { force: true });
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Change password', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      field('Current password', cur), field('New password', next, 'At least 10 characters.'), field('Confirm new password', next2), err,
+      h('button', { type: 'submit', hidden: true })),
+    footer: [h('span'), btn],
+  });
+}
+
+async function openSignOut() {
+  const synced = S.syncedIds().map((id) => getProfiles().find((p) => p.id === id)?.name).filter(Boolean);
+  const what = synced.length ? `${synced.join(', ')} ${synced.length === 1 ? 'is' : 'are'} in your account.` : '';
+  const c = await choose('Sign out?', `${what} Your account isn’t changed.`.trim(), [
+    { value: 'keep', label: 'Keep copies on this device', style: 'primary' },
+    { value: 'remove', label: 'Remove from this device', style: 'danger' },
+    { value: null, label: 'Cancel', style: 'ghost' },
+  ]);
+  if (!c) return;
+  if (c === 'remove' && !(await confirmDialog('Remove from this device?', `${synced.length ? synced.join(', ') : 'The account’s profiles'} will be removed from this device. They stay in your account and come back when you sign in again.`, { ok: 'Remove', danger: true }))) return;
+  await S.signOut({ remove: c === 'remove' });
+  toast(c === 'remove' ? 'Signed out and removed from this device' : 'Signed out. Your profiles stay on this device.', { force: true });
+  ctx.rerender?.();
+}
+
+async function openDeleteAccount() {
+  if (!(await confirmDialog('Delete your account?', 'All synced data is deleted from the server, and every device is signed out. The copies on your devices stay as device-only profiles.', { ok: 'Continue', danger: true }))) return;
+  const pw = pwInput('Password');
+  pw.setAttribute('autofocus', '');
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.danger', { type: 'button' }, 'Delete account');
+  const submit = async () => {
+    if (!pw.value) { err.textContent = 'Enter your password.'; return; }
+    const r = await busy(btn, 'Deleting…', err, async () => { await S.deleteAccount(pw.value); return true; });
+    if (!r) return;
+    sheet.close();
+    toast('Account deleted. Your profiles stay on this device.', { force: true });
+    ctx.rerender?.();
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Are you absolutely sure?', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      h('p.set-desc', 'This can’t be undone. Enter your password to delete the account.'), field('Password', pw), err, h('button', { type: 'submit', hidden: true })),
+    footer: [h('button.btn.ghost', { type: 'button', onclick: () => sheet.close() }, 'Cancel'), btn],
+  });
+}
+

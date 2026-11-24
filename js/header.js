@@ -4,14 +4,18 @@
 import { h, iconBtn } from './ui.js';
 import { getActiveProfile } from './store.js';
 import { avatarEl, openProfileMenu } from './profiles.js';
+import { isDeviceOnly } from './sync.js';
+import { icon } from './icons.js';
 
 /** Round avatar button (no dropdown arrow); tapping opens the profile menu. */
 export function avatarButton(onOpen = null) {
   const profile = getActiveProfile();
-  return h('button.avatar-btn', {
+  // "On this device only" (not in the account; also before anyone signed in): a small badge.
+  const local = isDeviceOnly(profile.id);
+  return h(`button.avatar-btn${local ? '.device-only' : ''}`, {
     type: 'button', onclick: () => { onOpen?.(); openProfileMenu(); },
-    'aria-label': `Profile and settings (${profile.name})`, title: 'Profile and settings',
-  }, avatarEl(profile, 34));
+    'aria-label': `Profile and settings (${profile.name}${local ? ', on this device only' : ''})`, title: 'Profile and settings',
+  }, avatarEl(profile, 34), local ? h('span.device-badge', { 'aria-hidden': 'true' }, icon('phone', { size: 10 })) : null);
 }
 
 /**

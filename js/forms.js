@@ -388,7 +388,7 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
     urls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     photoGrid.replaceChildren(...photos.list.map((a, i) => {
       const img = h('img', { alt: `${title.value.trim() || 'Task'} – photo ${i + 1}`, width: 72, height: 72 });
-      fileUrl(a.id).then((u) => { if (u) { urls.push(u); img.src = u; } });
+      fileUrl(a.id).then((u) => { if (u) { urls.push(u); img.src = u; } else { const li = img.closest('li'); li?.classList.add('missing'); li?.append(h('span.photo-elsewhere', 'Photo on another device')); } });
       return h('li.photo-item', img, h('button.photo-remove', {
         type: 'button', 'aria-label': `Remove photo ${i + 1}`,
         onclick: () => { photos.list.splice(i, 1); renderPhotos(); photoStatus.textContent = 'Photo removed – Save to apply.'; addBtn.focus(); },

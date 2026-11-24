@@ -57,7 +57,8 @@ function photoSection(t) {
   return h('section.tv-section', { 'aria-label': 'Photos' }, h('h3.tv-head', `Photos (${list.length})`),
     h('ul.photo-grid.tv-photos', list.map((a, i) => {
       const img = h('img', { alt: `${t.title} – photo ${i + 1} of ${list.length}`, width: 96, height: 96 });
-      fileUrl(a.id).then((u) => { if (u) { img.src = u; img.addEventListener('load', () => URL.revokeObjectURL(u), { once: true }); } else img.closest('li')?.classList.add('missing'); });
+      // Not on this device (synced from another one; photos sync in a later version): a placeholder.
+      fileUrl(a.id).then((u) => { if (u) { img.src = u; img.addEventListener('load', () => URL.revokeObjectURL(u), { once: true }); } else { const li = img.closest('li'); li?.classList.add('missing'); li?.querySelector('.photo-open')?.append(h('span.photo-elsewhere', 'Photo on another device')); } });
       return h('li.photo-item', h('button.photo-open', { type: 'button', 'aria-label': `Open photo ${i + 1} of ${list.length}`, onclick: () => openPhotoViewer(t.title, list, i) }, img));
     })));
 }
@@ -94,7 +95,7 @@ export function openPhotoViewer(title, list, start = 0) {
   const nextBtn = h('button.pv-nav.pv-next', { type: 'button', 'aria-label': 'Next photo', onclick: () => go(1) }, icon('chevronRight', { size: 28 }));
   const closeBtn = h('button.pv-close', { type: 'button', 'aria-label': 'Close photo' }, icon('x', { size: 24 }));
   closeBtn.addEventListener('click', close);
-  const missing = h('p.pv-missing', { hidden: true }, 'This photo isn’t available on this device.');
+  const missing = h('p.pv-missing', { hidden: true }, 'Photo on another device – it isn’t available here.');
   const stage = h('div.pv-stage', img, missing);
   // Swipe (one finger) to move; two fingers are left to the browser for pinch-zoom.
   let sx = null, sy = 0;

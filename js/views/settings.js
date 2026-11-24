@@ -15,6 +15,8 @@ import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '.
 import { setWorkoutHabit, setWeatherUnits } from '../actions.js';
 import { habitText } from '../habitIcon.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
+import { accountSection } from '../account.js';
+import { hasAccount, isSynced, syncedIds } from '../sync.js';
 import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
@@ -33,6 +35,10 @@ export function renderSettings() {
   const root = h('div.view.view-settings');
   const profile = getActiveProfile();
   root.append(appHeader({ cls: 'detail', back: { label: 'Back to Today', onclick: () => ctx.go('today') }, title: 'Settings' }));
+
+  // Account (sync across devices) – only when a server is set up.
+  const acct = accountSection();
+  if (acct) root.append(acct);
 
   // Profile
   root.append(group('Profile',
@@ -179,7 +185,7 @@ export function renderSettings() {
   // Data
   const fileInput = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: () => importFile(fileInput) });
   root.append(group('Your data',
-    h('p.set-desc.pad', 'Everything is stored only on this device. Export saves all profiles in one file.'),
+    h('p.set-desc.pad', hasAccount() ? 'Everything is stored on this device; synced profiles are also in your account. Export saves all profiles on this device in one file.' : 'Everything is stored only on this device. Export saves all profiles in one file.'),
     photoUsageRow(),
     includePhotosRow(),
     h('div.set-actions',
@@ -192,7 +198,7 @@ export function renderSettings() {
 
   root.append(h('footer.about',
     h('p', h('b', 'Daily Tracker'), ` · version ${APP_VERSION}`),
-    h('p.muted.small', 'Works offline · No account · No tracking'),
+    h('p.muted.small', hasAccount() ? 'Works offline · End-to-end encrypted sync · No tracking' : 'Works offline · No account needed · No tracking'),
     h('p.muted.small', 'Profiles are for convenience and aren’t private from each other.')));
   return root;
 }
@@ -330,8 +336,11 @@ async function importFile(input) {
     const counts = (d) => `${d.tasks.length} tasks, ${d.habits.length} habits and ${d.workouts.length} workouts`;
     if (parsed.kind === 'multi') {
       const names = parsed.profiles.map((p) => p.name).join(', ');
+      // Signed in: synced profiles the backup doesn't have stay (they're in the account); imported
+      // profiles with a synced profile's id update it (normal edits that sync); the rest are device-only.
+      const inAccount = hasAccount();
       const ok = await confirmDialog('Replace everything?',
-        `This backup has ${parsed.profiles.length} profile${parsed.profiles.length === 1 ? '' : 's'} (${names}). It will replace all profiles and data on this device.`, { ok: 'Replace all', danger: true });
+        `This backup has ${parsed.profiles.length} profile${parsed.profiles.length === 1 ? '' : 's'} (${names}). It will replace all profiles and data on this device.${inAccount ? ' Profiles in your account stay in the account.' : ''}`, { ok: 'Replace all', danger: true });
       if (!ok) return;
       // Profiles on this device that can't be read are never removed without a separate, explicit yes.
       const stuck = unreadableProfiles(parsed.profiles.map((p) => p.id));
@@ -347,7 +356,7 @@ async function importFile(input) {
         deleteUnreadable = c === 'delete';
       }
       parsed.profiles.forEach((p) => { if (p.data) p.data.settings.onboarded = true; });
-      if (!replaceAllProfiles(parsed, { deleteUnreadable })) { toast('Couldn’t import – this device’s storage is full', { force: true }); return; }
+      if (!replaceAllProfiles(parsed, { deleteUnreadable, keepIds: inAccount ? syncedIds() : [] })) { toast('Couldn’t import – this device’s storage is full', { force: true }); return; }
       toast('Backup imported');
       const ids = new Set(getProfiles().map((p) => p.id));
       await restorePhotos((pid) => (ids.has(pid) ? pid : getActiveProfile().id));
@@ -357,7 +366,7 @@ async function importFile(input) {
     const data = parsed.data;
     data.settings.onboarded = true;
     const profile = getActiveProfile();
-    const choice = await choose('Import backup', `This backup has ${counts(data)}.`, [
+    const choice = await choose('Import backup', `This backup has ${counts(data)}.${isSynced(profile.id) ? ` Replacing ${profile.name}’s data also changes it in your account.` : ''}`, [
       { value: 'add', label: 'Add as new profile', style: 'primary' },
       { value: 'replace', label: `Replace ${profile.name}’s data`, style: 'danger' },
       { value: null, label: 'Cancel', style: 'ghost' },
@@ -381,7 +390,8 @@ async function importFile(input) {
 
 async function resetAll() {
   const name = getActiveProfile().name;
-  if (!(await confirmDialog(`Reset ${name}’s data?`, `This deletes ${name}’s tasks, habits, workouts and journal on this device. Other profiles are kept.`, { ok: 'Yes, continue', danger: true }))) return;
+  const where = isSynced(getActiveProfile().id) ? 'on this device and in your account (every signed-in device)' : 'on this device';
+  if (!(await confirmDialog(`Reset ${name}’s data?`, `This deletes ${name}’s tasks, habits, workouts and journal ${where}. Other profiles are kept.`, { ok: 'Yes, continue', danger: true }))) return;
   if (!(await confirmDialog('Are you absolutely sure?', 'This cannot be undone. Consider exporting a backup first.', { ok: 'Delete everything', danger: true }))) return;
   const fresh = defaultState();
   fresh.settings = { ...getState().settings, onboarded: true, notifications: false, workoutHabit: { habitId: null, filter: 'any' } };

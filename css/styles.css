@@ -1524,3 +1524,63 @@ html { scroll-padding-top: var(--head-h, 72px); }
   .main { padding-top: 0; }
   .app-head { padding-top: calc(var(--safe-t) + 12px); }
 }
+
+/* ---------- Account & sync (Settings › Account, profile menu marks) ---------- */
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .02em; }
+.acct-field .input { width: 100%; }
+.acct-actions { flex-wrap: wrap; margin-top: var(--s3); }
+.acct-actions .btn { flex: 1 1 auto; }
+.acct-link { align-self: flex-start; padding-left: 0; }
+.acct-warn { display: inline-flex; align-items: center; gap: 4px; color: var(--warn); font-weight: 600; margin-top: 4px; }
+.acct-head { align-items: center; justify-content: flex-start; }
+.acct-user {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: var(--accent-soft); color: var(--accent);
+}
+.acct-status { margin: 2px 0 0; font-size: 13px; color: var(--text-2); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.acct-status.ok { color: var(--success); }
+.acct-status.error, .acct-status.expired, .acct-status.update { color: var(--danger); }
+.acct-status.offline, .acct-status.locked { color: var(--warn); }
+.acct-block { gap: 6px; }
+.acct-profiles, .acct-list, .picker-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; }
+.acct-prof { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.acct-prof:first-child { border-top: none; }
+.acct-prof-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.acct-prof-name { font-weight: 620; overflow-wrap: anywhere; }
+.acct-prof .form-error { flex-basis: 100%; margin: 0; font-size: 13px; }
+.acct-rename { flex-basis: 100%; padding: 0; }
+.acct-rename .input { flex: 1; min-width: 0; }
+.badge.small-badge { padding: 2px 8px; font-size: 12px; gap: 4px; }
+.device-only-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 620; color: var(--warn); }
+.acct-list li { display: flex; align-items: center; gap: var(--s3); padding: 8px 0; border-top: 1px solid var(--border); }
+.acct-list li:first-child { border-top: none; }
+.acct-bottom { flex-wrap: wrap; padding-bottom: 14px; }
+.set-actions.pad { padding-top: 12px; }
+.recovery-key {
+  margin: var(--s3) 0; padding: 14px; border-radius: var(--r-md); background: var(--surface-2); border: 1px dashed var(--border);
+  font-size: 17px; line-height: 1.6; text-align: center; word-spacing: 4px; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all;
+}
+.picker-row { padding: 4px 0; border-top: 1px solid var(--border); }
+.picker-row:first-child { border-top: none; }
+.picker-row .check-row { gap: 12px; }
+.picker-name { font-weight: 620; overflow-wrap: anywhere; }
+.picker-rename { padding: 0 0 8px 32px; display: flex; flex-direction: column; gap: 6px; }
+.picker-rename .field-hint { color: var(--warn); margin: 0; }
+/* "On this device only": badge on the header avatar, label under the profile-menu row. */
+.device-badge {
+  position: absolute; right: 0; bottom: 1px; width: 16px; height: 16px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--warn); color: var(--bg); box-shadow: 0 0 0 2px var(--surface);
+}
+.profile-list li.device-only { display: flex; flex-direction: column; }
+.device-only-label {
+  align-self: flex-start; margin: -14px 0 4px 66px; padding: 2px 6px; min-height: 28px; border: none; background: none; border-radius: 8px;
+  display: inline-flex; align-items: center; gap: 4px; color: var(--warn); font-size: 12.5px; font-weight: 650; position: relative;
+}
+.device-only-label:hover { background: color-mix(in srgb, var(--warn) 10%, transparent); }
+.profile-list li.device-only .profile-item { padding-bottom: 18px; }
+.photo-elsewhere {
+  position: absolute; inset: 0; display: grid; place-items: center; padding: 4px; text-align: center;
+  font-size: 10.5px; line-height: 1.2; font-weight: 620; color: var(--text-3); background: var(--surface-2);
+}
+.photo-item.missing:has(.photo-elsewhere)::after { content: none; }
+.photo-open { position: relative; }

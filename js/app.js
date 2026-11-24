@@ -27,6 +27,7 @@ import { openHabitView } from './habitSheet.js';
 import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
 import { initNoZoom } from './noZoom.js';
+import { initSync, onSyncChange, profileReset, syncState } from './sync.js';
 import { refreshWeather } from './weather.js';
 
 const TABS = [
@@ -200,8 +201,12 @@ function loadFailureCard(failure) {
   };
   const reset = async () => {
     if (!(await confirmDialog('Start fresh?', 'The unreadable data stays stored as a backup on this device, but the app will start empty and save new changes.', { ok: 'Start fresh', danger: true }))) return;
+    // A synced profile is downloaded again from the account instead of uploading the empty data
+    // (marked before the reset is saved, so a sync in another window never sees it as edits).
+    const refetch = profileReset(getActiveProfile().id);
     resolveLoadFailure();
-    toast('Started fresh. Your old data is still kept as a backup.');
+    if (refetch) toast('Started fresh. Your old data is kept as a backup; the account’s copy is being downloaded.', { force: true });
+    else toast('Started fresh. Your old data is still kept as a backup.');
   };
   return h('section.card.warn-card.load-fail', { role: 'alert' },
     h('div',
@@ -365,11 +370,21 @@ function init() {
     }
   });
   onPushChange(() => { if (parseRoute().name === 'settings' && !isSheetOpen()) render(); });
+  // Account changes (signed in/out, a profile now syncing) change the "On this device only" marks.
+  let syncSig = null;
+  onSyncChange(() => {
+    const s = syncState();
+    const sig = JSON.stringify([!!s.accountId, s.synced || []]);
+    if (sig === syncSig) return;
+    syncSig = sig;
+    if (!isSheetOpen() && !document.activeElement?.matches?.('input, textarea')) render();
+  });
   if (!getState().settings.onboarded) showOnboarding();
   else if (getActiveProfile()?.introPending) setTimeout(() => openProfileEditor(getActiveProfile(), { intro: true, onDone: () => offerLegacyMerge() }), 400);
   else setTimeout(() => offerLegacyMerge(), 500);
   registerSW();
   initPush();
+  initSync();
   // Photos no task refers to any more (in any profile), e.g. after a delete whose Undo window ended
   // while the app was closed: clean up a moment after start.
   setTimeout(() => {

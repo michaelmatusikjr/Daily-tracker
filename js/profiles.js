@@ -1,5 +1,5 @@
 // Profile UI: avatar, profile menu, profile editor, first-open intro and photo processing.
-import { h, openSheet, toast, confirmDialog } from './ui.js';
+import { h, openSheet, toast, confirmDialog, segmented } from './ui.js';
 import { icon } from './icons.js';
 import { openCropper } from './cropper.js';
 import { getProfiles, getActiveProfile, switchProfile, addProfile, updateProfile, deleteProfile, PROFILE_COLORS } from './store.js';
@@ -7,6 +7,8 @@ import { ctx } from './ctx.js';
 import { afterDataRemoved } from './push.js';
 import { deleteProfileFiles } from './attachments.js';
 import { pruneWeatherCache } from './weather.js';
+import { isDeviceOnly, isSynced, isSignedIn, hasAccount, accountNameClash, syncProfiles, profileDeleted } from './sync.js';
+import { openAccountSheet } from './account.js';
 
 const AVATAR_EMOJIS = ['', '😀', '😎', '🦊', '🐼', '🐱', '🐶', '🦁', '🐸', '🌻', '⭐', '🚀', '⚽', '🎧', '🌈', '🍀'];
 
@@ -75,7 +77,7 @@ export async function processPhoto(file, size = 192) {
 export function openProfileMenu() {
   const profiles = getProfiles();
   const active = getActiveProfile();
-  const list = h('ul.profile-list', { role: 'list' }, profiles.map((p) => h('li',
+  const list = h('ul.profile-list', { role: 'list' }, profiles.map((p) => h(`li${isDeviceOnly(p.id) ? '.device-only' : ''}`,
     h(`button.profile-item${p.id === active.id ? '.active' : ''}`, {
       type: 'button', 'aria-current': p.id === active.id ? 'true' : null,
       'aria-label': p.id === active.id ? `${p.name} (current profile)` : `Switch to ${p.name}`,
@@ -84,7 +86,10 @@ export function openProfileMenu() {
         sheet.close();
         switchProfile(p.id);
       },
-    }, avatarEl(p, 44), h('span.profile-name', p.name), p.id === active.id ? icon('check', { size: 20, cls: 'profile-check' }) : null))));
+    }, avatarEl(p, 44), h('span.profile-name', p.name), p.id === active.id ? icon('check', { size: 20, cls: 'profile-check' }) : null),
+    // Not in the account (also before anyone signed in): a persistent label that opens Account.
+    isDeviceOnly(p.id) ? h('button.device-only-label', { type: 'button', 'aria-label': `${p.name} is on this device only – open Account`, onclick: () => { sheet.close(); openAccountSheet(); } },
+      icon('phone', { size: 13 }), 'On this device only') : null)));
   const action = (ic, label, onclick, cls = '') => h(`button.menu-item${cls}`, { type: 'button', onclick }, icon(ic, { size: 20 }), h('span', label));
   const content = [
     list,
@@ -97,15 +102,20 @@ export function openProfileMenu() {
         sheet.close();
         await confirmDeleteProfile(active);
       }, '.danger') : null),
-    h('p.field-hint.menu-note', 'Profiles keep separate data on this device. They aren’t locked or private from each other.'),
+    h('p.field-hint.menu-note', hasAccount() ? 'Profiles keep separate data. They aren’t locked or private from each other.' : 'Profiles keep separate data on this device. They aren’t locked or private from each other.'),
   ];
   const sheet = openSheet({ title: 'Profiles', content });
 }
 
 async function confirmDeleteProfile(p) {
-  if (!(await confirmDialog(`Delete ${p.name}?`, `All of ${p.name}’s tasks, habits, workouts, journal and settings will be removed from this device.`, { ok: 'Continue', danger: true }))) return;
-  if (!(await confirmDialog('Are you absolutely sure?', 'This cannot be undone. Export a backup first if you might need it.', { ok: `Delete ${p.name}`, danger: true }))) return;
-  if (deleteProfile(p.id)) { toast(`Deleted ${p.name}. Switched to ${getActiveProfile().name}`); deleteProfileFiles(p.id); pruneWeatherCache(); afterDataRemoved(); }
+  const synced = isSynced(p.id);
+  const where = synced ? 'from your account and every signed-in device' : 'from this device';
+  if (!(await confirmDialog(`Delete ${p.name}?`, `All of ${p.name}’s tasks, habits, workouts, journal and settings will be removed ${where}.`, { ok: 'Continue', danger: true }))) return;
+  if (!(await confirmDialog('Are you absolutely sure?', `This cannot be undone${synced ? `: ${p.name} is deleted from your account and every device` : ''}. Export a backup first if you might need it.`, { ok: `Delete ${p.name}`, danger: true }))) return;
+  if (deleteProfile(p.id)) {
+    if (synced) profileDeleted(p.id); // an explicit delete: removed from the account too
+    toast(`Deleted ${p.name}. Switched to ${getActiveProfile().name}`); deleteProfileFiles(p.id); pruneWeatherCache(); afterDataRemoved();
+  }
 }
 
 // ---------------- Profile editor ----------------
@@ -152,13 +162,22 @@ export function openProfileEditor(profile, { intro = false, onDone = null } = {}
     h('button.btn.secondary.small', { type: 'button', onclick: () => file.click() }, icon('upload', { size: 16 }), 'Choose photo'),
     file);
 
+  // Signed in: a new profile goes to the account (default) or stays on this device.
+  let saveTo = 'account';
+  const saveToRow = isNew && isSignedIn() ? h('div.field', { role: 'group', 'aria-label': 'Save to' }, h('span.field-label', 'Save to'),
+    segmented([{ value: 'device', label: 'This device only' }, { value: 'account', label: 'Account' }], saveTo, (v) => { saveTo = v; }, { label: 'Save to', small: true })) : null;
   const save = () => {
     const n = name.value.trim() || (intro ? 'Me' : '');
     if (!n) { err.textContent = 'Please enter a name.'; name.focus(); return; }
+    // Names are unique in an account (case and spaces ignored).
+    const toAccount = isNew ? !!saveToRow && saveTo === 'account' : isSynced(profile.id);
+    const clash = toAccount && accountNameClash(n, profile?.id);
+    if (clash) { err.textContent = `Another profile in your account is called “${clash.name}”. Choose a different name.`; name.focus(); return; }
     let ok;
-    if (isNew) ok = !!addProfile({ name: n, avatar });
+    if (isNew) ok = addProfile({ name: n, avatar });
     else ok = updateProfile(profile.id, { name: n, avatar });
     if (!ok) { err.textContent = 'Couldn’t save – this device’s storage is full. Try a smaller photo or remove old data.'; return; }
+    if (isNew && toAccount) syncProfiles([ok]);
     sheet.close();
     if (isNew) toast(`Added ${n}. Switched to ${n}`);
     onDone?.();
@@ -167,6 +186,7 @@ export function openProfileEditor(profile, { intro = false, onDone = null } = {}
     intro ? h('p.set-desc', 'Daily Tracker now supports several people on one device. What should we call you?') : null,
     h('div.profile-edit-top', preview, h('div.field', h('label.field-label', 'Name'), name)),
     h('div.field', { role: 'group', 'aria-label': 'Avatar' }, h('span.field-label', 'Avatar'), photoBtns, emojiRow, colorRow),
+    saveToRow,
     err);
   const footer = [
     intro ? h('button.btn.ghost', { type: 'button', onclick: () => { updateProfile(profile.id, { name: profile.name || 'Me' }); sheet.close(); onDone?.(); } }, 'Skip') : h('span'),

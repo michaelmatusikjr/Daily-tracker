@@ -70,6 +70,8 @@ export function habitIcon(hb) {
   if (!hasImageIcon(hb)) return hb.emoji;
   const data = hb.icon.data;
   const img = h('img.habit-img', { src: data, alt: '', draggable: 'false' });
+  // An image that can't be shown here (e.g. not on this device yet) falls back to the emoji / first letter.
+  img.addEventListener('error', () => { if (img.isConnected) img.replaceWith(document.createTextNode(hb.emoji || [...String(hb.name || '?').trim()][0] || '?')); }, { once: true });
   if (isJpeg(data)) { img.classList.add('photo'); return img; }
   const hit = photoCache.get(data);
   if (hit) applyPhoto(img, hit);
