@@ -22,6 +22,17 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **End-to-end encryption on:** only the user's devices can read the data. The password can unlock the encryption key, plus a one-time **recovery key** to save, so the data isn't lost if every device is lost.
   - **Photos sync too:** task photos and habit image icons.
   - **Devices:** all of them (iPhone, iPad, computers), so test across Safari, Chrome and Firefox.
+- **Decided (2026-11-24):**
+  - **Conflicts:** the latest edit wins (per item, by its timestamp).
+  - **First sign-in on a device:** ask which profiles to sync to the account; the user can pick one or more, or none.
+  - **Device-only profiles:** profiles not synced stay on the device, untouched. While signed in, each one shows a persistent "on this device only" indicator wherever it makes sense (e.g. the profile menu and avatar). The indicator stays until that profile is synced to the account.
+  - **Adding a profile while signed in:** the user chooses where it's saved: this device only, or the account.
+  - **Signing in on another device that has its own profiles:** offer to migrate those profiles into the account.
+  - **Unique names:** every profile name in an account must be unique. If a device profile has the same name as an account profile, the app asks the user to rename the device profile before merging it into the account.
+  - **Phased release:**
+    - **Phase 1:** account and sign-in (password, with rate limiting), end-to-end encryption plus a recovery key, and sync of profile data (tasks, habits, workouts, journal, settings), including the profile-selection, device-only and migration rules above.
+    - **Phase 2:** photos and habit image icons sync.
+    - **Phase 3:** passkey sign-in (Face ID / Touch ID) on top of the password.
 
 ## Done
 
