@@ -502,7 +502,7 @@ function openChangePassword() {
 async function openSignOut() {
   const synced = S.syncedIds().map((id) => getProfiles().find((p) => p.id === id)?.name).filter(Boolean);
   const what = synced.length ? `${synced.join(', ')} ${synced.length === 1 ? 'is' : 'are'} in your account.` : '';
-  const keepNote = synced.length ? ' If you keep copies, changes you make to them while signed out (deletions too) sync to your account when you sign in again.' : '';
+  const keepNote = synced.length ? ' If you keep copies, edits you make to them while signed out (deleted tasks and other items too) sync to your account when you sign in again. Deleting a whole kept profile only removes it from this device.' : '';
   let c = await choose('Sign out?', `${what} Your account isn’t changed.${keepNote}`.trim(), [
     { value: 'keep', label: 'Keep copies on this device', style: 'primary' },
     { value: 'remove', label: 'Remove from this device', style: 'danger' },

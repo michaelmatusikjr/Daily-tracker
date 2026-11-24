@@ -488,6 +488,7 @@ async function runCycle(my, token, keys, dev) {
  * (older data) is dropped: if the account has that profile id, the copy then stays here under a new id
  * (see moveClashingProfiles), so nothing is lost. Profile deletes still pending at sign-out are restored.
  */
+const pick = (o, ids) => Object.fromEntries(Object.entries(o).filter(([id]) => ids.includes(id)));
 async function resumeKept(my, token) {
   const s = readState();
   const acc = s.accountId;
@@ -513,19 +514,24 @@ async function resumeKept(my, token) {
     dels[pid] = kd[pid].t;
   }
   checkAlive(my, token);
+  let live = add;
   patchState((x) => {
+    // A Reset / Start fresh / delete (forgetKept) may have landed during the awaits above: only resume
+    // copies whose marker still exists, so an emptied copy can never tombstone the account.
+    live = add.filter((pid) => (x.kept || {})[pid] === acc);
     const k = { ...(x.kept || {}) }, d = { ...(x.keptDeletes || {}) };
     for (const pid of mine) if (k[pid] === acc) delete k[pid];
     for (const pid of myDel) if (d[pid]?.a === acc) delete d[pid];
     return {
       kept: k, keptDeletes: d, full: true,
-      synced: [...new Set([...(x.synced || []), ...add])],
+      synced: [...new Set([...(x.synced || []), ...live])],
       // Until a full pull has been applied: a delete from the account doesn't delete these copies here.
-      resumed: { ...(x.resumed || {}), ...Object.fromEntries(add.map((pid) => [pid, 1])) },
-      merge: { ...(x.merge || {}), ...merge }, waitReadable: { ...(x.waitReadable || {}), ...wait },
+      resumed: { ...(x.resumed || {}), ...Object.fromEntries(live.map((pid) => [pid, 1])) },
+      merge: { ...(x.merge || {}), ...pick(merge, live) }, waitReadable: { ...(x.waitReadable || {}), ...pick(wait, live) },
       deletes: { ...dels, ...(x.deletes || {}) },
     };
   });
+  for (const pid of add) if (!live.includes(pid)) await dropShadow(pid);
   for (const pid of [...mine, ...myDel]) await dropKept(pid);
 }
 

@@ -86,7 +86,7 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
     assert((await titlesOf(B.p, 'pm')).length === 3, 'R1 setup: B has 3 tasks');
     await go(A.p, '#settings');
     await A.p.click('.acct-bottom button:has-text("Sign out")'); await A.p.waitForTimeout(300);
-    assert(/changes you make to them while signed out \(deletions too\) sync to your account when you sign in again/.test(await A.p.locator('.sheet-root.open').last().textContent()), 'R0 the sign-out confirm says kept copies’ changes sync when signing in again');
+    assert(/edits you make to them while signed out \(deleted tasks and other items too\) sync to your account when you sign in again\. Deleting a whole kept profile only removes it from this device/.test(await A.p.locator('.sheet-root.open').last().textContent()), 'R0 the sign-out confirm says kept copies’ changes sync when signing in again');
     await A.p.click('.sheet-root.open .dialog-actions button:has-text("Cancel")'); await A.p.waitForTimeout(300);
     await S(A.p, `return await S.signOut({ remove: false });`);
     assert((await syncSt(A.p)).kept?.pm, 'R1 setup: A keeps a copy');
