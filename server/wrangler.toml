@@ -22,6 +22,8 @@ VAPID_SUBJECT = "https://michaelmatusikjr.github.io/daily-tracker/"
 ALLOWED_ORIGINS = "https://michaelmatusikjr.github.io"
 # Most devices that may register (stops strangers filling your free quota). Default 20.
 MAX_DEVICES = "20"
+# Most sync accounts that may be created (each needs the register key too). Default 10.
+MAX_ACCOUNTS = "10"
 # Secrets (never put them here), set after the first deploy:
 #   npx wrangler secret put VAPID_PRIVATE_KEY
 #   npx wrangler secret put REGISTER_KEY

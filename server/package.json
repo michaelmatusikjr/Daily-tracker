@@ -1,9 +1,9 @@
 {
   "name": "daily-tracker-push",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
-  "description": "Web Push reminder server for Daily Tracker (Cloudflare Worker + D1)",
+  "description": "Web Push reminder and account sync server for Daily Tracker (Cloudflare Worker + D1)",
   "scripts": {
     "setup-keys": "node scripts/setup-keys.mjs",
     "gen-vapid": "node scripts/setup-keys.mjs",
