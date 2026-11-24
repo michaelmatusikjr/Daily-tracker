@@ -2,7 +2,7 @@
 // Edit, the long-press actions and done/not done are one tap away. Updates live while open.
 import { h, openSheet, toast } from './ui.js';
 import { icon } from './icons.js';
-import { getState, subscribe } from './store.js';
+import { getState, subscribe, getActiveProfile } from './store.js';
 import { clockText, isTaskDone, isTaskMissed, isRecurring, recurrenceLabel, PRIORITIES, occursOn } from './logic.js';
 import { todayKey, relativeLabel, fmtDateShort, fmtDateLong, weekdayLabels, fmtTime } from './dates.js';
 import { toggleTask, setMissed } from './actions.js';
@@ -11,6 +11,7 @@ import { taskMenu, showMenu } from './itemMenu.js';
 import { timeRange, reminderWarnBadge } from './views/widgets.js';
 import { canFire } from './reminders.js';
 import { fileUrl } from './attachments.js';
+import { photoStatus, onPhotosChange } from './fileSync.js';
 import { resetZoom } from './noZoom.js';
 
 /** Notes → text nodes and safe links (http/https only, opened in a new tab). Never innerHTML. */
@@ -51,16 +52,42 @@ const reminderText = (min) => {
   return `${min} min before`;
 };
 
+/** Words for a photo that isn't on this device (see fileSync.photoStatus). */
+const MISSING_TEXT = { downloading: 'Downloading…', full: 'Not enough space on this device', elsewhere: 'Photo on another device' };
+const missingText = (pid, id) => MISSING_TEXT[photoStatus(pid, id)] || MISSING_TEXT.elsewhere;
+
 /** Thumbnail grid; tapping one opens the full-screen viewer. */
 function photoSection(t) {
   const list = t.attachments;
-  return h('section.tv-section', { 'aria-label': 'Photos' }, h('h3.tv-head', `Photos (${list.length})`),
-    h('ul.photo-grid.tv-photos', list.map((a, i) => {
-      const img = h('img', { alt: `${t.title} – photo ${i + 1} of ${list.length}`, width: 96, height: 96 });
-      // Not on this device (synced from another one; photos sync in a later version): a placeholder.
-      fileUrl(a.id).then((u) => { if (u) { img.src = u; img.addEventListener('load', () => URL.revokeObjectURL(u), { once: true }); } else { const li = img.closest('li'); li?.classList.add('missing'); li?.querySelector('.photo-open')?.append(h('span.photo-elsewhere', 'Photo on another device')); } });
-      return h('li.photo-item', h('button.photo-open', { type: 'button', 'aria-label': `Open photo ${i + 1} of ${list.length}`, onclick: () => openPhotoViewer(t.title, list, i) }, img));
-    })));
+  const pid = getActiveProfile()?.id;
+  const items = list.map((a, i) => {
+    const img = h('img', { alt: `${t.title} – photo ${i + 1} of ${list.length}`, width: 96, height: 96 });
+    const li = h('li.photo-item', h('button.photo-open', { type: 'button', 'aria-label': `Open photo ${i + 1} of ${list.length}`, onclick: () => openPhotoViewer(t.title, list, i) }, img));
+    return { a, img, li, shown: false };
+  });
+  // Not on this device (synced from another one): "Downloading…" while it's on its way, else a
+  // placeholder. Shown as soon as it arrives.
+  const load = (it) => fileUrl(it.a.id).then((u) => {
+    if (it.shown) { if (u) URL.revokeObjectURL(u); return; }
+    if (u) {
+      it.shown = true;
+      it.img.src = u; it.img.addEventListener('load', () => URL.revokeObjectURL(u), { once: true });
+      it.li.classList.remove('missing'); it.li.querySelector('.photo-elsewhere')?.remove();
+      return;
+    }
+    it.li.classList.add('missing');
+    const text = missingText(pid, it.a.id);
+    const el = it.li.querySelector('.photo-elsewhere');
+    if (el) el.textContent = text; else it.li.querySelector('.photo-open')?.append(h('span.photo-elsewhere', text));
+  });
+  items.forEach(load);
+  const grid = h('ul.photo-grid.tv-photos', items.map((it) => it.li));
+  const off = onPhotosChange(() => {
+    if (!grid.isConnected) { if (grid.dataset.mounted) off(); return; }
+    grid.dataset.mounted = '1';
+    items.filter((it) => !it.shown).forEach(load);
+  });
+  return h('section.tv-section', { 'aria-label': 'Photos' }, h('h3.tv-head', `Photos (${list.length})`), grid);
 }
 
 /** Full-screen photo viewer: arrows / swipe to move, Esc or × to close, pinch-zoom on touch. */
@@ -81,8 +108,14 @@ export function openPhotoViewer(title, list, start = 0) {
     if (my !== token || closed) { if (u) URL.revokeObjectURL(u); return; }
     if (url) URL.revokeObjectURL(url);
     url = u;
-    if (u) { img.src = u; img.hidden = false; missing.hidden = true; } else { img.removeAttribute('src'); img.hidden = true; missing.hidden = false; }
+    if (u) { img.src = u; img.hidden = false; missing.hidden = true; } else {
+      img.removeAttribute('src'); img.hidden = true; missing.hidden = false;
+      const st = photoStatus(getActiveProfile()?.id, list[i].id);
+      missing.textContent = st === 'downloading' ? 'Downloading…' : st === 'full' ? 'Not enough space on this device to download this photo.' : 'Photo on another device – it isn’t available here.';
+    }
   };
+  // A photo that arrives (or whose status changes) while it's shown.
+  const offPhotos = onPhotosChange(() => { if (closed) { offPhotos(); return; } if (!url) show(); });
   const go = (d) => { const j = i + d; if (j >= 0 && j < list.length) { i = j; show(); } };
   const close = () => { closed = true; document.removeEventListener('keydown', onKey, true); root.remove(); if (url) URL.revokeObjectURL(url); url = null; document.body.classList.remove('viewer-open'); resetZoom(); prevFocus?.focus?.({ preventScroll: true }); };
   const onKey = (e) => {

@@ -582,7 +582,8 @@ async function openSignOut() {
     let photos = 0;
     try { photos = await photosOfProfiles(ids); } catch { /* ignore */ }
     const names = synced.length ? synced.join(', ') : 'The account’s profiles';
-    const photoNote = photos ? ` Their ${photos} photo${photos === 1 ? '' : 's'} on this device ${photos === 1 ? 'isn’t' : 'aren’t'} in the account (photos don’t sync yet) and will be deleted.` : '';
+    // Remove is only offered once every photo on this device is in the account (checkRemove).
+    const photoNote = photos ? ` Their ${photos} photo${photos === 1 ? ' is' : 's are'} deleted from this device too (${photos === 1 ? 'it stays' : 'they stay'} in your account).` : '';
     if (!(await confirmDialog('Remove from this device?', `Everything in ${names} has been uploaded. ${synced.length === 1 ? 'It is' : 'They are'} removed from this device, stay in your account and come back when you sign in again.${photoNote}`, { ok: 'Remove', danger: true }))) return;
   }
   let r = await S.signOut({ remove: c === 'remove' });

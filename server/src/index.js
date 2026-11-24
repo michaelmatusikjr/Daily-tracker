@@ -6,6 +6,7 @@ import { b64urlDecode } from './b64.js';
 import { HttpError, json, err, readJson, sha256Hex, timingSafeEqual, randomId, isStr, rateLimit } from './util.js';
 import { accountRoute, purgeAccounts } from './account.js';
 import { syncRoute } from './sync.js';
+import { filesRoute, purgeFiles } from './files.js';
 import { importVapidKeys, sendPush } from './webpush.js';
 import { nextFire, isDateKey, isValidTimeZone, localToUTC, addDays } from './recur.js';
 
@@ -140,7 +141,7 @@ async function authDevice(request, env) {
 
 // ---------- Routes ----------
 /** Paths of the account/sync API, whose responses (errors too) include the server time `now`. */
-const isAccountPath = (path) => path === '/api/account' || /^\/api\/(account|passkey|sync)\//.test(path);
+const isAccountPath = (path) => path === '/api/account' || /^\/api\/(account|passkey|sync|files)\//.test(path);
 
 async function route(request, env, now) {
   const url = new URL(request.url);
@@ -151,7 +152,9 @@ async function route(request, env, now) {
 
   // Accounts, passkeys and sync (see SYNC.md). These answer with `now` in every response.
   if (isAccountPath(path)) {
-    const res = path.startsWith('/api/sync/') ? await syncRoute(request, env, now, path, url) : await accountRoute(request, env, now, path, ip);
+    const res = path.startsWith('/api/sync/') ? await syncRoute(request, env, now, path, url)
+      : path.startsWith('/api/files/') ? await filesRoute(request, env, now, path, url)
+      : await accountRoute(request, env, now, path, ip);
     if (res) return res;
     throw new HttpError(404, 'Not found');
   }
@@ -358,7 +361,7 @@ async function cronRun(env, now, { fetchImpl = fetch } = {}) {
   return stats;
 }
 
-/** Old send records, devices not seen for 180 days (and their rules), old rate-limit rows, expired challenges and sessions. */
+/** Old send records, devices not seen for 180 days (and their rules), old rate-limit rows, expired challenges and sessions, abandoned photo uploads. */
 export async function purge(env, now = Date.now()) {
   const stale = now - 180 * 86400000;
   await env.DB.batch([
@@ -369,6 +372,7 @@ export async function purge(env, now = Date.now()) {
     env.DB.prepare('DELETE FROM rate WHERE win < ?1').bind(Math.floor(now / 3600000) - 2),
   ]);
   await purgeAccounts(env, now); // expired challenges, sessions unused for 400 days
+  await purgeFiles(env, now); // photo uploads abandoned for a day
 }
 
 export default {

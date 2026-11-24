@@ -16,6 +16,7 @@ import { openCropper } from './cropper.js';
 import { pushCoversReminders, onPushChange } from './push.js';
 import { getActiveProfile } from './store.js';
 import { addPhoto, fileUrl, deleteFiles, assignFiles, MAX_PER_TASK } from './attachments.js';
+import { photoStatus as syncedPhotoStatus } from './fileSync.js';
 
 export const HABIT_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316', '#f59e0b', '#10b981', '#14b8a6', '#0ea5e9', '#64748b'];
 const CATEGORY_COLORS = ['#3b82f6', '#10b981', '#f43f5e', '#f59e0b', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
@@ -388,7 +389,7 @@ export function openTaskForm(task, defaults = {}, opts = {}) {
     urls.splice(0).forEach((u) => URL.revokeObjectURL(u));
     photoGrid.replaceChildren(...photos.list.map((a, i) => {
       const img = h('img', { alt: `${title.value.trim() || 'Task'} – photo ${i + 1}`, width: 72, height: 72 });
-      fileUrl(a.id).then((u) => { if (u) { urls.push(u); img.src = u; } else { const li = img.closest('li'); li?.classList.add('missing'); li?.append(h('span.photo-elsewhere', 'Photo on another device')); } });
+      fileUrl(a.id).then((u) => { if (u) { urls.push(u); img.src = u; } else { const li = img.closest('li'); li?.classList.add('missing'); li?.append(h('span.photo-elsewhere', syncedPhotoStatus(getActiveProfile()?.id, a.id) === 'downloading' ? 'Downloading…' : 'Photo on another device')); } });
       return h('li.photo-item', img, h('button.photo-remove', {
         type: 'button', 'aria-label': `Remove photo ${i + 1}`,
         onclick: () => { photos.list.splice(i, 1); renderPhotos(); photoStatus.textContent = 'Photo removed – Save to apply.'; addBtn.focus(); },

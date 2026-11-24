@@ -167,6 +167,29 @@ export async function decryptRecord(encKey, rid, blob) {
   } catch { return null; }
 }
 
+// ---------- photo files (SYNC.md › Phase 2: photos) ----------
+/**
+ * fid = b64url(HMAC-SHA-256(macKey, "f:" + pid + "/" + photoId)). Record keys never contain ':' in
+ * their first segment, so an fid can never equal a rid. Bound to the profile, so two profiles that
+ * refer to the same local photo id still have separate files in the account.
+ */
+export const fileIdOf = (macKey, pid, photoId) => ridOf(macKey, `f:${pid}/${photoId}`);
+/** iv12 || AES-GCM(encKey, bytes, aad = UTF-8 fid). */
+export async function encryptFile(encKey, fid, bytes) {
+  const iv = randomBytes(12);
+  const ct = new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv, additionalData: enc.encode(fid) }, encKey, bytes));
+  const out = new Uint8Array(12 + ct.length);
+  out.set(iv); out.set(ct, 12);
+  return out;
+}
+/** The plaintext bytes, or null when it doesn't decrypt (wrong key, tampered, another fid's file). */
+export async function decryptFile(encKey, fid, bytes) {
+  try {
+    if (!(bytes instanceof Uint8Array) || bytes.length < 28) return null;
+    return new Uint8Array(await subtle().decrypt({ name: 'AES-GCM', iv: bytes.slice(0, 12), additionalData: enc.encode(fid) }, encKey, bytes.slice(12)));
+  } catch { return null; }
+}
+
 // ---------- key storage (IndexedDB dailyTracker-sync) ----------
 const DB_NAME = 'dailyTracker-sync';
 const STORES = ['keys', 'shadow'];

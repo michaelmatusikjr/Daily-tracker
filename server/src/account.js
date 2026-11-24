@@ -313,12 +313,13 @@ export async function accountRoute(request, env, now, path, ip) {
   }
 
   if (path === '/api/account' && M === 'GET') {
-    const [pks, sess] = await env.DB.batch([
+    const [pks, sess, files] = await env.DB.batch([
       env.DB.prepare('SELECT id, name, created_at, last_used, wrapped_prf IS NOT NULL AS prf FROM passkeys WHERE account_id = ?1 ORDER BY created_at').bind(aid),
       env.DB.prepare('SELECT id, device_name, created_at, last_seen FROM sessions WHERE account_id = ?1 ORDER BY last_seen DESC').bind(aid),
+      env.DB.prepare('SELECT COUNT(*) AS n FROM files WHERE account_id = ?1').bind(aid),
     ]);
     return ok({
-      accountId: aid, username: account.username, records: account.records, bytes: account.bytes,
+      accountId: aid, username: account.username, records: account.records, bytes: account.bytes, files: files.results[0]?.n ?? 0,
       passkeys: pks.results.map((p) => ({ id: p.id, name: p.name, createdAt: p.created_at, lastUsed: p.last_used ?? null, prf: !!p.prf })),
       sessions: sess.results.map((s) => ({ id: s.id, deviceName: s.device_name, createdAt: s.created_at, lastSeen: s.last_seen, current: s.id === sessionId })),
     });
@@ -362,6 +363,9 @@ export async function accountRoute(request, env, now, path, ip) {
     await confirm(await readObject(request, L.smallBody));
     await env.DB.batch([
       env.DB.prepare('DELETE FROM records WHERE account_id = ?1').bind(aid),
+      env.DB.prepare('DELETE FROM file_chunks WHERE account_id = ?1').bind(aid),
+      env.DB.prepare('DELETE FROM file_uploads WHERE account_id = ?1').bind(aid),
+      env.DB.prepare('DELETE FROM files WHERE account_id = ?1').bind(aid),
       env.DB.prepare('DELETE FROM passkeys WHERE account_id = ?1').bind(aid),
       env.DB.prepare('DELETE FROM challenges WHERE account_id = ?1').bind(aid),
       env.DB.prepare('DELETE FROM sessions WHERE account_id = ?1').bind(aid),

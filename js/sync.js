@@ -1,4 +1,4 @@
-// Accounts and sync, phase 1 (SYNC.md). One household account holds any number of profiles; each
+// Accounts and sync (SYNC.md; photos: js/fileSync.js). One household account holds any number of profiles; each
 // synced profile is flattened into small records ("<pid>/task/<id>", …) that are encrypted on the
 // device and pushed to the Worker. Latest edit wins per record ((t, dev) compared).
 //
@@ -12,7 +12,7 @@
 //  - Local edits are diffed (synchronously) right before remote records are applied, so an edit is
 //    never folded into the shadow without being queued for upload.
 import { PUSH_SERVER_URL } from './pushConfig.js';
-import { pushConfig, scheduleSync as schedulePush } from './push.js';
+import { pushConfig, scheduleSync as schedulePush, registerKeyMeta, applyRegisterKey, restampRegisterKey, setRegisterKeyStamper, validRegisterKey, setRegisterKey } from './push.js';
 import { reschedule } from './notify.js';
 import {
   SCHEMA_VERSION, getProfiles, getActiveProfile, subscribe, readProfileForSync, applyRemoteProfile, addRemoteProfile,
@@ -22,6 +22,7 @@ import {
 import { isValidKey } from './dates.js';
 import * as C from './syncCrypto.js';
 import { deleteProfileFiles, copyProfileFiles, deleteFiles } from './attachments.js';
+import * as F from './fileSync.js';
 
 const STATE_KEY = 'dailyTracker:sync';
 const DEBOUNCE_MS = 1500;
@@ -33,6 +34,8 @@ const BLOB_MAX = 262144;
 const FETCH_TIMEOUT = 30000;
 // Top-level settings that belong to this device, not the profile (never synced).
 export const DEVICE_ONLY_SETTINGS = new Set(['notifications', 'onboarded']);
+// The one account-level record (not part of any profile): the reminders register key (SYNC.md).
+export const ACCT_REGISTER_KEY = 'acct/registerKey';
 
 // ---------- persisted state (localStorage, shared by tabs) ----------
 // { dev, accountId, username, token, sessionId, serverUrl, synced: [pid], cursor, full, fresh: {pid: 1},
@@ -44,7 +47,9 @@ export const DEVICE_ONLY_SETTINGS = new Set(['notifications', 'onboarded']);
 //   again), refusedDeletes: {pid: 1} (profile deletes the server refused twice: still pending),
 //   cantSync: {tooLarge, refused, deletes} (counts of what can't be uploaded, for Settings › Account),
 //   resumed: {pid: 1} (kept copies resumed at sign-in whose first full pull hasn't been applied yet: an
-//   account delete of one leaves it here as device-only instead of deleting it) }
+//   account delete of one leaves it here as device-only instead of deleting it), rk: [t, dev] (newest
+//   register key record known to be in the account), skipped (a pulled record couldn't be read or
+//   validated: photo clean-up in the account waits) }
 function readState() { try { const s = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); return s && typeof s === 'object' ? s : {}; } catch { return {}; } }
 function writeState(s) { try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); return true; } catch { return false; } }
 /** Read-modify-write (another tab may have written in between). */
@@ -60,6 +65,8 @@ function deviceId() {
 const listeners = new Set();
 export function onSyncChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 const changed = () => listeners.forEach((fn) => { try { fn(); } catch { /* ignore */ } });
+/** Photo sync (js/fileSync.js) tells the Account UI that its notes changed. */
+export const notifySyncChange = () => changed();
 
 // ---------- who is signed in / what syncs ----------
 export function serverUrl() {
@@ -101,20 +108,23 @@ function noteNow(now) {
   clockOffset = Math.abs(o - clockOffset) > 300000 ? o : Math.round(clockOffset * 0.7 + o * 0.3);
 }
 
-async function api(method, path, body, { token = null, headers = {}, url = null } = {}) {
+async function api(method, path, body, { token = null, headers = {}, url = null, raw, timeout = FETCH_TIMEOUT, signal = null } = {}) {
   const base = url || readState().serverUrl || serverUrl();
   if (!base) throw new SyncError(0, 'No server is set up');
   const h = { ...headers };
-  if (body !== undefined) h['Content-Type'] = 'application/json';
+  if (raw !== undefined) h['Content-Type'] = 'text/plain';
+  else if (body !== undefined) h['Content-Type'] = 'application/json';
   if (token) h.Authorization = 'Bearer ' + token;
   const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-  const timer = ctl ? setTimeout(() => ctl.abort(), FETCH_TIMEOUT) : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), timeout) : null;
+  const onAbort = () => ctl?.abort();
+  signal?.addEventListener?.('abort', onAbort);
   let res;
   try {
-    res = await fetch(base + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body), mode: 'cors', credentials: 'omit', signal: ctl?.signal });
+    res = await fetch(base + path, { method, headers: h, body: raw !== undefined ? raw : body === undefined ? undefined : JSON.stringify(body), mode: 'cors', credentials: 'omit', signal: ctl?.signal });
   } catch {
     throw new SyncError(0, navigator.onLine === false ? 'offline' : 'network');
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); signal?.removeEventListener?.('abort', onAbort); }
   let data = null;
   try { data = await res.json(); } catch { /* empty */ }
   if (data && Number.isFinite(data.now)) noteNow(data.now);
@@ -122,10 +132,10 @@ async function api(method, path, body, { token = null, headers = {}, url = null 
   return data || {};
 }
 /** Signed-in call; a 401 means the session is gone: signed out, local data kept. */
-async function authed(method, path, body) {
+async function authed(method, path, body, opts = {}) {
   const s = readState();
   if (!s.token) throw new SyncError(401, 'Not signed in');
-  try { return await api(method, path, body, { token: s.token }); } catch (e) {
+  try { return await api(method, path, body, { ...opts, token: s.token }); } catch (e) {
     if (e.status === 401 && readState().token === s.token) sessionEnded();
     throw e;
   }
@@ -394,9 +404,10 @@ async function cycle() {
     const result = await runCycle(my, token, keys, dev);
     checkAlive(my, token);
     attempt = 0; clearTimeout(retryTimer); lastError = null;
-    patchState({ lastOk: Date.now(), error: null, offset: clockOffset });
+    patchState({ lastOk: Date.now(), error: null, offline: false, offset: clockOffset });
     progress = null; changed();
     if (result.appliedOther) { schedulePush(); reschedule(); }
+    F.scheduleFilePass(0); // photos upload / download in the background, never blocking records
     return true;
   } catch (e) {
     progress = null;
@@ -469,6 +480,11 @@ async function runCycle(my, token, keys, dev) {
     checkAlive(my, token);
     // ---- synchronous: diff local edits, then apply remote ones (no await in between) ----
     const res = applyIncoming(incoming, full, dev, shadows, appliedOther);
+    applyAcct(incoming.acct);
+    // Records that couldn't be read or validated: what they refer to (e.g. photos) is unknown, so
+    // photo clean-up in the account waits until a full pull reads everything (SYNC.md › Phase 2).
+    if (incoming.skipped) patchState({ skipped: true });
+    else if (full && res.cursorOk) patchState({ skipped: false });
     for (const pid of res.dropped) await dropShadow(pid);
     for (const pid of res.dirty) await saveShadow(pid, shadows.get(pid));
     for (const pid of res.keptGone) await dropKept(pid);
@@ -579,6 +595,9 @@ function nextT(e) {
   const after = (e ? e[1] : 0) + 1;
   return after > now + FUTURE_CAP ? now : Math.max(now, after);
 }
+// Register key edits are stamped with this clock and device id (push.js keeps the key).
+setRegisterKeyStamper((prevT) => ({ t: nextT([null, prevT || 0]), dev: deviceId() }));
+
 /** Record local edits of one profile in its shadow (new/changed → pending, gone → pending tombstone). */
 function diffProfile(pid, meta, data, sh, dev) {
   const pre = flatten(pid, meta, data);
@@ -667,7 +686,7 @@ async function decryptAll(my, token, keys, records, full) {
   const shadowCache = new Map();
   const shadowFor = async (pid) => { if (!shadowCache.has(pid)) shadowCache.set(pid, await loadShadow(pid).catch(() => ({}))); return shadowCache.get(pid); };
   const out = new Map();
-  let maxSv = 0;
+  let maxSv = 0, skipped = 0;
   for (const r of records) {
     if (!r || typeof r.rid !== 'string' || typeof r.blob !== 'string') continue;
     // Known key and not newer than what we have: skip without decrypting (our own echoes, mostly).
@@ -680,13 +699,21 @@ async function decryptAll(my, token, keys, records, full) {
     const rec = await C.decryptRecord(keys.encKey, r.rid, r.blob);
     if (!rec || typeof rec.k !== 'string' || rec.t !== r.t || rec.dev !== r.dev || (await ridFor(keys, rec.k)) !== r.rid) {
       console.warn('Sync: skipped a record that could not be read');
+      skipped++;
       continue;
     }
     if (Number.isInteger(rec.sv) && rec.sv > SCHEMA_VERSION) { maxSv = Math.max(maxSv, rec.sv); continue; }
+    if (rec.k === ACCT_REGISTER_KEY) {
+      // Account-level: the register key (a string, never logged). A tombstone is ignored.
+      const v = rec.v === undefined ? null : rec.v;
+      if (v !== null && !validRegisterKey(v)) { console.warn('Sync: skipped a record that failed validation', 'acct'); skipped++; continue; }
+      if (v !== null && (!out.acct || newer(rec.t, rec.dev, out.acct.t, out.acct.dev))) out.acct = { v, t: rec.t, dev: rec.dev };
+      continue;
+    }
     const p = parseKey(rec.k);
-    if (!p) { console.warn('Sync: skipped a record with an unknown key'); continue; }
+    if (!p) { console.warn('Sync: skipped a record with an unknown key'); skipped++; continue; }
     const val = validateValue(p, rec.v === undefined ? null : rec.v, rec.sv);
-    if (!val.ok) { console.warn('Sync: skipped a record that failed validation', p.kind); continue; }
+    if (!val.ok) { console.warn('Sync: skipped a record that failed validation', p.kind); skipped++; continue; }
     const prev = out.get(rec.k);
     if (!prev || newer(rec.t, rec.dev, prev.t, prev.dev)) out.set(rec.k, { p, v: val.v, t: rec.t, dev: rec.dev });
     if (out.size % 500 === 0) checkAlive(my, token);
@@ -696,7 +723,21 @@ async function decryptAll(my, token, keys, records, full) {
     patchState({ paused: { sv: maxSv } });
     const err = new Error('paused'); err.paused = true; throw err;
   }
+  out.skipped = skipped;
   return out;
+}
+
+/**
+ * The account's register key: take it when it is newer than this device's (latest edit wins; the
+ * key keeps its edit time). `rk` is the newest (t, dev) known to be in the account.
+ */
+function applyAcct(acct) {
+  if (!acct) return;
+  const s = readState();
+  if (!s.rk || newer(acct.t, acct.dev, s.rk[0], s.rk[1])) patchState({ rk: [acct.t, acct.dev] });
+  const mine = registerKeyMeta();
+  if (!mine.key && !mine.t) { applyRegisterKey(acct.v, acct.t, acct.dev); return; }
+  if (newer(acct.t, acct.dev, mine.t, mine.dev)) applyRegisterKey(acct.v, acct.t, acct.dev);
 }
 
 /**
@@ -895,6 +936,12 @@ async function pushPending(my, token, keys, dev, shadows) {
     }
     items.push({ pid, k: `${pid}/meta`, v: null, t, dev, del: true });
   }
+  // The register key, when this device's copy is newer than the account's (it keeps its edit time).
+  const rk = registerKeyMeta();
+  if (rk.key && (!s.rk || newer(rk.t, rk.dev || dev, s.rk[0], s.rk[1]))) {
+    if (!rk.dev) restampRegisterKey(rk.t, dev); // a key from before it synced: name this device
+    items.push({ acct: true, k: ACCT_REGISTER_KEY, v: rk.key, t: rk.t, dev: rk.dev || dev });
+  }
   if (!items.length) { noteCantSync(shadows); return; }
   progress = { phase: 'up', n: 0, of: items.length }; changed();
   let batch = [], bytes = 0, done = 0;
@@ -910,10 +957,11 @@ async function pushPending(my, token, keys, dev, shadows) {
    */
   const fixRefused = async (i, retried) => {
     const b = batch[i];
-    const sh = shadows.get(b.pid);
+    const sh = b.acct ? null : shadows.get(b.pid);
     if (retried.has(i)) {
       console.warn('Sync: the server refused a record; it stays on this device', b.k.split('/')[1]);
-      if (b.del) patchState((x) => ({ refusedDeletes: { ...(x.refusedDeletes || {}), [b.pid]: 1 } }));
+      if (b.acct) { /* tried again when it changes or the app starts */ }
+      else if (b.del) patchState((x) => ({ refusedDeletes: { ...(x.refusedDeletes || {}), [b.pid]: 1 } }));
       else if (sh?.[b.k] && sh[b.k][1] === b.t) { sh[b.k][3] = 3; await saveShadow(b.pid, sh); }
       batch.splice(i, 1);
       const r = new Map();
@@ -923,7 +971,11 @@ async function pushPending(my, token, keys, dev, shadows) {
     }
     retried.add(i);
     const t = Math.round(serverNow());
-    if (b.del) patchState((x) => ((x.deletes || {})[b.pid] === b.t ? { deletes: { ...x.deletes, [b.pid]: t } } : {}));
+    if (b.acct) {
+      const m = registerKeyMeta();
+      if (m.key !== b.v || m.t !== b.t) { batch.splice(i, 1); retried.delete(i); return; } // changed meanwhile
+      restampRegisterKey(t, dev);
+    } else if (b.del) patchState((x) => ((x.deletes || {})[b.pid] === b.t ? { deletes: { ...x.deletes, [b.pid]: t } } : {}));
     else if (sh?.[b.k] && sh[b.k][1] === b.t && sh[b.k][2] === b.dev) { sh[b.k] = [sh[b.k][0], t, dev, sh[b.k][3]]; await saveShadow(b.pid, sh); }
     else { batch.splice(i, 1); retried.delete(i); return; } // changed meanwhile: next cycle
     const it = { ...b, t, dev };
@@ -951,6 +1003,7 @@ async function pushPending(my, token, keys, dev, shadows) {
     const dels = { ...(st.deletes || {}) };
     const refusedD = { ...(st.refusedDeletes || {}) };
     for (const b of batch) {
+      if (b.acct) { const m = registerKeyMeta(); if (m.key === b.v && m.t === b.t) patchState({ rk: [b.t, b.dev] }); continue; }
       if (b.del) { delete refusedD[b.pid]; if (dels[b.pid] === b.t) { delete dels[b.pid]; if (!(st.synced || []).includes(b.pid)) await dropShadow(b.pid); } continue; }
       const sh = shadows.get(b.pid);
       const e = sh?.[b.k];
@@ -1000,11 +1053,12 @@ export function cantSyncNote() {
   if (c.tooLarge) parts.push(`${c.tooLarge.toLocaleString()} item${c.tooLarge === 1 ? ' is' : 's are'} too large to sync`);
   if (c.refused) parts.push(`${c.refused.toLocaleString()} item${c.refused === 1 ? ' was' : 's were'} refused by the server`);
   if (c.deletes) parts.push(`${c.deletes === 1 ? 'a profile deletion was' : `${c.deletes} profile deletions were`} refused by the server`);
-  if (!parts.length) return null;
+  const photos = F.photoNote();
+  if (!parts.length) return photos;
   const tail = [];
   if (c.tooLarge) tail.push(`Too-large items stay on this device only (editing one tries again).`);
   if (c.refused || c.deletes) tail.push(`What the server refused is kept here and tried again when the app starts.`);
-  return `Couldn’t sync: ${parts.join(', ')}. ${tail.join(' ')}`;
+  return `Couldn’t sync: ${parts.join(', ')}. ${tail.join(' ')}${photos ? ' ' + photos : ''}`;
 }
 // ---------- state changes from the UI ----------
 /**
@@ -1128,6 +1182,7 @@ async function resetForAccount(accountId) {
   if (s.accountId && s.accountId !== accountId) {
     // The previous account's profiles stay here as copies kept from it (with their shadows), exactly
     // like "Keep copies": signing in to it again later carries on where it stopped.
+    await F.stopFiles();
     const pres = await preserveForAccount(s);
     await clearShadows();
     await C.clearKeys().catch(() => {});
@@ -1148,9 +1203,10 @@ function startSession(r, username, { created = false } = {}) {
     serverUrl: serverUrl(), expired: false, locked: false, error: null, signingOut: false, paused: null,
     // The same account again (e.g. after the session ended): carry on where it stopped.
     // A brand-new account is empty: nothing to download before profiles can be added.
-    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null, resumed: {} }),
+    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null, resumed: {}, rk: null, skipped: false }),
   });
   epoch++;
+  F.resumeFiles();
   changed();
 }
 
@@ -1175,6 +1231,8 @@ export async function createAccount({ username, password, registerKey }) {
   await resetForAccount(r.accountId);
   await storeKeys(r.accountId, dataKey, wrappedPw);
   startSession(r, uname, { created: true });
+  // The register key just typed is this device's (and so the account's) reminders key, unless one is set.
+  if (!registerKeyMeta().key) setRegisterKey(registerKey);
   const text = C.formatRecovery(rec);
   rec.fill(0);
   return { recovery: text };
@@ -1465,16 +1523,25 @@ async function removeBlocker() {
   if (r.tooLarge) stuck.push(`${r.tooLarge.toLocaleString()} item${r.tooLarge === 1 ? ' is' : 's are'} too large to sync`);
   if (r.refused) stuck.push(`${r.refused.toLocaleString()} item${r.refused === 1 ? ' was' : 's were'} refused by the server`);
   if (r.refusedDeletes) stuck.push(`${r.refusedDeletes === 1 ? 'a profile deletion was' : `${r.refusedDeletes} profile deletions were`} refused by the server`);
+  // Photos of these profiles' tasks that are on this device but not (yet) in the account. Asked of
+  // the server each time (not a cached answer); when it can't be asked, every such photo counts.
+  const ph = await F.unsyncedPhotos();
+  if (ph.tooLarge) stuck.push(`${ph.tooLarge.toLocaleString()} photo${ph.tooLarge === 1 ? ' is' : 's are'} too large to sync`);
+  if (ph.full) stuck.push(`${ph.full.toLocaleString()} photo${ph.full === 1 ? '' : 's'} couldn’t be uploaded because your account’s storage is full`);
   if (stuck.length) {
-    const one = r.tooLarge + r.refused + r.refusedDeletes === 1;
+    const one = r.tooLarge + r.refused + r.refusedDeletes + ph.tooLarge + ph.full === 1;
     const text = `${stuck.join(', ')}. ${one ? 'It isn’t' : 'They aren’t'} in the account, so removing now would lose ${one ? 'it' : 'them'}. Keep the copies on this device instead.`;
     return text[0].toUpperCase() + text.slice(1);
   }
+  if (ph.pending) return `${ph.pending.toLocaleString()} photo${ph.pending === 1 ? ' on this device hasn’t' : 's on this device haven’t'} been uploaded yet${s.offline || navigator.onLine === false ? ' (you’re offline)' : ''}. Removing now would lose ${ph.pending === 1 ? 'it' : 'them'}. Try again once everything has synced, or keep the copies on this device.`;
   return null;
 }
-/** Before "Remove from this device": sync, then report what would be lost. Resolves null (safe) or a reason. */
+/** Before "Remove from this device": sync (records, then photos), then report what would be lost. Resolves null (safe) or a reason. */
 export async function checkRemove() {
-  if (isSignedIn()) await syncNow().catch(() => false);
+  if (isSignedIn()) {
+    await syncNow().catch(() => false);
+    await F.runFilePass({ uploadOnly: true }).catch(() => {});
+  }
   return removeBlocker();
 }
 
@@ -1498,6 +1565,7 @@ export async function signOut({ remove = false } = {}) {
   const finish = async () => {
     // Checked again while holding the lock: an edit may have landed since.
     if (remove) { blocked = await removeBlocker(); if (blocked) return; }
+    await F.stopFiles(); // photo transfers stop before their per-account state is cleared
     if (s.token) await api('POST', '/api/account/logout', {}, { token: s.token }).catch(() => {});
     if (!remove) pres = await preserveForAccount(readState());
     await clearShadows();
@@ -1506,9 +1574,9 @@ export async function signOut({ remove = false } = {}) {
   let pres = { kept: {}, keptDeletes: {} };
   try { await withLock(finish); } catch {
     if (remove) blocked = 'Another window is syncing. Try again in a moment.';
-    else { pres = await preserveForAccount(readState()); await clearShadows(); await C.clearKeys().catch(() => {}); }
+    else { await F.stopFiles(); pres = await preserveForAccount(readState()); await clearShadows(); await C.clearKeys().catch(() => {}); }
   }
-  if (blocked) { patchState({ signingOut: false }); epoch++; changed(); scheduleSync(0); return { ok: false, reason: blocked }; }
+  if (blocked) { patchState({ signingOut: false }); epoch++; F.resumeFiles(); changed(); scheduleSync(0); return { ok: false, reason: blocked }; }
   keysMem = null; flowKey = null; pendingUnlock = null;
   ridCache = { keysRef: null, byK: new Map(), byRid: new Map() };
   const local = new Set(getProfiles().map((p) => p.id));
@@ -1535,6 +1603,76 @@ export async function deleteAccount(password) {
   for (const id of [...gone, ...goneDel]) await dropKept(id);
 }
 
+// ---------- for photo sync (js/fileSync.js) ----------
+/** The signed-in session for a photo pass: { accountId, token, keys, epoch } or null. */
+export async function fileContext() {
+  const s = readState();
+  if (!s.token || s.locked || s.paused || s.signingOut || !s.accountId) return null;
+  const my = epoch, token = s.token;
+  const keys = await getKeys();
+  if (!keys || my !== epoch || readState().token !== token) return null;
+  return { accountId: s.accountId, token, keys, epoch: my };
+}
+/** Is that session still the current one (no sign-out / account switch / expiry since)? */
+export function fileAlive(fc) {
+  const s = readState();
+  return !!fc && fc.epoch === epoch && s.token === fc.token && s.accountId === fc.accountId && !s.signingOut;
+}
+/** A signed-in call for photo transfers (raw text bodies for chunks, a longer timeout). */
+export function fileCall(fc, method, path, body, opts = {}) {
+  if (!fileAlive(fc)) return Promise.reject(new SyncError(401, 'Not signed in'));
+  return authed(method, path, body, { timeout: 90000, ...opts });
+}
+/**
+ * Photos the synced profiles' tasks refer to: [{ pid, taskId, id, uploaded }], one per (pid, id).
+ * `uploaded`: the task's record is in the account as it is now (its photos may be uploaded then).
+ */
+export async function photoRefs() {
+  const s = readState();
+  const out = [];
+  for (const prof of syncedProfiles(s)) {
+    if (!prof.data) continue;
+    let sh = {};
+    try { sh = await loadShadow(prof.pid); } catch { sh = {}; }
+    const seen = new Set();
+    for (const t of prof.data.tasks || []) {
+      if (!t.attachments?.length) continue;
+      const e = sh[`${prof.pid}/task/${t.id}`];
+      const uploaded = !!e && e[3] === 0 && e[0] === hashOf(t);
+      for (const a of t.attachments) {
+        if (seen.has(a.id)) { if (uploaded) out.find((r) => r.pid === prof.pid && r.id === a.id).uploaded = true; continue; }
+        seen.add(a.id);
+        out.push({ pid: prof.pid, taskId: t.id, id: a.id, uploaded });
+      }
+    }
+  }
+  return out;
+}
+/**
+ * May a photo file in the account be deleted for not being referenced? Only when this device knows
+ * every record the account has and has nothing of its own still to upload (SYNC.md › Phase 2):
+ * signed in and unlocked, a full pull completed and nothing skipped, the last cycle just succeeded,
+ * no pending edits / profile deletes / merges / rebuilds / resumed or kept copies of this account,
+ * nothing set aside (too large / refused), every account profile on this device, synced and
+ * readable, and every profile on this device readable.
+ */
+export async function gcReady() {
+  const s = readState();
+  if (!s.token || s.locked || s.paused || s.signingOut || s.expired || !s.pulled || s.full || s.skipped || s.error || s.offline) return false;
+  if (!s.lastOk || Date.now() - s.lastOk > 5 * 60000) return false;
+  const any = (o) => Object.keys(o || {}).length > 0;
+  if (any(s.deletes) || any(s.merge) || any(s.fresh) || any(s.waitReadable) || any(s.resumed)) return false;
+  if (Object.values(s.kept || {}).includes(s.accountId) || Object.values(s.keptDeletes || {}).some((x) => x?.a === s.accountId)) return false;
+  const local = getProfiles();
+  if (local.some((p) => !readProfileState(p.id))) return false;
+  const synced = new Set(s.synced || []);
+  const localIds = new Set(local.map((p) => p.id));
+  for (const [pid, name] of Object.entries(s.known || {})) if (name !== null && (!synced.has(pid) || !localIds.has(pid))) return false;
+  for (const pid of synced) if (!localIds.has(pid)) return false;
+  const r = await unsyncedReport();
+  return !r.pending && !r.deletes && !r.tooLarge && !r.refused && !r.refusedDeletes && !r.unreadable.length;
+}
+
 // ---------- wiring ----------
 let started = false;
 export function initSync() {
@@ -1545,7 +1683,7 @@ export function initSync() {
   if (s.paused && s.paused.sv <= SCHEMA_VERSION) patchState({ paused: null });
   if (s.signingOut) signOut({ remove: false }); // a sign-out interrupted by a reload: finish it
   subscribe((st, info = {}) => { if (!info.remote) scheduleSync(); });
-  window.addEventListener('online', () => { patchState({ offline: false }); scheduleSync(0); });
+  window.addEventListener('online', () => { patchState({ offline: false }); scheduleSync(0); F.scheduleFilePass(1000); });
   window.addEventListener('offline', () => changed());
   // Shown: sync. Hidden: sync now too, so edits are timestamped (and sent) before the app may be closed.
   document.addEventListener('visibilitychange', () => { if (isSignedIn()) syncNow().catch(() => {}); });
