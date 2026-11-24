@@ -1,12 +1,11 @@
 // Accounts, sessions and passkeys for sync (SYNC.md). The server never sees a password: the app
-// sends authKey (from PBKDF2 on the device) and the server keeps only a salted PBKDF2 verifier of it.
+// sends authKey (from PBKDF2 on the device) and the server keeps only a salted HMAC verifier of it.
 // Wrapped keys are opaque ciphertext to the server.
 import { b64urlDecode } from './b64.js';
 import { HttpError, json, readObject, sha256Hex, timingSafeEqual, randomId, hex, rateLimit, rateBump, rateCheck } from './util.js';
 import { verifyRegistration, verifyAssertion, WebAuthnError } from './webauthn.js';
 
 export const ACCOUNT_LIMITS = {
-  pbkdf2Iterations: 100000,          // Workers' maximum
   sessionTtlMs: 400 * 86400000,      // a session unused for 400 days ends
   lastSeenEveryMs: 3600000,          // last_seen is written at most hourly
   challengeTtlMs: 5 * 60000,
@@ -55,20 +54,24 @@ const credId = (v) => {
 };
 
 // ---------- Secrets ----------
-async function pbkdf2Hex(secretB64, saltB64) {
-  const key = await crypto.subtle.importKey('raw', b64urlDecode(secretB64), 'PBKDF2', false, ['deriveBits']);
-  return hex(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: b64urlDecode(saltB64), iterations: L.pbkdf2Iterations }, key, 256));
+// authKey and recAuth are 256-bit outputs of the client's PBKDF2 (600 000 iterations) / HKDF, so they
+// can't be brute-forced: a fast keyed hash is enough (and fits the Workers free plan's CPU limit).
+// Verifier = HMAC-SHA-256(key = random 16-byte per-account salt, message = the secret).
+async function verifierHex(secretB64, saltB64) {
+  const key = await crypto.subtle.importKey('raw', b64urlDecode(saltB64), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return hex(await crypto.subtle.sign('HMAC', key, b64urlDecode(secretB64)));
 }
 async function makeVerifier(secretB64) {
   const salt = randomId(16);
-  return { salt, hash: await pbkdf2Hex(secretB64, salt) };
+  return { salt, hash: await verifierHex(secretB64, salt) };
 }
 const DUMMY_SALT = 'AAAAAAAAAAAAAAAAAAAAAA';
+const DUMMY_HASH = '0'.repeat(64);
 /** Check authKey / recAuth against an account row. Unknown accounts do the same work (same timing). */
 async function checkSecret(row, kind, secretB64) {
-  if (!row) { await pbkdf2Hex(secretB64, DUMMY_SALT); return false; }
+  if (!row) { timingSafeEqual(await verifierHex(secretB64, DUMMY_SALT), DUMMY_HASH); return false; }
   const [salt, hash] = kind === 'rec' ? [row.rec_salt, row.rec_hash] : [row.auth_salt, row.auth_hash];
-  return timingSafeEqual(await pbkdf2Hex(secretB64, salt), hash);
+  return timingSafeEqual(await verifierHex(secretB64, salt), hash);
 }
 /** Failed password/recovery checks: 10/hour per username and 30/hour per IP, then 429. */
 async function failGuard(env, username, ip, now) {
@@ -346,8 +349,12 @@ export async function accountRoute(request, env, now, path, ip) {
     const newAuthKey = key32(b.newAuthKey, 'newAuthKey'), newWrappedPw = wrapped(b.newWrappedPw, 'newWrappedPw');
     await confirm(b);
     const auth = await makeVerifier(newAuthKey);
-    await env.DB.prepare('UPDATE accounts SET auth_salt = ?2, auth_hash = ?3, wrapped_pw = ?4, updated_at = ?5 WHERE id = ?1')
-      .bind(aid, auth.salt, auth.hash, newWrappedPw, now).run();
+    // Every other device is signed out (this session stays).
+    await env.DB.batch([
+      env.DB.prepare('UPDATE accounts SET auth_salt = ?2, auth_hash = ?3, wrapped_pw = ?4, updated_at = ?5 WHERE id = ?1')
+        .bind(aid, auth.salt, auth.hash, newWrappedPw, now),
+      env.DB.prepare('DELETE FROM sessions WHERE account_id = ?1 AND token_hash != ?2').bind(aid, tokenHash),
+    ]);
     return ok({ ok: true });
   }
 

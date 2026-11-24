@@ -157,7 +157,7 @@ A rule looks like this:
 
 The same Worker also holds **sync accounts** (`/api/account/*`, `/api/passkey/*`, `/api/sync/*`). The full contract is in [`../SYNC.md`](../SYNC.md). In short:
 
-- Everything is **end-to-end encrypted** on the devices. The server stores ciphertext records (an opaque id, an edit time, a device id and an encrypted blob), wrapped keys it can't open, and a PBKDF2 verifier of the key derived from the password. It never sees a password, a recovery key or the data.
+- Everything is **end-to-end encrypted** on the devices. The server stores ciphertext records (an opaque id, an edit time, a device id and an encrypted blob), wrapped keys it can't open, and a salted HMAC verifier of the key derived from the password. It never sees a password, a recovery key or the data.
 - Creating an account needs the same **register key** as reminders (`X-Register-Key`).
 - **`MAX_ACCOUNTS`** (in `wrangler.toml` `[vars]`, default 10) caps how many accounts can be created.
 - New tables: `accounts`, `sessions`, `passkeys`, `records`, `challenges`. **After updating, run `npm run db:init` once more** (it only adds missing tables and indexes; existing data is untouched), then `npx wrangler deploy`.

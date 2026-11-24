@@ -79,7 +79,7 @@ Session auth: `Authorization: Bearer <session token>` (32 random bytes b64url; s
 | `POST /api/account/create` (header `X-Register-Key`) | `{ username, authKey, wrappedPw, wrappedRec, recAuth, deviceName }` → `{ accountId, token }`. 409 if the username is taken. |
 | `POST /api/account/login` | `{ username, authKey, deviceName }` → `{ accountId, token, wrappedPw }`. Unknown user and wrong key give the same 401 "Wrong username or password". |
 | `POST /api/account/recover` | `{ username, recAuth, newAuthKey, newWrappedPw, deviceName }` – but the client needs `wrappedRec` first, so this is two steps: `POST /api/account/recover/start { username, recAuth }` → `{ wrappedRec }` (401 if wrong); then `POST /api/account/recover/finish { username, recAuth, newAuthKey, newWrappedPw, deviceName }` → `{ accountId, token }`; finishing ends every other session. |
-| `POST /api/account/password` (auth) | `{ authKey, newAuthKey, newWrappedPw }` → `{ ok }` |
+| `POST /api/account/password` (auth) | `{ authKey, newAuthKey, newWrappedPw }` → `{ ok }`; ends every other session (this one stays) |
 | `POST /api/account/logout` (auth) | → `{ ok }` (ends this session) |
 | `DELETE /api/account` (auth) | `{ authKey }` → `{ ok }`: deletes account, sessions, passkeys, records |
 | `GET /api/account` (auth) | → `{ accountId, username, passkeys: [{ id, name, createdAt, prf }], sessions: [{ id, deviceName, lastSeen, current }] }` |
@@ -94,7 +94,7 @@ Session auth: `Authorization: Bearer <session token>` (32 random bytes b64url; s
 | `DELETE /api/passkey/<id>` (auth) | remove a passkey |
 
 Server-side rules:
-- Stored password verifier: `PBKDF2-SHA-256(authKey, random 16-byte salt, 100 000 iterations)` (Workers' max), compared in constant time. Same for `recAuth`.
+- Stored password verifier: `HMAC-SHA-256(key = random 16-byte per-account salt, message = authKey)`, compared in constant time. Same for `recAuth` (its own salt); an unknown username does the same work against a dummy salt. `authKey` and `recAuth` are already 256-bit outputs of the client's PBKDF2 (600 000 iterations) / HKDF, so a fast keyed hash is enough on the server (a server-side PBKDF2 would not fit the Workers free plan's 10 ms CPU limit).
 - Rate limits (existing `rate` table): login/recover failures 10/hour per username and 30/hour per IP; create 5/hour per IP; passkey login 30/hour per IP; push 600/hour and pull 1200/hour per account.
 - Limits: 200 000 records and 200 MB of blobs per account (413 beyond); `MAX_ACCOUNTS` var (default 10).
 - Challenges: single-use, 5-minute expiry, bound to their purpose (and account for registration).

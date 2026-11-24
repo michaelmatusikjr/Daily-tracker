@@ -93,8 +93,11 @@ test('create: register key, validation, verifier only, duplicate username, CORS 
   assert.equal(r.headers.get('Access-Control-Allow-Origin'), ORIGIN);
   const row = await db.prepare('SELECT * FROM accounts WHERE id = ?').bind(r.body.accountId).first();
   assert.equal(row.username, 'alice.smith');
-  const expect = crypto.pbkdf2Sync(Buffer.from(u.authKey, 'base64url'), Buffer.from(row.auth_salt, 'base64url'), 100000, 32, 'sha256').toString('hex');
-  assert.equal(row.auth_hash, expect, 'PBKDF2-SHA-256 verifier, 100k iterations');
+  const expect = crypto.createHmac('sha256', Buffer.from(row.auth_salt, 'base64url')).update(Buffer.from(u.authKey, 'base64url')).digest('hex');
+  assert.equal(row.auth_hash, expect, 'HMAC-SHA-256(salt, authKey) verifier');
+  const expectRec = crypto.createHmac('sha256', Buffer.from(row.rec_salt, 'base64url')).update(Buffer.from(u.recAuth, 'base64url')).digest('hex');
+  assert.equal(row.rec_hash, expectRec, 'HMAC-SHA-256(salt, recAuth) verifier');
+  assert.notEqual(row.auth_salt, row.rec_salt, 'separate salts');
   assert.equal(Buffer.from(row.auth_salt, 'base64url').length, 16, 'random 16-byte salt');
   assert.ok(!JSON.stringify(row).includes(u.authKey) && !JSON.stringify(row).includes(u.recAuth), 'secrets not stored');
   const sess = await db.prepare('SELECT * FROM sessions WHERE account_id = ?').bind(r.body.accountId).first();
@@ -189,6 +192,8 @@ test('recover: start returns wrappedRec, finish sets the password and signs ever
 test('password change, logout, sign out another device, session expiry', async () => {
   const a = await createAccount();
   const newAuthKey = rnd(32), newWrappedPw = rnd(60);
+  const other1 = await send('POST', '/api/account/login', { body: { username: a.username, authKey: a.authKey, deviceName: 'Old tablet' } });
+  assert.equal(other1.status, 200);
   const w = await send('POST', '/api/account/password', { token: a.token, body: { authKey: rnd(32), newAuthKey, newWrappedPw } });
   assert.equal(w.status, 403, 'wrong current password is 403 (session still valid)');
   assert.equal(w.body.error, 'Wrong password');
@@ -197,6 +202,8 @@ test('password change, logout, sign out another device, session expiry', async (
   const ok = await send('POST', '/api/account/password', { token: a.token, body: { authKey: a.authKey, newAuthKey, newWrappedPw } });
   assert.equal(ok.status, 200);
   assert.equal(ok.body.ok, true);
+  assert.equal((await send('GET', '/api/account', { token: other1.body.token })).status, 401, 'a password change ends every other session');
+  assert.equal((await send('GET', '/api/account', { token: a.token })).status, 200, 'this session stays');
   assert.equal((await send('POST', '/api/account/login', { body: { username: a.username, authKey: a.authKey, deviceName: 'x' } })).status, 401);
   const b = await send('POST', '/api/account/login', { body: { username: a.username, authKey: newAuthKey, deviceName: 'Laptop' } });
   assert.equal(b.body.wrappedPw, newWrappedPw);
