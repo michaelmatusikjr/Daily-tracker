@@ -36,6 +36,14 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Follow-ups decided during phase 1 QA:** profile order is per device (only names/avatars sync); deleting a whole kept copy only removes it from that device; a kept copy deleted from the account elsewhere stays on the device as device-only.
   - **Defaults chosen for phase 1 (change if wanted):** creating an account needs the server's register key (the reminders one), so strangers can't use the server; signing out asks "keep copies on this device" (default) or "remove"; deleting a synced profile deletes it everywhere (the confirm says so); Settings › Account offers change password, sign out other devices, and delete account.
 
+### 30. Sign in first on a new install; picker options; device-only tag layout
+- **What:**
+  - On a brand-new install (no profiles yet), offer "Sign in to your account" before a default profile is created; otherwise "Get started on this device" as today.
+  - After signing in, each device profile gets a choice: sync to the account, keep on this device only, or delete from this device.
+  - Fix the "On this device only" tag in the profile menu, which overflows its row.
+- **Added:** 2026-11-24
+- **Status:** in progress (v1.15.1)
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
