@@ -31,8 +31,9 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Unique names:** every profile name in an account must be unique. If a device profile has the same name as an account profile, the app asks the user to rename the device profile before merging it into the account.
   - **The "On this device only" mark shows before sign-in too** (decided 2026-11-24).
   - **Phased release:**
-    - **Phase 1 (in progress):** account and sign-in (password **and passkeys**, with rate limiting), end-to-end encryption plus a recovery key, and sync of profile data (tasks, habits, workouts, journal, settings), including the profile-selection, device-only and migration rules above. Design: `SYNC.md`.
+    - **Phase 1 – shipped in v1.15.0 (2026-11-24):** account and sign-in (password **and passkeys**, with rate limiting), end-to-end encryption plus a recovery key, and sync of profile data (tasks, habits, workouts, journal, settings), including the profile-selection, device-only and migration rules above. Design: `SYNC.md`.
     - **Phase 2:** photos and habit image icons sync.
+  - **Follow-ups decided during phase 1 QA:** profile order is per device (only names/avatars sync); deleting a whole kept copy only removes it from that device; a kept copy deleted from the account elsewhere stays on the device as device-only.
   - **Defaults chosen for phase 1 (change if wanted):** creating an account needs the server's register key (the reminders one), so strangers can't use the server; signing out asks "keep copies on this device" (default) or "remove"; deleting a synced profile deletes it everywhere (the confirm says so); Settings › Account offers change password, sign out other devices, and delete account.
 
 ## Done
