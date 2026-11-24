@@ -13,6 +13,7 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
 - `js/actions.js` – all mutations (with Undo). `js/forms.js` task/habit forms. `js/taskView.js` View-task sheet. `js/itemMenu.js` long-press menus. `js/ui.js` sheets/toasts/gestures.
 - `js/workouts.js` + `js/workoutForm.js` – workouts and records (1RM, 3×5 rules, bodyweight periods, cardio standard distances). `js/attachments.js` – task photos in IndexedDB (`dailyTracker-files`). `js/habitIcon.js` – habit image/Genmoji icons.
 - `js/push.js` + `js/pushConfig.js` + `js/reminders.js` + `js/notify.js` – reminders: local timers, plus closed-app Web Push via the server.
+- `js/sync.js` + `js/syncCrypto.js` + `js/account.js` – accounts and end-to-end encrypted sync (phase 1, see `SYNC.md`): records, shadows/keys in IndexedDB `dailyTracker-sync`, state in `dailyTracker:sync`, Settings › Account UI. Tests: `tests/t39.js` (real Worker in Miniflare, app on `http://localhost:8080` for passkeys).
 - `js/views/*.js` – today, habits, habitDetail, workouts, calendar, stats, completed, settings, widgets.
 - `server/` – Cloudflare Worker + D1 push server (rules-based recurrence in `src/recur.js`, mirrored from `js/logic.js`; VAPID/aes128gcm in `src/webpush.js`). Has its own `README.md` and `npm test`.
 - `tests/` – Playwright browser suites + `run-all.sh`. `BACKLOG.md` – roadmap and decisions.

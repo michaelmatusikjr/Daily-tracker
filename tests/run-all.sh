@@ -3,7 +3,7 @@
 # Usage:  tests/run-all.sh            # every suite
 #         tests/run-all.sh t21 t25    # only the named suites
 # Needs: node, python3, and `require('playwright')` with Chromium available.
-# t17 (push client) also needs the push server's dev dependencies: (cd server && npm ci).
+# t17 (push client) and t39 (accounts and sync) also need the push server's dev dependencies: (cd server && npm ci).
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TESTS="$ROOT/tests"
@@ -18,7 +18,7 @@ sleep 1
 
 SUITES=("$@")
 if [ ${#SUITES[@]} -eq 0 ]; then
-  SUITES=(parse t1 t3 t4 t5 t6 t9 t10 t12 t13 t14 t15 t16 t17 t17-sw t18 t19 t20 t21 t23 t24 t25 t26 t27 t28 t29 t30 t31 t32 t33 t34 t35 t36 t37 t38 nullcheck)
+  SUITES=(parse t1 t3 t4 t5 t6 t9 t10 t12 t13 t14 t15 t16 t17 t17-sw t18 t19 t20 t21 t23 t24 t25 t26 t27 t28 t29 t30 t31 t32 t33 t34 t35 t36 t37 t38 t39 nullcheck)
 fi
 
 fail=0

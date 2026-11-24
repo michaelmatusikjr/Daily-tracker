@@ -8,7 +8,7 @@ This is the contract between the app (`js/sync*.js`, `js/account*.js`) and the W
 - **End-to-end encryption**: the server only stores ciphertext plus the minimum metadata needed to route it.
 - One-time **recovery key**, shown once at sign-up.
 - Syncs each synced profile's data: tasks, habits, logs, journal, categories, exercises, workouts, autoHabit, settings (except device-only keys), and the profile's name/avatar/order.
-- **Not in phase 1:** task photos and habit image icons (phase 2). A synced task whose photo isn't on this device shows a placeholder "Photo on another device" (never an error, never a lost reference). Habit image icons: a habit whose image icon isn't on this device shows its emoji (or the first letter) instead.
+- **Not in phase 1:** task photos (phase 2). A synced task whose photo isn't on this device shows a placeholder "Photo on another device" (never an error, never a lost reference). Habit image icons are small (≤ 60 KB data URLs stored inside the habit), so they travel inside the habit record already (see "Client details as built"); an icon that can't be shown still falls back to the emoji (or the first letter).
 
 ## Rules from the user
 - **Conflicts:** latest edit wins, per record (see Records).
@@ -38,14 +38,14 @@ A synced profile is flattened into records. Record keys (`k`), `<pid>` = profile
 |---|---|
 | `<pid>/meta` | `{ name, avatar, order }` (order = position in the profile list) |
 | `<pid>/task/<id>` | the task object |
-| `<pid>/habit/<id>` | the habit object (an `image` icon is kept as a reference; data in phase 2) |
+| `<pid>/habit/<id>` | the habit object (including an `image` icon's data URL, ≤ 60 KB) |
 | `<pid>/cat/<id>` | category `{ id, name, color, order }` (order = index) |
 | `<pid>/ex/<id>` | exercise |
 | `<pid>/wo/<id>` | workout |
 | `<pid>/log/<habitId>/<date>` | number |
 | `<pid>/auto/<habitId>/<date>` | `true` |
 | `<pid>/journal/<date>` | journal entry |
-| `<pid>/set/<key>` | one top-level settings key (skip device-only keys: `notifications`, and anything the code marks device-only) |
+| `<pid>/set/<key>` | one top-level settings key (skip device-only keys: `notifications` and `onboarded`, `DEVICE_ONLY_SETTINGS` in `js/sync.js`) |
 
 - Each record: `{ k, v, t, dev, sv }`: `v` = value, or `null` for a deletion (tombstone); `t` = edit time (ms, see Clock); `dev` = device id (random 16 bytes b64url, per device); `sv` = `SCHEMA_VERSION` of the writer.
 - **Latest edit wins:** a record replaces another when `(t, dev)` is greater (compare `t`, then `dev` as a string).
@@ -58,8 +58,8 @@ A synced profile is flattened into records. Record keys (`k`), `<pid>` = profile
 - Server returns `now` (ms) in every sync response; the client keeps `offset = serverNow - Date.now()` (smoothed). Edit times are `t = max(Date.now() + offset, previous t of that record + 1)`.
 
 ## Change tracking (client)
-- Per synced profile a **shadow** in localStorage `dailyTracker:sync:shadow:<pid>`: `{ [k]: [hash, t, dev] }` (hash = the existing `hashStr` of the canonical JSON of `v`).
-- After each save that affects a synced profile (debounced ~1.5 s, plus on `visibilitychange`→visible, `online`, app start, and every 60 s while visible), flatten the profile, diff with its shadow: new/changed → new record with fresh `t`; key in shadow but no longer present → tombstone. Queue them in an **outbox** (`dailyTracker:sync:outbox`, persisted, survives reloads/offline) and update the shadow.
+- Per synced profile a **shadow** in IndexedDB `dailyTracker-sync` (store `shadow`, key = pid): `{ [k]: [hash, t, dev, pending] }` (hash = the existing `hashStr` of the canonical JSON of `v`, `null` for a tombstone). It lives in IndexedDB, not localStorage, so a big profile's bookkeeping never eats the ~5 MB localStorage that holds the data itself (storage full there would block saving user data).
+- After each save that affects a synced profile (debounced ~1.5 s, plus on `visibilitychange` (shown and hidden), `online`, app start, and every 60 s while visible), flatten the profile, diff with its shadow: new/changed → new record with fresh `t`; key in shadow but no longer present → tombstone. The **outbox** is the shadow's `pending` flag (1 = to upload, 0 = uploaded, 2 = too large to upload): it is persisted with the shadow, survives reloads/offline, and is cleared per record when a push returns (accepted or stale). The diff runs **before any network call**, so an edit made offline gets (about) its edit time, not the time the device came back online; it runs again right before remote records are applied.
 - An unreadable profile (`readProfileState` → null / load failure) is skipped – never produces tombstones.
 - Pull before push on each cycle. Remote record newer than the shadow entry → apply into the profile (active profile through a new store helper that saves + emits `{ remote: true }`; others through `mutateProfileData`), update shadow. Remote record older → ignore (our outbox copy will win on push).
 - Only one tab syncs at a time (`navigator.locks.request('dailyTracker-sync', …)`, fall back to a localStorage lease). Other tabs pick up changes through the existing storage events.
@@ -68,7 +68,7 @@ A synced profile is flattened into records. Record keys (`k`), `<pid>` = profile
 
 ## Import / export while signed in
 - Export is unchanged (local data).
-- Import confirm adds: "Profiles in your account stay in the account." Imported profiles whose id matches a synced profile update it (normal edits → sync). Synced profiles missing from the import are not deleted from the account; they are downloaded again. Other imported profiles are device-only.
+- Import confirm adds: "Profiles in your account stay in the account." Imported profiles whose id matches a synced profile update it (normal edits → sync). Synced profiles missing from the import are not deleted from the account, and (safest) not removed from the device either: a multi-profile import keeps them next to the imported ones. Other imported profiles are device-only.
 
 ## Server API (Worker, JSON, CORS as today)
 All `/api/account/*`, `/api/sync/*`, `/api/passkey/*` responses include `now`. Errors: `{ error }` with 400/401/403/404/409/413/429.
@@ -126,6 +126,21 @@ Server-side rules:
 - Passkey sign-in without PRF on a device that has no key yet → ask for the password (or recovery key) once to unlock.
 - Signed in: username, sync status ("Synced just now" / "Offline – changes will sync" / error), each profile with "Synced" or "On this device only" + "Sync to account", passkeys (add/remove), signed-in devices (sign out other), change password, sign out, delete account.
 - All text uses short month names. Only show warnings when something won't sync.
+
+### Client details as built (app; part of the contract)
+- **Files:** `js/syncCrypto.js` (crypto + IndexedDB), `js/sync.js` (state, API client, records, cycles), `js/account.js` (Settings › Account UI).
+- **State:** localStorage `dailyTracker:sync` (shared by tabs): `dev`, `accountId`, `username`, `token`, `sessionId`, `serverUrl` (the reminders server, `pushConfig().serverUrl`), `synced` (pids), `cursor`, `full`, `fresh`, `merge`, `waitReadable`, `deletes` (`{ pid: t }`, explicit profile deletions still to push), `offset`, `lastOk`, `error`, `paused`, `expired`, `locked`. Exports never include it.
+- **Keys:** IndexedDB `dailyTracker-sync` › `keys` › `current` = `{ accountId, encKey, macKey (non-extractable), check, wrappedPw? }`. `check` = HMAC(macKey, "daily-tracker/v1/key-check"): before a password change or a PRF wrap, an unwrapped dataKey must give the same check, so a wrong key can never be wrapped into the account. `wrappedPw` is the same ciphertext the server holds (only usable with the password); it lets a password change / passkey PRF wrap work without an extra sign-in (if it's stale, the app signs in once to fetch the current one and ends that session). The raw dataKey is kept in memory only for 15 minutes after signing in (for "Add a passkey"); otherwise adding a passkey asks for the password.
+- **Passkeys:** the app adds `extensions.prf.eval.first` to both create and get. If create returns no PRF output but `prf.enabled`, one extra get (allowCredentials = the new id) fetches it and `POST /api/passkey/prf` attaches the wrap. Credentials are serialised by hand (`id`, `rawId`, `type`, `response.*` as b64url); `clientExtensionResults` are **never** sent, because they contain the PRF output that unwraps `wrappedPrf`. A passkey sign-in without PRF output unlocks with the password (unwrap the returned `wrappedPw` locally, no extra call) or the recovery key (`recover/start`); when the authenticator gave PRF output, that unlock also attaches a PRF wrap to the passkey.
+- **Applying:** all pages of a pull are fetched and decrypted first; a record is only applied when it decrypts, its inner `k` hashes to its `rid`, inner `t`/`dev` equal the outer ones, and its value passes the store normalizers (values from an older `sv` are migrated first). The profile is saved first (`applyRemoteProfile`); only when that worked are its shadow and the cursor moved on (storage full → nothing is lost, the same records are pulled again). The shadow after applying takes the remote `(t, dev)` for applied keys; values the normalizer changes or adds are recorded as known, never uploaded as edits.
+- **New profiles from the account** (and synced profiles that went missing locally without an explicit delete, `fresh`) are created only from a **full** pull (`since = 0`), so no record is missing; a partial pull that meets a new profile triggers a full pull in the same cycle. They start from an empty base (no example categories), `onboarded = true`.
+- **Same id, different profile:** when the account has a profile whose id is also a device-only profile here (a copy kept at sign-out, or the same backup imported on two devices), the device profile gets a new id (data, backups and photos move with it) and stays device-only; the account's copy is downloaded beside it. Nothing is merged silently.
+- **Unreadable profiles:** never diffed, never written. When one becomes readable again (`waitReadable` → `merge`), its old shadow no longer describes what's on the device, so it is merged instead of diffed: empty shadow, full pull, the account's record wins where both have one, records only on this device are uploaded, nothing is tombstoned. "Start fresh" after a load failure on a synced profile (`fresh`) downloads the account's copy instead of uploading the empty data.
+- **Sessions:** 401 → `expired` (token dropped; synced list, shadows and keys kept), "You were signed out…" in Account. Signing in again to the **same** account carries on where it stopped (pending edits upload); signing in to a different account first drops the old sync state (local data stays). An explicit sign-out (keep or remove) clears shadows, keys and the synced list.
+- **Profile deletions:** only an explicit delete (profile menu) pushes a `<pid>/meta` tombstone (`deletes`); the profile's data records stay on the server as they are (they're never applied again: other devices delete the profile when they see the tombstone). A later meta edit on another device (`t` greater) brings the profile back there. "Reset <name>'s data" on a synced profile is an explicit edit: it tombstones the profile's records (its confirm says so).
+- **Order:** `<pid>/meta.order` = position among the synced profiles (device-only ones keep their place).
+- **Lock:** `navigator.locks` `dailyTracker-sync` (else a localStorage lease `dailyTracker:sync:lease`); each tab's cycle checks after every await that it is still the same session (sign-out sets `signingOut` and waits for the lock).
+- **Known limitation:** with two tabs open, a save in tab 1 that lands in the milliseconds between tab 2 applying a remote change to tab 1's active profile and tab 1 receiving the storage event can overwrite that remote change locally; tab 2's next diff then uploads tab 1's value as a newer edit (no data is lost from the device, but that one remote edit is undone).
 
 ## Testing
 - `server/test/account.test.mjs`: Miniflare end-to-end – create/login/recover/password/logout/delete, rate limits, LWW push/pull with seq, limits, CORS, and WebAuthn register/login with software ES256 and RS256 authenticators (including PRF wrap passthrough, replayed challenge, wrong origin, wrong rpIdHash, missing UV, bad signature, sign-count regression).
