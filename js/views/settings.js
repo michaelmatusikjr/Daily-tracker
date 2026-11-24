@@ -1,7 +1,7 @@
 import { appHeader } from '../header.js';
 import { h, segmented, toast, confirmDialog, iconBtn, choose } from '../ui.js';
 import { icon } from '../icons.js';
-import { getState, update, replaceState, exportPayload, validateImport, defaultState, APP_VERSION, isStorageOk, getActiveProfile, getProfiles, addProfile, replaceAllProfiles, unreadableProfiles, mutateProfileData } from '../store.js';
+import { getState, update, replaceState, exportPayload, validateImport, defaultState, APP_VERSION, isStorageOk, getActiveProfile, getProfiles, addProfile, replaceAllProfiles, unreadableProfiles, mutateProfileData, uid } from '../store.js';
 import { avatarEl, openProfileEditor, openProfileMenu } from '../profiles.js';
 import { pruneWeatherCache } from '../weather.js';
 import { ctx } from '../ctx.js';
@@ -314,10 +314,11 @@ async function importFile(input) {
     const raw = JSON.parse(await file.text());
     const parsed = validateImport(raw);
     // Photos (optional): stored in IndexedDB once the data import succeeded. Old backups have none.
+    const idMap = new Map(); // backup profile id → id on this device (synced ids get a new one)
     const restorePhotos = async (profileIdFor) => {
       if (!Array.isArray(raw?.attachments) || !raw.attachments.length) return;
       try {
-        const { stored, renamed, error } = await importFiles(raw.attachments, profileIdFor);
+        const { stored, renamed, error } = await importFiles(raw.attachments, (pid) => profileIdFor(idMap.get(pid) || pid));
         // Files that had to get a new id (the old one belonged to another profile): update the tasks.
         const byProfile = new Map();
         for (const [oldId, r] of renamed) (byProfile.get(r.profileId) || byProfile.set(r.profileId, new Map()).get(r.profileId)).set(oldId, r.id);
@@ -336,12 +337,24 @@ async function importFile(input) {
     const counts = (d) => `${d.tasks.length} tasks, ${d.habits.length} habits and ${d.workouts.length} workouts`;
     if (parsed.kind === 'multi') {
       const names = parsed.profiles.map((p) => p.name).join(', ');
-      // Signed in: synced profiles the backup doesn't have stay (they're in the account); imported
-      // profiles with a synced profile's id update it (normal edits that sync); the rest are device-only.
+      // Signed in: synced profiles stay as they are (an import never replaces account data). An
+      // imported profile with a synced profile's id is added beside it as a device-only copy (new id);
+      // the rest replace this device's other profiles and are device-only.
       const inAccount = hasAccount();
-      const ok = await confirmDialog('Replace everything?',
-        `This backup has ${parsed.profiles.length} profile${parsed.profiles.length === 1 ? '' : 's'} (${names}). It will replace all profiles and data on this device.${inAccount ? ' Profiles in your account stay in the account.' : ''}`, { ok: 'Replace all', danger: true });
+      const syncedNow = new Set(inAccount ? syncedIds() : []);
+      const copies = parsed.profiles.filter((p) => syncedNow.has(p.id));
+      const copyNote = copies.length
+        ? ` ${copies.map((p) => p.name).join(', ')} ${copies.length === 1 ? 'is' : 'are'} also synced in your account: the account’s version${copies.length === 1 ? '' : 's'} stay${copies.length === 1 ? 's' : ''} unchanged, and the backup’s cop${copies.length === 1 ? 'y is' : 'ies are'} added as separate “On this device only” profile${copies.length === 1 ? '' : 's'}.`
+        : '';
+      const ok = await confirmDialog(inAccount ? 'Replace this device’s profiles?' : 'Replace everything?',
+        `This backup has ${parsed.profiles.length} profile${parsed.profiles.length === 1 ? '' : 's'} (${names}). ${inAccount ? 'It will replace the profiles on this device that aren’t in your account. Profiles in your account stay in the account.' : 'It will replace all profiles and data on this device.'}${copyNote}`, { ok: 'Replace all', danger: true });
       if (!ok) return;
+      for (const p of copies) {
+        const nid = 'p' + uid();
+        idMap.set(p.id, nid);
+        if (parsed.activeId === p.id) parsed.activeId = nid;
+        p.id = nid;
+      }
       // Profiles on this device that can't be read are never removed without a separate, explicit yes.
       const stuck = unreadableProfiles(parsed.profiles.map((p) => p.id));
       let deleteUnreadable = false;

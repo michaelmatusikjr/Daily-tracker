@@ -7,6 +7,7 @@ import { pushConfig } from './push.js';
 import { fmtDateShort, toKey } from './dates.js';
 import * as S from './sync.js';
 import { avatarEl } from './profiles.js';
+import { profileUsage } from './attachments.js';
 import { ctx } from './ctx.js';
 
 const nameKey = (n) => String(n || '').trim().toLowerCase();
@@ -46,7 +47,7 @@ export function openAccountSheet() {
 function accountPanel({ onNavigate = null } = {}) {
   const root = h('div.acct-panel');
   // Full render only when what's shown changes shape; otherwise just the status line (no refetch).
-  const sig = () => { const s = S.syncState(); const st = S.syncStatus(); return JSON.stringify([S.hasAccount(), s.username, st?.kind === 'busy' ? 'ok' : st?.kind, s.synced, getProfiles().map((p) => [p.id, p.name])]); };
+  const sig = () => { const s = S.syncState(); const st = S.syncStatus(); return JSON.stringify([S.hasAccount(), s.username, st?.kind === 'busy' ? 'ok' : st?.kind, s.synced, !!s.pulled, getProfiles().map((p) => [p.id, p.name])]); };
   let last = null;
   const render = () => { last = sig(); root.replaceChildren(...(S.hasAccount() ? signedInView(render) : signedOutView())); };
   render();
@@ -128,24 +129,30 @@ function profilesBlock(rerender) {
     const syncBtn = h('button.btn.secondary.small', { type: 'button', onclick: () => syncOne(p, li, err, rerender) }, icon('cloud', { size: 16 }), 'Sync to account');
     li.append(...[avatarEl(p, 32), h('div.acct-prof-text', h('span.acct-prof-name', p.name),
       synced ? h('span.badge.ok.small-badge', icon('cloud', { size: 13 }), 'Synced') : h('span.device-only-tag', icon('phone', { size: 13 }), 'On this device only')),
-    !synced && readable && S.isSignedIn() && !S.syncState().locked ? syncBtn : null, err].filter(Boolean));
+    !synced && readable && S.canSyncProfiles() ? syncBtn : null, err].filter(Boolean));
     return li;
   }));
-  return h('div.set-row.col.acct-block', h('span.set-label', 'Profiles'), list);
+  const waiting = S.isSignedIn() && !S.syncState().locked && !S.syncState().pulled && getProfiles().some((p) => !S.isSynced(p.id));
+  return h('div.set-row.col.acct-block', h('span.set-label', 'Profiles'), list,
+    waiting ? h('p.set-desc', 'Your account hasn’t finished downloading to this device yet. Once it has, you can add this device’s profiles to it.') : null);
 }
 
-function syncOne(p, li, err, rerender) {
+async function syncOne(p, li, err, rerender) {
   const clash = S.accountNameClash(p.name, p.id);
-  if (!clash) { S.syncProfiles([p.id]); toast(`${p.name} will sync to your account`, { force: true }); rerender(); return; }
+  if (!clash) {
+    if (!(await S.syncProfiles([p.id]))) { err.textContent = 'Your account hasn’t finished downloading yet. Try again once it has synced.'; return; }
+    toast(`${p.name} will sync to your account`, { force: true }); rerender(); return;
+  }
   // Names are unique in an account: rename first, inline.
   if (li.querySelector('.acct-rename')) return;
   const input = h('input.input', { type: 'text', maxlength: 40, value: p.name, 'aria-label': `New name for ${p.name}` });
-  const go = () => {
+  const go = async () => {
     const n = input.value.trim();
     if (!n) { err.textContent = 'Please enter a name.'; return; }
     if (S.accountNameClash(n, p.id)) { err.textContent = `Another profile in your account is called “${n}”. Choose a different name.`; return; }
+    if (!S.canSyncProfiles()) { err.textContent = 'Your account hasn’t finished downloading yet. Try again once it has synced.'; return; }
     if (!updateProfile(p.id, { name: n })) { err.textContent = 'Couldn’t save – storage is full.'; return; }
-    S.syncProfiles([p.id]);
+    await S.syncProfiles([p.id]);
     toast(`${n} will sync to your account`, { force: true });
     rerender();
   };
@@ -343,11 +350,34 @@ function openRecovery(username = '') {
  * own profiles to sync (rename step for name clashes), then offer a passkey (new accounts).
  */
 function afterSignIn({ created, error = null }) {
-  if (error) toast(`Signed in, but syncing didn’t finish: ${error}`, { force: true, duration: 7000 });
+  // The account must be downloaded completely before this device's profiles can be added to it
+  // (otherwise it isn't known which profiles and names it already has).
+  if (!created && !S.syncState().pulled) { openDownloadFailed(error, () => afterSignIn({ created })); return; }
   const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
   const then = () => { if (created && S.passkeysSupported()) offerPasskey(); else ctx.rerender?.(); };
   if (!candidates.length) { then(); return; }
   openPicker(candidates, { preselect: created, onDone: then });
+}
+
+/** Signed in, but the account didn't download completely: say why, offer Retry. */
+function openDownloadFailed(error, onPulled) {
+  const msg = h('p.set-desc', `Signed in, but your account couldn’t be downloaded to this device: ${error || 'the download didn’t finish'}. This device’s own profiles can be added to the account once it has downloaded. It keeps trying automatically.`);
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, icon('refresh', { size: 16 }), 'Retry');
+  let done = false;
+  const proceed = () => { if (done) return; done = true; off(); sheet.close(); onPulled(); };
+  const off = S.onSyncChange(() => { if (S.syncState().pulled) proceed(); });
+  btn.onclick = async () => {
+    const r = await busy(btn, 'Downloading…', err, () => S.retryFirstSync());
+    if (r?.pulled) proceed();
+    else if (r) err.textContent = `Still couldn’t download: ${r.error}`;
+  };
+  const sheet = openSheet({
+    title: 'Download didn’t finish', cls: 'acct',
+    content: [msg, err],
+    footer: [h('button.btn.ghost', { type: 'button', onclick: () => sheet.close() }, 'Later'), btn],
+    onClose: () => { off(); if (!done) { done = true; ctx.rerender?.(); } },
+  });
 }
 
 function openPicker(candidates, { preselect, onDone }) {
@@ -371,9 +401,10 @@ function openPicker(candidates, { preselect, onDone }) {
   refresh();
   const btn = h('button.btn.primary', { type: 'button' }, 'Sync selected');
   let finished = false;
-  btn.onclick = () => {
+  btn.onclick = async () => {
     err.textContent = '';
     const chosen = rows.filter((r) => r.box.checked);
+    if (chosen.length && !S.canSyncProfiles()) { err.textContent = 'Your account hasn’t finished downloading yet. Try again once it has synced.'; return; }
     const taken = new Set(S.syncedIds().map((id) => nameKey(getProfiles().find((p) => p.id === id)?.name)));
     for (const r of chosen) {
       const n = (r.renameWrap.hidden ? r.p.name : r.rename.value).trim();
@@ -383,7 +414,7 @@ function openPicker(candidates, { preselect, onDone }) {
       r.newName = n;
     }
     for (const r of chosen) if (r.newName !== r.p.name && !updateProfile(r.p.id, { name: r.newName })) { err.textContent = 'Couldn’t rename – storage is full.'; return; }
-    if (chosen.length) S.syncProfiles(chosen.map((r) => r.p.id));
+    if (chosen.length && !(await S.syncProfiles(chosen.map((r) => r.p.id)))) { err.textContent = 'Couldn’t add the profiles – try again once your account has synced.'; return; }
     finished = true;
     sheet.close();
     if (chosen.length) toast(`${chosen.length === 1 ? chosen[0].newName : `${chosen.length} profiles`} will sync to your account`, { force: true });
@@ -450,7 +481,7 @@ function openChangePassword() {
     const r = await busy(btn, 'Changing…', err, async () => { await S.changePassword({ current: cur.value, next: next.value }); return true; });
     if (!r) return;
     sheet.close();
-    toast('Password changed', { force: true });
+    toast('Password changed. Your other devices were signed out.', { force: true, duration: 6000 });
   };
   btn.onclick = submit;
   const sheet = openSheet({
@@ -465,14 +496,39 @@ function openChangePassword() {
 async function openSignOut() {
   const synced = S.syncedIds().map((id) => getProfiles().find((p) => p.id === id)?.name).filter(Boolean);
   const what = synced.length ? `${synced.join(', ')} ${synced.length === 1 ? 'is' : 'are'} in your account.` : '';
-  const c = await choose('Sign out?', `${what} Your account isn’t changed.`.trim(), [
+  let c = await choose('Sign out?', `${what} Your account isn’t changed.`.trim(), [
     { value: 'keep', label: 'Keep copies on this device', style: 'primary' },
     { value: 'remove', label: 'Remove from this device', style: 'danger' },
     { value: null, label: 'Cancel', style: 'ghost' },
   ]);
   if (!c) return;
-  if (c === 'remove' && !(await confirmDialog('Remove from this device?', `${synced.length ? synced.join(', ') : 'The account’s profiles'} will be removed from this device. They stay in your account and come back when you sign in again.`, { ok: 'Remove', danger: true }))) return;
-  await S.signOut({ remove: c === 'remove' });
+  const cantRemove = (reason) => choose('Can’t remove yet', reason, [
+    { value: 'keep', label: 'Keep copies on this device', style: 'primary' },
+    { value: null, label: 'Cancel', style: 'ghost' },
+  ]);
+  if (c === 'remove') {
+    toast('Checking that everything is uploaded…', { force: true });
+    const why = await S.checkRemove();
+    if (why) {
+      c = await cantRemove(why);
+      if (!c) return;
+    }
+  }
+  if (c === 'remove') {
+    const ids = S.syncedIds();
+    let photos = 0;
+    for (const id of ids) { try { photos += (await profileUsage(id)).count; } catch { /* ignore */ } }
+    const names = synced.length ? synced.join(', ') : 'The account’s profiles';
+    const photoNote = photos ? ` Their ${photos} photo${photos === 1 ? '' : 's'} on this device ${photos === 1 ? 'isn’t' : 'aren’t'} in the account (photos don’t sync yet) and will be deleted.` : '';
+    if (!(await confirmDialog('Remove from this device?', `Everything in ${names} has been uploaded. ${synced.length === 1 ? 'It is' : 'They are'} removed from this device, stay in your account and come back when you sign in again.${photoNote}`, { ok: 'Remove', danger: true }))) return;
+  }
+  let r = await S.signOut({ remove: c === 'remove' });
+  if (!r.ok) {
+    const again = await cantRemove(r.reason);
+    if (!again) { ctx.rerender?.(); return; }
+    c = 'keep';
+    r = await S.signOut({ remove: false });
+  }
   toast(c === 'remove' ? 'Signed out and removed from this device' : 'Signed out. Your profiles stay on this device.', { force: true });
   ctx.rerender?.();
 }

@@ -1,6 +1,6 @@
 // Photos attached to tasks. The image data lives in IndexedDB (database "dailyTracker-files",
 // store "files"), never in localStorage; a task only keeps attachments: [{ id, w, h, type }].
-import { uid } from './store.js';
+import { uid, getProfiles, readProfileState } from './store.js';
 
 export const MAX_PER_TASK = 6;
 const LONG_EDGE = 1600;
@@ -53,14 +53,49 @@ export const getFile = (id) => tx('readonly', (s) => reqP(s.get(id)));
 export const deleteFiles = (ids) => (ids.length ? tx('readwrite', (s) => { ids.forEach((id) => s.delete(id)); }) : Promise.resolve());
 export const allFiles = () => tx('readonly', (s) => reqP(s.getAll()));
 export const filesForProfile = (profileId) => tx('readonly', (s) => reqP(s.index('profileId').getAll(profileId)));
+/** Attachment ids referenced by the tasks of every readable profile except exceptId: Map id → profileId. */
+function referencedElsewhere(exceptId) {
+  const out = new Map();
+  for (const p of getProfiles()) {
+    if (p.id === exceptId) continue;
+    const st = readProfileState(p.id);
+    for (const t of st?.tasks || []) for (const a of t.attachments || []) if (!out.has(a.id)) out.set(a.id, p.id);
+  }
+  return out;
+}
+/** Delete a profile's photos – except files another profile's tasks still refer to (those move to it). */
 export async function deleteProfileFiles(profileId) {
-  try { const f = await filesForProfile(profileId); await deleteFiles(f.map((x) => x.id)); } catch { /* GC catches leftovers */ }
+  try {
+    const f = await filesForProfile(profileId);
+    const refs = referencedElsewhere(profileId);
+    const keep = f.filter((x) => refs.has(x.id));
+    if (keep.length) await tx('readwrite', (s) => { for (const rec of keep) s.put({ ...rec, profileId: refs.get(rec.id) }); });
+    await deleteFiles(f.filter((x) => !refs.has(x.id)).map((x) => x.id));
+  } catch { /* GC catches leftovers */ }
 }
 /** Move a profile's files to another profile id (the profile got a new id, see reIdProfile). */
 export async function reassignProfileFiles(fromId, toId) {
   const f = await filesForProfile(fromId);
   if (!f.length) return;
   await tx('readwrite', (s) => { for (const rec of f) s.put({ ...rec, profileId: toId }); });
+}
+/**
+ * Copy the photos a profile's tasks refer to under new ids for another profile (toId). Returns
+ * Map oldId → newId for the files that were copied (missing files are left as they are).
+ */
+export async function copyProfileFiles(data, toId) {
+  const map = new Map();
+  for (const t of data?.tasks || []) {
+    for (const a of t.attachments || []) {
+      if (map.has(a.id)) continue;
+      const rec = await getFile(a.id);
+      if (!rec) continue;
+      const id = 'f' + uid();
+      await putFile({ ...rec, id, profileId: toId, createdAt: Date.now() });
+      map.set(a.id, id);
+    }
+  }
+  return map;
 }
 /** { count, bytes } for one profile (originals + thumbnails). */
 export async function profileUsage(profileId) {

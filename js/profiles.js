@@ -7,7 +7,7 @@ import { ctx } from './ctx.js';
 import { afterDataRemoved } from './push.js';
 import { deleteProfileFiles } from './attachments.js';
 import { pruneWeatherCache } from './weather.js';
-import { isDeviceOnly, isSynced, isSignedIn, hasAccount, accountNameClash, syncProfiles, profileDeleted } from './sync.js';
+import { isDeviceOnly, isSynced, canSyncProfiles, hasAccount, accountNameClash, syncProfiles, profileDeleted } from './sync.js';
 import { openAccountSheet } from './account.js';
 
 const AVATAR_EMOJIS = ['', '😀', '😎', '🦊', '🐼', '🐱', '🐶', '🦁', '🐸', '🌻', '⭐', '🚀', '⚽', '🎧', '🌈', '🍀'];
@@ -164,7 +164,7 @@ export function openProfileEditor(profile, { intro = false, onDone = null } = {}
 
   // Signed in: a new profile goes to the account (default) or stays on this device.
   let saveTo = 'account';
-  const saveToRow = isNew && isSignedIn() ? h('div.field', { role: 'group', 'aria-label': 'Save to' }, h('span.field-label', 'Save to'),
+  const saveToRow = isNew && canSyncProfiles() ? h('div.field', { role: 'group', 'aria-label': 'Save to' }, h('span.field-label', 'Save to'),
     segmented([{ value: 'device', label: 'This device only' }, { value: 'account', label: 'Account' }], saveTo, (v) => { saveTo = v; }, { label: 'Save to', small: true })) : null;
   const save = () => {
     const n = name.value.trim() || (intro ? 'Me' : '');

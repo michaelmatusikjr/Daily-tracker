@@ -662,15 +662,23 @@ export function updateProfile(id, patch) {
   return true;
 }
 
-export function deleteProfile(id) {
+export function deleteProfile(id, { keepBackups = false } = {}) {
   if (index.profiles.length <= 1) return false;
+  if (keepBackups) {
+    // Unreadable data removed from the list (e.g. deleted on another device): keep its raw text as a
+    // backup key, so it can still be recovered.
+    let raw = null;
+    try { raw = lsGet(dataKey(id)); } catch { raw = null; }
+    if (id === index.activeId && loadFailure) raw = loadFailure.raw ?? raw;
+    if (raw !== null && !isReadable(id)) writeBackup(id, raw);
+  }
   const wasActive = id === index.activeId;
   index.profiles = index.profiles.filter((p) => p.id !== id);
   index.deleted = [...(index.deleted || []), id];
   if (wasActive) index.activeId = index.profiles[0].id;
   saveIndex();
   try { localStorage.removeItem(dataKey(id)); } catch { /* ignore */ }
-  pruneBackups(id, 0);
+  if (!keepBackups) pruneBackups(id, 0);
   if (wasActive) { loadProfileData(index.activeId); emit({ profileSwitched: true }); } else emit({ profileChanged: true });
   return true;
 }
@@ -797,7 +805,7 @@ export function reorderProfiles(ids) {
  * Remove a profile from this device only (a remote deletion, or "Remove from this device" at sign-out).
  * Unlike deleteProfile() it also works for the last profile: a fresh empty profile takes its place.
  */
-export function removeProfileLocal(id) {
+export function removeProfileLocal(id, { keepBackups = false } = {}) {
   if (!index.profiles.some((p) => p.id === id)) return false;
   if (index.profiles.length <= 1) {
     const nid = 'p' + uid();
@@ -806,7 +814,7 @@ export function removeProfileLocal(id) {
     if (!lsSet(dataKey(nid), JSON.stringify(fresh))) return false;
     index.profiles.push({ id: nid, name: 'Me', avatar: { type: 'emoji', emoji: '', color: PROFILE_COLORS[0] }, updatedAt: Date.now() });
   }
-  return deleteProfile(id);
+  return deleteProfile(id, { keepBackups });
 }
 
 /** Give a device profile a new id (its data moves with it). Used when an account profile has the same id. */
