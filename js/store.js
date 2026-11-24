@@ -852,7 +852,29 @@ export function exportPayload() {
       try { raw = lsGet(dataKey(p.id)) ?? ''; } catch { /* ignore */ }
       return { ...meta, unreadable: true, raw };
     }),
+    ...orphanBackups(),
   };
+}
+/**
+ * Raw backups of unreadable data whose profile is no longer on this device (e.g. deleted on another
+ * device while it couldn't be read here). Exported as text in a separate "recovered" section, so they
+ * can still be reached; imports ignore it, and nothing prunes them automatically.
+ */
+function orphanBackups() {
+  const ids = new Set(index.profiles.map((p) => p.id));
+  const pre = 'dailyTracker:data:';
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const m = k && k.startsWith(pre) ? /^(.+):backup-(\d+)$/.exec(k.slice(pre.length)) : null;
+      if (!m || ids.has(m[1])) continue;
+      const raw = localStorage.getItem(k);
+      if (typeof raw === 'string') out.push({ profileId: m[1], savedAt: new Date(Number(m[2])).toISOString(), raw });
+    }
+  } catch { /* ignore */ }
+  out.sort((a, b) => (a.profileId === b.profileId ? (a.savedAt < b.savedAt ? 1 : -1) : a.profileId < b.profileId ? -1 : 1));
+  return out.length ? { recovered: out } : {};
 }
 
 /**
