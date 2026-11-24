@@ -155,18 +155,19 @@ A rule looks like this:
 
 ## Accounts and sync
 
-The same Worker also holds **sync accounts** (`/api/account/*`, `/api/passkey/*`, `/api/sync/*`). The full contract is in [`../SYNC.md`](../SYNC.md). In short:
+The same Worker also holds **sync accounts** (`/api/account/*`, `/api/passkey/*`, `/api/sync/*`, `/api/files/*`). The full contract is in [`../SYNC.md`](../SYNC.md). In short:
 
 - Everything is **end-to-end encrypted** on the devices. The server stores ciphertext records (an opaque id, an edit time, a device id and an encrypted blob), wrapped keys it can't open, and a salted HMAC verifier of the key derived from the password. It never sees a password, a recovery key or the data.
 - Creating an account needs the same **register key** as reminders (`X-Register-Key`).
 - **`MAX_ACCOUNTS`** (in `wrangler.toml` `[vars]`, default 10) caps how many accounts can be created.
-- New tables: `accounts`, `sessions`, `passkeys`, `records`, `challenges`. **After updating, run `npm run db:init` once more** (it only adds missing tables and indexes; existing data is untouched), then `npx wrangler deploy`.
-- Sessions unused for 400 days and expired passkey challenges are removed by the daily purge. Deleting an account removes all of its records, passkeys and sessions.
+- **Task photos** (sync phase 2) are stored as encrypted files: an opaque file id (an HMAC the app derives), and one AES-GCM ciphertext split into chunks of at most 512 KiB of base64url text (a D1 value is limited to about 2 MB). An upload is all-or-nothing: its chunks only become a file when every one is there and the upload is committed. Files count toward the account's **200 MB** (shared with records; 413 beyond); at most 16 MiB of text per file and 8 uploads in progress per account. The server never decides that a photo is unused – only an app that has downloaded everything deletes one, after a 7-day delay (see SYNC.md).
+- New tables: `accounts`, `sessions`, `passkeys`, `records`, `challenges`, and (photos) `files`, `file_uploads`, `file_chunks`. **After updating, run `npm run db:init` once more** (it only adds missing tables and indexes; existing data is untouched), then `npx wrangler deploy`.
+- Sessions unused for 400 days, expired passkey challenges and photo uploads abandoned for a day are removed by the daily purge. Deleting an account removes all of its records, photos, passkeys and sessions.
 
 ## Develop and test
 
 ```sh
-npm test         # crypto vs the web-push reference library, recurrence parity with the app, Worker + D1 in Miniflare (push and accounts/sync)
+npm test         # crypto vs the web-push reference library, recurrence parity with the app, Worker + D1 in Miniflare (push, accounts/sync, photo files)
 npm run dev      # local Worker; trigger the cron with: curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"
 ```
 
