@@ -54,6 +54,13 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-24
 - **Status:** planned for v1.16.0
 
+### 32. Bug: Settings jumps (scrolls) when a setting changes
+- **What:** changing the accent colour, the week's start day, the theme, etc. makes the Settings screen scroll. It must stay exactly where it was.
+- **Likely cause:** every change re-renders the whole screen (`render()` in `js/app.js` replaces the view); the scroll position and the tapped control's focus aren't kept.
+- **Type:** bug. **Size:** small.
+- **Added:** 2026-11-24
+- **Status:** planned for v1.16.0
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
