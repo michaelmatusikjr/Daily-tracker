@@ -34,6 +34,8 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
 ## Release workflow (tiered – keep it token-efficient)
 1. Work on a feature branch; batch backlog items into one release.
 2. **Model choice:** spin up an agent for each task using the *cheapest* model that can do it (`haiku` first, e.g. searches, simple edits, test runs); step up to `sonnet` and only then `opus` when the task genuinely needs it (complex logic, data safety, QA review). State the reason when using a more expensive model.
+   - **Always (user, 2026-11-24):** `opus` only for QA reviews and for designing/building genuinely new data-safety logic. Fix rounds with a precise findings list → `sonnet`; small, well-described fixes → `sonnet` or `haiku`; running test suites and reporting results → a `haiku` agent (builders shouldn't sit waiting on long suite runs). Deploy/release commands: do them directly.
+   - **Never commit half-done work** (e.g. while a builder is still editing the checkout), even if a hook asks. Commit only finished, tested steps; a builder commits its own work when done.
 3. **Build:** for anything beyond a small fix, use one *fresh* builder subagent on the cheapest model that can handle it (see step 2) with a self-contained spec. Don't resume long-lived agents across releases. Small fixes: do them directly.
 4. **Test:** run the relevant suites; full `tests/run-all.sh` before release.
 5. **QA gate (risk-based):**
