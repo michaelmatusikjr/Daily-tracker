@@ -44,6 +44,16 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-24
 - **Status:** in progress (ships with sync phase 2 as v1.16.0)
 
+### 31. Clear out completed tasks in bulk by date
+- **What:** an easy place to delete completed tasks in bulk by date, for when storage gets low.
+- **Defaults (change if wanted):**
+  - **Where:** a new **Storage** section in Settings showing how much space is used (data and photos), with **Clear completed tasks**. The Completed tasks screen gets a shortcut to it. When storage is nearly full, the existing "storage full" messages link there.
+  - **By date:** "Completed before" with quick picks (older than 1 month, 3 months, 1 year) or a custom date. Before deleting it shows how many tasks and photos, and how much space that frees.
+  - **Repeating tasks:** the task itself stays; only its completion records older than the date are cleared.
+  - **Safety:** a confirm, then Undo on the result. For a synced profile it also deletes them from the account and other devices (the confirm says so). Habits, workouts and the journal are never touched.
+- **Added:** 2026-11-24
+- **Status:** planned for v1.16.0
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
