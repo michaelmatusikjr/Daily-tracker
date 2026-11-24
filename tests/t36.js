@@ -96,7 +96,7 @@ const go = async (p, tab) => { await p.evaluate((t) => { location.hash = '#' + t
   {
     const { ctx, p } = await open(browser, 'light');
     assert(await p.locator('.avatar-chevron').count() === 0, 'avatar has no dropdown arrow');
-    assert(await p.locator('.avatar-btn svg').count() === 0, 'avatar button holds no icon');
+    assert(await p.locator('.avatar-btn svg:not(.device-badge svg)').count() === 0, 'avatar button holds no icon (apart from the "On this device only" badge)');
     for (const tab of ['habits', 'workouts', 'calendar', 'journal']) {
       await go(p, tab);
       assert(await p.locator('.app-head .avatar-btn').count() === 1, `avatar on ${tab}`);
