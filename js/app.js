@@ -142,6 +142,12 @@ function render() {
   const changedRoute = routeKey !== lastRoute;
   // Remember which control had focus so keyboard users keep their place.
   const fk = document.activeElement?.closest?.('[data-fk]')?.dataset.fk;
+  // A re-render of the same screen (e.g. a setting changed) keeps the exact scroll position and, for
+  // controls without data-fk, the focused control by its position – otherwise iOS scrolls to wherever
+  // focus lands once the tapped button is replaced.
+  const scrollY = window.scrollY;
+  const FOCUSABLE = 'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])';
+  const fIdx = !fk && main.contains(document.activeElement) ? [...main.querySelectorAll(FOCUSABLE)].indexOf(document.activeElement) : -1;
   let view;
   switch (name) {
     case 'habits': view = renderHabits(); break;
@@ -186,8 +192,12 @@ function render() {
   if (changedRoute) {
     window.scrollTo(0, 0);
     if (lastRoute !== null) main.focus({ preventScroll: true });
-  } else if (fk) {
-    document.querySelector(`[data-fk="${CSS.escape(fk)}"]`)?.focus({ preventScroll: true });
+  } else {
+    if (fk) document.querySelector(`[data-fk="${CSS.escape(fk)}"]`)?.focus({ preventScroll: true });
+    else if (fIdx >= 0) main.querySelectorAll(FOCUSABLE)[fIdx]?.focus({ preventScroll: true });
+    if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
+    // Again after layout settles (fonts/images, iOS's own focus scroll).
+    requestAnimationFrame(() => { if (parseRoute().name === name && Math.abs(window.scrollY - scrollY) > 1) window.scrollTo(0, scrollY); });
   }
   lastRoute = routeKey;
 }
