@@ -61,6 +61,12 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-24
 - **Status:** planned for v1.16.0
 
+### 33. Register key syncs with the account
+- **What:** the reminders register key (Settings › Reminders › Advanced) travels with the account, end-to-end encrypted like the rest of the data, so a newly signed-in device gets closed-app reminders without typing it again.
+- **Rules:** it's an account-level secret (not per profile); never shown in plain text in logs or exports; a key typed on a device updates the account's copy (latest wins); signing out leaves the device's copy as it is.
+- **Added:** 2026-11-24
+- **Status:** planned for v1.16.0
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
