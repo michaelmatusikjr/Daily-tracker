@@ -703,6 +703,134 @@ export function unreadableProfiles(excludeIds = []) {
   return index.profiles.filter((p) => !excludeIds.includes(p.id) && !isReadable(p.id));
 }
 
+// ---------- Sync helpers (js/sync.js) ----------
+/** The normalizers imports use, for validating values that arrive from sync. */
+export const normalizers = { task: normTask, habit: normHabit, exercise: normExercise, workout: normWorkout, avatar: normAvatar };
+
+/**
+ * A profile's data for sync, or null when it must not be synced from: unreadable, saves paused,
+ * or its data key is missing (never treat "nothing stored" as "everything deleted").
+ */
+export function readProfileForSync(id) {
+  if (!index.profiles.some((p) => p.id === id)) return null;
+  if (id === index.activeId) {
+    if (loadFailure) return null;
+    try { if (lsGet(dataKey(id)) === null) return null; } catch { return null; }
+    return state;
+  }
+  try {
+    const raw = lsGet(dataKey(id));
+    return raw ? migrate(JSON.parse(raw)) : null;
+  } catch { return null; }
+}
+
+/** Make sure the active profile's data is stored (a brand-new profile may never have been saved). */
+export function ensureStored(id) {
+  if (id !== index.activeId || loadFailure) return;
+  try { if (lsGet(dataKey(id)) === null) save(); } catch { /* ignore */ }
+}
+
+/**
+ * Store data that came from sync for a profile. The active profile is saved first and only swapped
+ * in when the save worked, then listeners get { remote: true }. Returns whether it was saved.
+ */
+export function applyRemoteProfile(id, next) {
+  if (!index.profiles.some((p) => p.id === id)) return false;
+  if (id === index.activeId) {
+    if (loadFailure || !lsSet(dataKey(id), JSON.stringify(next))) return false;
+    state = next;
+    emit({ remote: true });
+    return true;
+  }
+  return lsSet(dataKey(id), JSON.stringify(next));
+}
+
+/** Add a profile that came from sync (its own id), without switching to it. */
+export function addRemoteProfile({ id, name, avatar, data, at = null }) {
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || index.profiles.some((p) => p.id === id)) return false;
+  const meta = { ...normProfileMeta({ id, name, avatar }, index.profiles.length), updatedAt: Date.now() };
+  if (!lsSet(dataKey(id), JSON.stringify(data))) return false;
+  index.deleted = (index.deleted || []).filter((x) => x !== id);
+  // Forget the id in the stored tombstones too, or the merge in saveIndex() would drop it again.
+  const stored = readStoredIndex();
+  if (stored && stored.deleted.includes(id)) {
+    stored.deleted = stored.deleted.filter((x) => x !== id);
+    lsSet(PROFILES_KEY, JSON.stringify({ version: 1, ...stored }));
+  }
+  if (Number.isInteger(at) && at >= 0 && at < index.profiles.length) index.profiles.splice(at, 0, meta); else index.profiles.push(meta);
+  if (!saveIndex()) { index.profiles = index.profiles.filter((p) => p.id !== id); try { localStorage.removeItem(dataKey(id)); } catch { /* ignore */ } return false; }
+  emit({ profileChanged: true, remote: true });
+  return true;
+}
+
+/** Name/avatar from sync (no updatedAt bump needed beyond the usual). */
+export function updateProfileRemote(id, { name, avatar }) {
+  const p = index.profiles.find((x) => x.id === id);
+  if (!p) return false;
+  const next = normProfileMeta({ ...p, name, avatar, id }, index.profiles.indexOf(p));
+  if (next.name === p.name && JSON.stringify(next.avatar) === JSON.stringify(p.avatar)) return true;
+  const prev = { ...p };
+  Object.assign(p, { name: next.name, avatar: next.avatar, updatedAt: Date.now() });
+  if (!saveIndex()) { Object.assign(p, prev); return false; }
+  emit({ profileChanged: true, remote: true });
+  return true;
+}
+
+/** Put the given profiles (a subset) in this relative order, keeping the others where they are. */
+export function reorderProfiles(ids) {
+  const want = ids.filter((id) => index.profiles.some((p) => p.id === id));
+  const slots = index.profiles.map((p, i) => (want.includes(p.id) ? i : -1)).filter((i) => i >= 0);
+  const cur = slots.map((i) => index.profiles[i].id);
+  if (cur.join() === want.join()) return true;
+  const byId = new Map(index.profiles.map((p) => [p.id, p]));
+  const next = [...index.profiles];
+  slots.forEach((slot, n) => { next[slot] = byId.get(want[n]); });
+  const prev = index.profiles;
+  index.profiles = next;
+  // A plain write: mergeIndex() would keep the stored order.
+  if (!lsSet(PROFILES_KEY, JSON.stringify({ version: 1, ...index }))) { index.profiles = prev; return false; }
+  emit({ profileChanged: true, remote: true });
+  return true;
+}
+
+/**
+ * Remove a profile from this device only (a remote deletion, or "Remove from this device" at sign-out).
+ * Unlike deleteProfile() it also works for the last profile: a fresh empty profile takes its place.
+ */
+export function removeProfileLocal(id) {
+  if (!index.profiles.some((p) => p.id === id)) return false;
+  if (index.profiles.length <= 1) {
+    const nid = 'p' + uid();
+    const fresh = defaultState();
+    fresh.settings.onboarded = true;
+    if (!lsSet(dataKey(nid), JSON.stringify(fresh))) return false;
+    index.profiles.push({ id: nid, name: 'Me', avatar: { type: 'emoji', emoji: '', color: PROFILE_COLORS[0] }, updatedAt: Date.now() });
+  }
+  return deleteProfile(id);
+}
+
+/** Give a device profile a new id (its data moves with it). Used when an account profile has the same id. */
+export function reIdProfile(oldId, newId) {
+  const p = index.profiles.find((x) => x.id === oldId);
+  if (!p || index.profiles.some((x) => x.id === newId)) return false;
+  let raw;
+  try { raw = lsGet(dataKey(oldId)); } catch { return false; }
+  const wasActive = oldId === index.activeId;
+  if (wasActive && !loadFailure) raw = JSON.stringify(state);
+  if (raw !== null && !lsSet(dataKey(newId), raw)) return false;
+  for (const k of backupKeys(oldId)) { try { localStorage.setItem(dataKey(newId) + k.slice(dataKey(oldId).length), localStorage.getItem(k)); } catch { /* best effort */ } }
+  p.id = newId;
+  p.updatedAt = Date.now();
+  index.deleted = [...(index.deleted || []), oldId];
+  if (wasActive) index.activeId = newId;
+  if (!saveIndex()) { p.id = oldId; index.activeId = wasActive ? oldId : index.activeId; try { localStorage.removeItem(dataKey(newId)); } catch { /* ignore */ } return false; }
+  try { localStorage.removeItem(dataKey(oldId)); } catch { /* ignore */ }
+  pruneBackups(oldId, 0);
+  if (wasActive && loadFailure) loadFailure.backupKey = backupKeys(newId)[0] || loadFailure.backupKey;
+  emit({ profileChanged: true });
+  return true;
+}
+
 export function exportPayload() {
   return {
     app: 'daily-tracker', appVersion: APP_VERSION, format: 'profiles', exportedAt: new Date().toISOString(),
@@ -723,14 +851,17 @@ export function exportPayload() {
  * Replace every profile with an imported multi-profile backup. Profiles on this device whose
  * data can't be read are kept (with their backups) unless deleteUnreadable is explicitly true.
  */
-export function replaceAllProfiles({ activeId, profiles }, { deleteUnreadable = false } = {}) {
-  const keepUnreadable = deleteUnreadable ? [] : unreadableProfiles(profiles.map((p) => p.id));
+export function replaceAllProfiles({ activeId, profiles }, { deleteUnreadable = false, keepIds = [] } = {}) {
+  const imported = new Set(profiles.map((p) => p.id));
+  // keepIds: profiles that stay (e.g. synced account profiles the backup doesn't have).
+  const keepExtra = index.profiles.filter((p) => keepIds.includes(p.id) && !imported.has(p.id));
+  const keepUnreadable = [...(deleteUnreadable ? [] : unreadableProfiles(profiles.map((p) => p.id))).filter((p) => !keepExtra.includes(p)), ...keepExtra];
   for (const p of profiles) {
     const ok = lsSet(dataKey(p.id), p.unreadable ? p.raw : JSON.stringify(p.data));
     if (!ok) return false;
   }
-  const keepIds = new Set([...profiles.map((p) => p.id), ...keepUnreadable.map((p) => p.id)]);
-  const removed = index.profiles.map((p) => p.id).filter((id) => !keepIds.has(id));
+  const keepSet = new Set([...profiles.map((p) => p.id), ...keepUnreadable.map((p) => p.id)]);
+  const removed = index.profiles.map((p) => p.id).filter((id) => !keepSet.has(id));
   removed.forEach((id) => { try { localStorage.removeItem(dataKey(id)); } catch { /* ignore */ } });
   // Backup keys are left alone here; they only ever hold copies of unreadable data.
   index = {

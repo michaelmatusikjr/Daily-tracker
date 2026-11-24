@@ -56,6 +56,12 @@ export const filesForProfile = (profileId) => tx('readonly', (s) => reqP(s.index
 export async function deleteProfileFiles(profileId) {
   try { const f = await filesForProfile(profileId); await deleteFiles(f.map((x) => x.id)); } catch { /* GC catches leftovers */ }
 }
+/** Move a profile's files to another profile id (the profile got a new id, see reIdProfile). */
+export async function reassignProfileFiles(fromId, toId) {
+  const f = await filesForProfile(fromId);
+  if (!f.length) return;
+  await tx('readwrite', (s) => { for (const rec of f) s.put({ ...rec, profileId: toId }); });
+}
 /** { count, bytes } for one profile (originals + thumbnails). */
 export async function profileUsage(profileId) {
   const f = await filesForProfile(profileId);

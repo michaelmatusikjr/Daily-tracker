@@ -227,7 +227,8 @@ export async function deleteTask(id, k) {
   deleteFilesLater(id, (t.attachments || []).map((a) => a.id));
   toast(`Deleted “${t.title}”`, {
     action: 'Undo',
-    onAction: () => update((s) => { s.tasks.splice(Math.min(index, s.tasks.length), 0, snapshot); setException(s, true); }),
+    // Re-insert only this task (never a whole old state: remote edits may have arrived meanwhile).
+    onAction: () => update((s) => { if (!s.tasks.some((x) => x.id === snapshot.id)) s.tasks.splice(Math.min(index, s.tasks.length), 0, snapshot); setException(s, true); }),
   });
   return true;
 }
@@ -464,12 +465,18 @@ export function deleteHabit(id) {
   if (!habit) return;
   const snap = JSON.parse(JSON.stringify(habit));
   const logs = st.logs[id] ? { ...st.logs[id] } : null;
+  const auto = st.autoHabit[id] ? { ...st.autoHabit[id] } : null;
   const ghost = prepareGhost(document.querySelector(`li[data-id="${CSS.escape(id)}"]`));
   update((s) => { s.habits = s.habits.filter((x) => x.id !== id); delete s.logs[id]; delete s.autoHabit[id]; unlinkWorkoutHabit(s, id); });
   ghost.play();
   toast(`Deleted “${habit.name}”`, {
     action: 'Undo',
-    onAction: () => update((s) => { s.habits.push(snap); if (logs) s.logs[id] = logs; }),
+    // Per item: keep any days logged meanwhile (e.g. synced from another device).
+    onAction: () => update((s) => {
+      if (!s.habits.some((x) => x.id === id)) s.habits.push(snap);
+      if (logs) s.logs[id] = { ...logs, ...(s.logs[id] || {}) };
+      if (auto) s.autoHabit[id] = { ...auto, ...(s.autoHabit[id] || {}) };
+    }),
   });
 }
 
@@ -570,21 +577,30 @@ export function seedExamples() {
 }
 
 // ---------- Workouts ----------
-/** Everything a workout save/delete can change, for an exact Undo (incl. the linked habit). */
-function workoutSnapshot(s) {
+/**
+ * What a workout/exercise delete removes, for Undo: the deleted items themselves and the linked
+ * habit's days they touched. Undo puts back only those (re-found by id), never a whole old list, so
+ * edits that arrived meanwhile (another device via sync) are kept.
+ */
+function workoutSnapshot(s, { workoutIds = [], exerciseId = null } = {}) {
   const hid = s.settings.workoutHabit?.habitId;
+  const workouts = s.workouts.filter((w) => workoutIds.includes(w.id));
+  const dates = [...new Set(workouts.map((w) => w.date))];
   return JSON.parse(JSON.stringify({
-    workouts: s.workouts, exercises: s.exercises, hid,
-    logs: hid ? s.logs[hid] || null : null, auto: hid ? s.autoHabit[hid] || null : null,
+    workouts, exercise: exerciseId ? s.exercises.find((e) => e.id === exerciseId) || null : null, hid,
+    days: hid ? dates.map((d) => ({ d, log: s.logs[hid]?.[d] ?? null, auto: !!s.autoHabit[hid]?.[d] })) : [],
   }));
 }
 function restoreSnapshot(snap) {
   update((s) => {
-    s.workouts = snap.workouts;
-    s.exercises = snap.exercises;
-    if (snap.hid) {
-      if (snap.logs) s.logs[snap.hid] = snap.logs; else delete s.logs[snap.hid];
-      if (snap.auto) s.autoHabit[snap.hid] = snap.auto; else delete s.autoHabit[snap.hid];
+    if (snap.exercise && !s.exercises.some((e) => e.id === snap.exercise.id)) s.exercises.push(snap.exercise);
+    for (const w of snap.workouts) if (!s.workouts.some((x) => x.id === w.id)) s.workouts.push(w);
+    if (snap.hid && s.habits.some((x) => x.id === snap.hid)) {
+      for (const { d, log, auto } of snap.days) {
+        s.logs[snap.hid] = s.logs[snap.hid] || {};
+        if (log !== null) s.logs[snap.hid][d] = log;
+        if (auto) s.autoHabit[snap.hid] = { ...(s.autoHabit[snap.hid] || {}), [d]: true };
+      }
     }
   });
 }
@@ -633,7 +649,7 @@ export function deleteWorkout(id) {
   const w = st.workouts.find((x) => x.id === id);
   if (!w) return;
   const ex = exerciseById(st, w.exerciseId);
-  const snap = workoutSnapshot(st);
+  const snap = workoutSnapshot(st, { workoutIds: [id] });
   update((s) => { s.workouts = s.workouts.filter((x) => x.id !== id); syncHabitLink(s, w.date); });
   toast(`Deleted ${ex?.name || 'workout'}`, { action: 'Undo', onAction: () => restoreSnapshot(snap) });
 }
@@ -653,7 +669,7 @@ export function deleteExercise(id) {
   const st = getState();
   const ex = exerciseById(st, id);
   if (!ex) return;
-  const snap = workoutSnapshot(st);
+  const snap = workoutSnapshot(st, { workoutIds: st.workouts.filter((w) => w.exerciseId === id).map((w) => w.id), exerciseId: id });
   const dates = [...new Set(st.workouts.filter((w) => w.exerciseId === id).map((w) => w.date))];
   update((s) => {
     s.exercises = s.exercises.filter((e) => e.id !== id);
