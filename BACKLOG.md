@@ -49,7 +49,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Defaults (change if wanted):**
   - **Where:** a new **Storage** section in Settings showing how much space is used (data and photos), with **Clear completed tasks**. The Completed tasks screen gets a shortcut to it. When storage is nearly full, the existing "storage full" messages link there.
   - **By date:** "Completed before" with quick picks (older than 1 month, 3 months, 1 year) or a custom date. Before deleting it shows how many tasks and photos, and how much space that frees.
-  - **Repeating tasks:** the task itself stays; only its completion records older than the date are cleared.
+  - **Repeating tasks:** left alone while the series is still running (their history is tiny, and clearing it could make old occurrences reappear as missed). A finished series whose last occurrence is before the date is cleared like a one-off task.
   - **Safety:** a confirm, then Undo on the result. For a synced profile it also deletes them from the account and other devices (the confirm says so). Habits, workouts and the journal are never touched.
 - **Added:** 2026-11-24
 - **Status:** planned for v1.16.0
