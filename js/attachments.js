@@ -143,9 +143,9 @@ export async function copyFiles(attachments, taskId, profileId) {
 }
 
 /** Remove files no task in any profile refers to (older than a day, so in-progress edits are safe). */
-export async function collectGarbage(referencedIds, now = Date.now()) {
+export async function collectGarbage(referencedIds, now = Date.now(), protectedProfileIds = new Set()) {
   const files = await allFiles();
-  const stale = files.filter((f) => !referencedIds.has(f.id) && (f.createdAt || 0) < now - 86400000).map((f) => f.id);
+  const stale = files.filter((f) => !referencedIds.has(f.id) && !protectedProfileIds.has(f.profileId) && (f.createdAt || 0) < now - 86400000).map((f) => f.id);
   await deleteFiles(stale);
   return stale.length;
 }

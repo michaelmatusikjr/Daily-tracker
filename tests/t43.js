@@ -370,6 +370,80 @@ const tour = (p) => p.locator('.onboarding:not(.ob-first)').count();
     await T.ctx.close();
   }
 
+  // ===== R: 1.15.1 QA fixes =====
+  // R1 deleting the active profile from the picker runs onDone once (one passkey offer, not two).
+  {
+    const O = await openApp(browser, { profiles: [['o1', 'Active one', data({ tasks: [task('a', 'a')] })], ['o2', 'Other', data({ tasks: [task('b', 'b')] })]], active: 'o1' });
+    await createAccount(O.p, 'Onceonly');
+    const rows = O.p.locator('.picker-row');
+    await rows.nth(0).locator('input[value=delete]').click();
+    await clickSheet(O.p, 'Done'); await O.p.waitForTimeout(300);
+    await O.p.click('.sheet-root.open button:has-text("Continue")'); await O.p.waitForTimeout(300);
+    await O.p.click('.sheet-root.open button:has-text("Delete Active one")');
+    await waitFor(async () => (await sheetTitle(O.p)) === 'Add a passkey?', 8000);
+    assert(await sheetTitle(O.p) === 'Add a passkey?', 'R1a the passkey offer shows after the picker');
+    await O.p.click('.sheet-root.open button:has-text("Cancel")'); await O.p.waitForTimeout(900);
+    assert(await sheetTitle(O.p) !== 'Add a passkey?' && await O.p.locator('.sheet-root.open').count() === 0, 'R1b …and only once (deleting the active profile did not run onDone twice)');
+    assert(!(await profiles(O.p)).some((x) => x.id === 'o1'), 'R1c the active profile was deleted');
+    await O.ctx.close();
+  }
+  // R2 a profile that got synced (another tab) while the picker was open is not deleted from the account.
+  {
+    const Y = await openApp(browser, { profiles: [['y1', 'Keeper', data({ tasks: [task('a', 'a')] })], ['y2', 'Racer', data({ tasks: [task('b', 'b')] })]] });
+    await go(Y.p, '#settings');
+    await Y.p.click('.acct-panel button:has-text("Sign in")');
+    await Y.p.waitForTimeout(300);
+    await signInSheet(Y.p, 'family');
+    await waitFor(async () => (await sheetTitle(Y.p)) === 'Sync this device’s profiles?', 15000);
+    await Y.p.locator('.picker-row').nth(1).locator('input[value=delete]').click();
+    await Y.p.evaluate(() => { const s = JSON.parse(localStorage.getItem('dailyTracker:sync')); s.synced = [...(s.synced || []), 'y2']; localStorage.setItem('dailyTracker:sync', JSON.stringify(s)); });
+    await clickSheet(Y.p, 'Done'); await Y.p.waitForTimeout(300);
+    await Y.p.click('.sheet-root.open button:has-text("Continue")'); await Y.p.waitForTimeout(300);
+    await Y.p.click('.sheet-root.open button:has-text("Delete Racer")');
+    await Y.p.waitForTimeout(800);
+    assert((await profiles(Y.p)).some((x) => x.id === 'y2'), 'R2a the profile that became synced is still there');
+    assert((Y.p.__toasts || []).some((m) => /Racer.*now synced.*not deleted/.test(m)), 'R2b the user is told it was not deleted');
+    assert(!(await syncSt(Y.p)).deletes?.y2, 'R2c no account delete was queued for it');
+    await Y.ctx.close();
+  }
+  // R3 "Later" on the failed download: the automatic retry completing continues the first-screen flow.
+  {
+    const L = await openApp(browser, {});
+    await L.ctx.route('**/api/sync/pull**', (r) => r.abort());
+    await L.p.click('.ob-first button:has-text("Sign in to your account")');
+    await L.p.waitForTimeout(400);
+    await signInSheet(L.p, 'family');
+    await waitFor(async () => (await sheetTitle(L.p)) === 'Download didn’t finish', 20000);
+    await clickSheet(L.p, 'Later'); await L.p.waitForTimeout(400);
+    assert(await L.p.locator('.sheet-root.open').count() === 0 && (await syncSt(L.p)).accountId, 'R3a Later closes the dialog; the device is signed in');
+    await L.ctx.unroute('**/api/sync/pull**');
+    await L.p.evaluate(async () => (await import('./js/sync.js')).syncNow());
+    await waitFor(async () => (await firstScreen(L.p)) === 0 && (await profiles(L.p)).some((x) => x.id === 'pm'), 15000);
+    await L.p.waitForTimeout(500);
+    const ix = await profiles(L.p);
+    assert(await firstScreen(L.p) === 0 && ix.some((x) => x.id === 'pm') && !ix.some((x) => x.placeholder), 'R3b the automatic retry finished: first screen gone, placeholder replaced by the account’s profile');
+    await L.ctx.close();
+  }
+  // R4 signed in (download pending) and the app restarts: no first screen, the download dialog continues the flow.
+  {
+    const L = await openApp(browser, {});
+    await L.ctx.route('**/api/sync/pull**', (r) => r.abort());
+    await L.p.click('.ob-first button:has-text("Sign in to your account")');
+    await L.p.waitForTimeout(400);
+    await signInSheet(L.p, 'family');
+    await waitFor(async () => (await sheetTitle(L.p)) === 'Download didn’t finish', 20000);
+    await clickSheet(L.p, 'Later'); await L.p.waitForTimeout(300);
+    await L.p.reload(); await L.p.waitForTimeout(1200);
+    assert(await firstScreen(L.p) === 0, 'R4a signed in: the first screen is never shown');
+    assert(await sheetTitle(L.p) === 'Download didn’t finish', 'R4b …the signed-in flow continues with the download dialog');
+    await L.ctx.unroute('**/api/sync/pull**');
+    await clickSheet(L.p, 'Retry');
+    await waitFor(async () => (await profiles(L.p)).some((x) => x.id === 'pm'), 15000);
+    await L.p.waitForTimeout(500);
+    assert(await firstScreen(L.p) === 0 && (await profiles(L.p)).some((x) => x.id === 'pm') && !(await profiles(L.p)).some((x) => x.placeholder), 'R4c Retry completes: the account’s profile replaces the placeholder');
+    await L.ctx.close();
+  }
+
   await browser.close();
   await mf.dispose();
   assert(errs.length === 0, 'no page errors' + (errs.length ? ': ' + errs.slice(0, 3).join(' | ') : ''));

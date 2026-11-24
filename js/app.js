@@ -21,7 +21,7 @@ import { renderWorkouts, renderExercise } from './views/workouts.js';
 import { openWorkoutForm } from './workoutForm.js';
 import { openJournalForm } from './journalForm.js';
 import { openProfileEditor } from './profiles.js';
-import { APP_VERSION as APP_VERSION_STR, getProfiles, readProfileState, switchProfile } from './store.js';
+import { APP_VERSION as APP_VERSION_STR, storedDataProfileIds, getProfiles, readProfileState, switchProfile } from './store.js';
 import { openTaskView } from './taskView.js';
 import { openHabitView } from './habitSheet.js';
 import { renderCompleted } from './views/completed.js';
@@ -98,11 +98,13 @@ function openDeepLink(hash = location.hash) {
   }
   ctx.ui.date = date;
   render();
+  cancelRestore();
   // Highlight the row (if it shows on that day) and open the item's menu.
   const sel = kind === 'task' ? `.task[data-id="${CSS.escape(id)}"]` : `.habit-row[data-id="${CSS.escape(id)}"]`;
   const row = document.querySelector(sel);
   if (row) {
     row.scrollIntoView({ block: 'center' });
+    cancelRestore();
     row.classList.add('pulse');
     setTimeout(() => row.classList.remove('pulse'), 2400);
     (row.querySelector('.task-main, .habit-row-main') || row.querySelector('button'))?.focus({ preventScroll: true });
@@ -129,6 +131,25 @@ function trackHeaderHeight(head) {
   if (head && 'ResizeObserver' in window) { headObserver = new ResizeObserver(set); headObserver.observe(head); }
 }
 
+// Pending post-render scroll restore: cancelled by any scroll we didn't cause, or user input.
+let restoreGen = 0;
+let ownY = null;
+function ownScrollTo(y) { ownY = y; window.scrollTo(0, y); }
+const cancelRestore = () => { restoreGen++; };
+window.addEventListener('scroll', () => { if (ownY !== null && Math.abs(window.scrollY - ownY) <= 1) return; cancelRestore(); }, { passive: true });
+for (const ev of ['touchmove', 'wheel', 'keydown', 'pointerdown']) window.addEventListener(ev, cancelRestore, { passive: true, capture: true });
+
+/** Identity of a focused control: tag + role + aria-label (or text) and its ordinal among identical ones. */
+function focusIdentity(el, sel) {
+  const key = (e) => [e.tagName, e.getAttribute('role') || '', e.getAttribute('aria-label') || (e.textContent || '').trim().slice(0, 80)].join('|');
+  const k = key(el);
+  const same = [...main.querySelectorAll(sel)].filter((e) => key(e) === k);
+  return { k, n: same.indexOf(el), key };
+}
+function findByIdentity(id, sel) {
+  return [...main.querySelectorAll(sel)].filter((e) => id.key(e) === id.k)[id.n] || null;
+}
+
 function render() {
   if (location.hash.startsWith('#open/')) { openDeepLink(); return; }
   let { name, arg } = parseRoute();
@@ -142,12 +163,14 @@ function render() {
   const changedRoute = routeKey !== lastRoute;
   // Remember which control had focus so keyboard users keep their place.
   const fk = document.activeElement?.closest?.('[data-fk]')?.dataset.fk;
-  // A re-render of the same screen (e.g. a setting changed) keeps the exact scroll position and, for
-  // controls without data-fk, the focused control by its position – otherwise iOS scrolls to wherever
-  // focus lands once the tapped button is replaced.
-  const scrollY = window.scrollY;
+  // A same-screen re-render caused by the user's own tap/keyboard in the view (focus is inside main)
+  // keeps the exact scroll position and the focused control (iOS otherwise scrolls to wherever focus
+  // lands once the tapped button is replaced). Background renders (tick, sync, storage) never scroll.
   const FOCUSABLE = 'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])';
-  const fIdx = !fk && main.contains(document.activeElement) ? [...main.querySelectorAll(FOCUSABLE)].indexOf(document.activeElement) : -1;
+  const ae = document.activeElement;
+  const userRender = !changedRoute && ae && ae !== document.body && main.contains(ae);
+  const scrollY = window.scrollY;
+  const fid = !fk && userRender ? focusIdentity(ae, FOCUSABLE) : null;
   let view;
   switch (name) {
     case 'habits': view = renderHabits(); break;
@@ -194,10 +217,14 @@ function render() {
     if (lastRoute !== null) main.focus({ preventScroll: true });
   } else {
     if (fk) document.querySelector(`[data-fk="${CSS.escape(fk)}"]`)?.focus({ preventScroll: true });
-    else if (fIdx >= 0) main.querySelectorAll(FOCUSABLE)[fIdx]?.focus({ preventScroll: true });
-    if (window.scrollY !== scrollY) window.scrollTo(0, scrollY);
-    // Again after layout settles (fonts/images, iOS's own focus scroll).
-    requestAnimationFrame(() => { if (parseRoute().name === name && Math.abs(window.scrollY - scrollY) > 1) window.scrollTo(0, scrollY); });
+    else if (fid) findByIdentity(fid, FOCUSABLE)?.focus({ preventScroll: true });
+    if (userRender) {
+      if (window.scrollY !== scrollY) ownScrollTo(scrollY);
+      // Again after layout settles (fonts/images, iOS's own focus scroll) – unless the user scrolled
+      // or something else (a deep link, a "Show" button) scrolled in the meantime.
+      const gen = ++restoreGen;
+      requestAnimationFrame(() => { if (gen === restoreGen && parseRoute().name === name && Math.abs(window.scrollY - scrollY) > 1) ownScrollTo(scrollY); });
+    }
   }
   lastRoute = routeKey;
 }
@@ -406,7 +433,10 @@ function init() {
     const states = getProfiles().map((p) => readProfileState(p.id));
     if (states.some((x) => !x)) return; // a profile can't be read: don't guess what it refers to
     for (const st of states) for (const t of st.tasks || []) for (const a of t.attachments || []) ids.add(a.id);
-    collectGarbage(ids).catch(() => { /* storage unavailable: nothing to clean */ });
+    // Profiles whose data is still stored but missing from the index (damaged index): keep their photos.
+    const listed = new Set(getProfiles().map((x) => x.id));
+    const orphanDataIds = new Set(storedDataProfileIds().filter((x) => !listed.has(x)));
+    collectGarbage(ids, Date.now(), orphanDataIds).catch(() => { /* storage unavailable: nothing to clean */ });
   }, 3000);
 }
 

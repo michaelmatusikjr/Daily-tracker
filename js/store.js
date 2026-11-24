@@ -504,6 +504,39 @@ function saveIndex() {
   return lsSet(PROFILES_KEY, JSON.stringify({ version: 1, ...index }));
 }
 
+const DATA_PRE = 'dailyTracker:data:';
+/** Profile ids that have a `dailyTracker:data:<id>` key in localStorage (backups excluded). */
+export function storedDataProfileIds() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(DATA_PRE) && !k.slice(DATA_PRE.length).includes(':') && k.length > DATA_PRE.length) out.push(k.slice(DATA_PRE.length));
+    }
+  } catch { /* ignore */ }
+  return out;
+}
+
+/**
+ * The profile index is unreadable or empty but profile data exists: rebuild the list from the data
+ * keys instead of starting over (which would orphan that data). The unreadable text is kept as a backup.
+ */
+function recoverIndex() {
+  const ids = storedDataProfileIds().filter((id) => /^[A-Za-z0-9_-]{1,40}$/.test(id)).sort();
+  if (!ids.length) return false;
+  try {
+    const raw = lsGet(PROFILES_KEY);
+    if (raw) localStorage.setItem(`${PROFILES_KEY}:backup-${Date.now()}`, raw);
+  } catch { /* storage full: the recovery below still matters more */ }
+  index = {
+    activeId: ids[0], deleted: [],
+    profiles: ids.map((id, i) => ({ id, name: `Recovered profile ${i + 1}`, avatar: { type: 'emoji', emoji: '', color: PROFILE_COLORS[i % PROFILE_COLORS.length] }, updatedAt: 0 })),
+    migratedLegacy: null,
+  };
+  saveIndex();
+  return true;
+}
+
 /** Read (or create) the profile index, moving pre-1.3 single-profile data into the first profile. */
 function loadIndex() {
   const stored = readStoredIndex();
@@ -511,6 +544,7 @@ function loadIndex() {
     index = { ...stored, activeId: stored.profiles.some((p) => p.id === stored.activeId) ? stored.activeId : stored.profiles[0].id };
     return;
   }
+  if (recoverIndex()) return;
   // First run of 1.3+: the old data (if any) becomes the first profile. The raw text is moved
   // as-is, so even unreadable data keeps its load-failure/backup protection.
   const legacy = lsGet(LEGACY_KEY);

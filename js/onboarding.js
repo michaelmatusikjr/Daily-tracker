@@ -3,8 +3,8 @@ import { h } from './ui.js';
 import { icon } from './icons.js';
 import { update, getState, getActiveProfile, updateProfile, isFreshInstall } from './store.js';
 import { seedExamples } from './actions.js';
-import { accountsAvailable } from './sync.js';
-import { openFirstSignIn, cancelFirstSignIn, offerSyncPicker } from './account.js';
+import { accountsAvailable, hasAccount } from './sync.js';
+import { openFirstSignIn, cancelFirstSignIn, resumeFirstSignIn, offerSyncPicker } from './account.js';
 import { ctx } from './ctx.js';
 
 /**
@@ -14,15 +14,20 @@ import { ctx } from './ctx.js';
 export function startFirstRun() {
   if (!(isFreshInstall() && accountsAvailable())) { showOnboarding(); return; }
   if (document.querySelector('.onboarding')) return;
+  const finish = ({ offerPicker }) => {
+    document.querySelector('.ob-first')?.remove();
+    document.querySelectorAll('body > .app, body > .fab, body > .skip-link, body > #toasts').forEach((el) => el.removeAttribute('inert'));
+    ctx.rerender?.();
+    if (!getState().settings.onboarded) showOnboarding({ onFinish: offerPicker ? offerSyncPicker : null });
+  };
+  // Signed in already (a postponed download): never ask again, continue the signed-in flow.
+  if (hasAccount()) { resumeFirstSignIn({ onDone: finish }); return; }
   const behind = [...document.querySelectorAll('body > .app, body > .fab, body > .skip-link, body > #toasts')];
   // Removed at once: the tour (or the next sheet) takes over and showOnboarding() refuses to open beside another .onboarding.
   const close = () => { behind.forEach((el) => el.removeAttribute('inert')); root.remove(); };
   const signIn = h('button.btn.primary.ob-choice', { type: 'button', onclick: () => {
-    openFirstSignIn({ onDone: ({ offerPicker }) => {
-      close();
-      ctx.rerender?.();
-      if (!getState().settings.onboarded) showOnboarding({ onFinish: offerPicker ? offerSyncPicker : null });
-    } });
+    const onDone = ({ offerPicker }) => { close(); finish({ offerPicker }); };
+    if (hasAccount()) resumeFirstSignIn({ onDone }); else openFirstSignIn({ onDone });
   } }, 'Sign in to your account');
   const start = h('button.btn.secondary.ob-choice', { type: 'button', onclick: () => { cancelFirstSignIn(); close(); showOnboarding(); } }, 'Get started on this device');
   const root = h('div.onboarding.ob-first', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Welcome to Daily Tracker' },

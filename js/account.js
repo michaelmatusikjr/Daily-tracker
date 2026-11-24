@@ -274,7 +274,10 @@ let firstFlow = null;
 /** Open the sign-in sheet from the first screen; onDone({ offerPicker }) runs once the account is on this device. */
 export function openFirstSignIn({ onDone }) { firstFlow = { onDone }; openSignIn({ first: true }); }
 /** The first screen was left another way (Get started): a later sign-in is an ordinary one. */
-export function cancelFirstSignIn() { firstFlow = null; }
+export function cancelFirstSignIn() { firstFlow = null; stopFirstWait?.(); }
+/** Already signed in on a fresh install (e.g. after "Later" on the download dialog): continue the signed-in flow instead of asking again. */
+export function resumeFirstSignIn({ onDone }) { firstFlow = { onDone }; stopFirstWait?.(); afterSignIn({ created: false }); }
+let stopFirstWait = null; // listener that continues the first-screen flow once a download that was postponed completes
 /** Offer this device's profiles for sync (the tour came first for an empty account). */
 export function offerSyncPicker() {
   const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
@@ -405,7 +408,18 @@ function openDownloadFailed(error, onPulled) {
     title: 'Download didn’t finish', cls: 'acct',
     content: [msg, err],
     footer: [h('button.btn.ghost', { type: 'button', onclick: () => sheet.close() }, 'Later'), btn],
-    onClose: () => { off(); if (!done) { done = true; ctx.rerender?.(); } },
+    onClose: () => {
+      off();
+      if (done) return;
+      if (firstFlow) {
+        // First screen still up ("Later"): keep waiting for the automatic retry, then carry on from there.
+        stopFirstWait?.();
+        const wait = S.onSyncChange(() => { if (S.syncState().pulled) { wait(); stopFirstWait = null; onPulled(); } });
+        stopFirstWait = wait;
+        return;
+      }
+      done = true; ctx.rerender?.();
+    },
   });
 }
 
@@ -459,9 +473,12 @@ function openPicker(candidates, { preselect, onDone }) {
     }
     for (const r of chosen) if (r.newName !== r.p.name && !updateProfile(r.p.id, { name: r.newName })) { err.textContent = 'Couldn’t rename – storage is full.'; return; }
     if (chosen.length && !(await S.syncProfiles(chosen.map((r) => r.p.id)))) { err.textContent = 'Couldn’t add the profiles – try again once your account has synced.'; return; }
-    for (const r of doomed) performDeleteProfile(r.p);
-    finished = true;
+    finished = true; // before the deletes: deleting the active profile closes sheets (onClose) mid-loop
+    // Another tab may have synced a profile while this picker was open: "this device" deletes never reach the account.
+    const kept = [];
+    for (const r of doomed) { if (S.isSynced(r.p.id)) kept.push(r.p.name); else performDeleteProfile(r.p); }
     sheet.close();
+    if (kept.length) toast(`${kept.join(', ')} ${kept.length === 1 ? 'is' : 'are'} now synced, so ${kept.length === 1 ? 'it was' : 'they were'} not deleted. Delete ${kept.length === 1 ? 'it' : 'them'} from the profile menu to remove from the account.`, { force: true, duration: 8000 });
     if (chosen.length) toast(`${chosen.length === 1 ? chosen[0].newName : `${chosen.length} profiles`} will sync to your account`, { force: true });
     onDone?.();
   };
