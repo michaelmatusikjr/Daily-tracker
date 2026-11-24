@@ -1,157 +1,116 @@
-# Accounts and sync (backlog #2): design and API contract
+# Accounts and sync – phase 1 design (backlog #2)
 
-This is the source of truth for the sync feature. The server (`server/src/sync.js`, mounted from `server/src/index.js`) and the client (`js/sync*.js`) both follow it. If you change the contract, update this file.
+This is the contract between the app (`js/sync*.js`, `js/account*.js`) and the Worker (`server/src/account.js`, `server/src/sync.js`, `server/src/webauthn.js`). Both sides must follow it exactly. Decisions behind it are in `BACKLOG.md` #2.
 
-## Decisions (from the user, 2026-11-17)
-- Sign in with a **passkey** (Face ID / Touch ID). **Username + password** is the backup sign-in.
-- **One account holds all profiles** (a household account).
-- **End-to-end encryption:** the server stores only ciphertext. The password unlocks the data key. A one-time **recovery key** also unlocks it.
-- **Photos sync too:** task photos (IndexedDB), habit image icons and profile photos (these two are inline in the JSON).
-- All devices and browsers: Safari (iOS 16+), Chrome, Firefox.
+## Scope of phase 1
+- One **household account**, which holds any number of profiles.
+- Sign-in: **username + password**, and **passkeys** (Face ID / Touch ID). Account creation needs the server's **register key** (the same one used for reminders, Settings › Reminders › Advanced), so strangers can't fill the free quota.
+- **End-to-end encryption**: the server only stores ciphertext plus the minimum metadata needed to route it.
+- One-time **recovery key**, shown once at sign-up.
+- Syncs each synced profile's data: tasks, habits, logs, journal, categories, exercises, workouts, autoHabit, settings (except device-only keys), and the profile's name/avatar/order.
+- **Not in phase 1:** task photos and habit image icons (phase 2). A synced task whose photo isn't on this device shows a placeholder "Photo on another device" (never an error, never a lost reference). Habit image icons: a habit whose image icon isn't on this device shows its emoji (or the first letter) instead.
 
-## Threat model and crypto (client: WebCrypto only)
-- `dataKey`: a random 256-bit AES-GCM key per account. It encrypts everything. It never leaves a device unwrapped.
-- **Password.** The client computes `master = PBKDF2-SHA256(password, salt, 600000 iterations, 256 bits)`. Here `salt` is 16 random bytes per account, stored on the server and returned by `/api/auth/salt`. Two keys come from master via HKDF-SHA256, with an empty salt and distinct `info` values:
-  - `authKey = HKDF(master, info "dt-auth-v1", 32 bytes)` is sent to the server as base64url. The server never sees the password itself.
-  - `pwKek = HKDF(master, info "dt-kek-v1")` is an AES-GCM key that wraps `dataKey`. Its output is `wrap_pw`.
-- **Server-side check.** The server stores `auth_hash = SHA-256(auth_salt ‖ authKey)` with a random 16-byte `auth_salt`, and compares in constant time. The stretching happens on the client (600k PBKDF2), so the value the server hashes is a high-entropy 256-bit key and a single salted SHA-256 is enough. This also keeps the Worker within its free-plan CPU limit, which a server-side PBKDF2 would not.
-- **Recovery key.** It is 32 random bytes, shown as Crockford base32 in groups of 4 (`XXXX-XXXX-…`). It is shown once, at sign-up or on regeneration. HKDF from it gives:
-  - `recAuth` (info `"dt-rec-auth-v1"`): the server stores `recovery_hash`, a salted SHA-256 like `auth_hash`.
-  - `recKek` (info `"dt-rec-kek-v1"`): it wraps `dataKey`. Its output is `wrap_rec`.
-- **Passkey PRF**, when the authenticator supports it (iOS 18+, recent Chrome/Android). Request `extensions.prf.eval.first` = UTF-8 `"daily-tracker-prf-v1"` at create and get. When `getClientExtensionResults().prf.results.first` is present, `prfKek = HKDF(prfOutput, info "dt-prf-kek-v1")` wraps `dataKey` to give `wrap_prf`, stored per credential.
-  - If create gave no PRF result, wrap lazily on the next passkey sign-in, on a device that already holds `dataKey`.
-  - If a passkey sign-in on a new device has no usable `wrap_prf`, the user is **signed in but locked**. Ask once for the password (or recovery key) to unlock. Unlocking derives `pwKek` and unwraps `wrap_pw`, and needs no server round trip beyond the data already returned.
-- **Wrapped key format:** base64url of `[0x01][12-byte IV][AES-GCM(dataKey raw 32 bytes)]`, with AAD `"dt-wrap-v1"`.
-- **Encrypted blob format** (docs and files), as bytes:
-  - `[0x01 version][flags: bit0 = gzip][12-byte IV][AES-GCM ciphertext+tag]`
-  - AAD = UTF-8 of `"<accountId>:doc:<docId>"` or `"<accountId>:file:<fileId>"`, so blobs can't be swapped between slots or accounts.
-  - gzip uses `CompressionStream` when it exists. Otherwise write flags = 0.
-- **On the device:**
-  - `dataKey` is stored in IndexedDB (`dailyTracker-sync`, store `keys`) as a **non-extractable** CryptoKey. Generate or import it as extractable only for the moment of wrapping, then re-import it non-extractable for storage.
-  - The session token and account info live in localStorage `dailyTracker:account` = `{ server, accountId, username, token, locked, lastSyncAt, seq }`. It is never included in exports, like the push device credentials.
+## Rules from the user
+- **Conflicts:** latest edit wins, per record (see Records).
+- **First sign-in / sign-up on a device:** ask which of this device's profiles to sync (pick one or more, or none). All profiles already in the account are downloaded to the device.
+- **Device-only profiles** stay on the device untouched. Each one shows a persistent "On this device only" indicator – **also before anyone has signed in** – until it is synced: a small badge on the header avatar when the active profile is device-only, and a label in the profile menu row. Tapping the label opens the Account sheet.
+- **Adding a profile while signed in:** the form asks where to save it: "This device only" or "Account" (default: Account).
+- **Names are unique in an account** (case-insensitive, trimmed). Syncing a device profile whose name matches an account profile: the app asks the user to rename the device profile first (inline rename field in the same flow). Renaming a synced profile to a name another account profile uses is refused with a clear message.
+- **Sign out:** asks "Keep copies on this device" (default; the account's profiles stay on the device as device-only profiles and simply stop syncing; their shadows and the outbox are cleared) or "Remove from this device". Never deletes account data.
+- **Deleting a synced profile** (existing two-step confirm) deletes it from the account and every signed-in device; the confirm text must say so.
+- **Delete account** (Settings › Account, needs the password, two-step confirm): wipes the server data; local copies stay as device-only profiles.
 
-## Server (Cloudflare Worker + D1): the existing push server, new tables (additive only)
-```sql
-CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, salt TEXT NOT NULL,
-  auth_salt TEXT NOT NULL, auth_hash TEXT NOT NULL, rec_salt TEXT NOT NULL, rec_hash TEXT NOT NULL,
-  wrap_pw TEXT NOT NULL, wrap_rec TEXT NOT NULL, seq INTEGER NOT NULL DEFAULT 0, bytes INTEGER NOT NULL DEFAULT 0,
-  fails INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS credentials (id TEXT PRIMARY KEY /* credential id b64url */, account_id TEXT NOT NULL,
-  alg INTEGER NOT NULL, jwk TEXT NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0, wrap_prf TEXT, name TEXT NOT NULL,
-  created_at INTEGER NOT NULL, last_used INTEGER);
-CREATE INDEX IF NOT EXISTS credentials_account ON credentials (account_id);
-CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE /* public session id */, account_id TEXT NOT NULL,
-  label TEXT NOT NULL, created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL);
-CREATE INDEX IF NOT EXISTS sessions_account ON sessions (account_id);
-CREATE TABLE IF NOT EXISTS challenges (id TEXT PRIMARY KEY, challenge TEXT NOT NULL, kind TEXT NOT NULL, account_id TEXT, expires_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS docs (account_id TEXT NOT NULL, doc_id TEXT NOT NULL, rev INTEGER NOT NULL, seq INTEGER NOT NULL,
-  data BLOB, deleted INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY (account_id, doc_id));
-CREATE TABLE IF NOT EXISTS files (account_id TEXT NOT NULL, file_id TEXT NOT NULL, data BLOB NOT NULL, size INTEGER NOT NULL,
-  created_at INTEGER NOT NULL, PRIMARY KEY (account_id, file_id));
-```
-- **Account ids:** 128-bit random, base64url. **Usernames:** 3–40 chars `[a-z0-9._-]`, case-insensitive (stored lowercase).
-- **Sessions:** tokens are 256-bit random. Only the SHA-256 is stored. They expire after 365 days without use (`last_seen`); `purge()` removes stale sessions and expired challenges.
-- **Limits:**
-  - `MAX_ACCOUNTS`: var, default 5.
-  - Doc ciphertext ≤ 1,900,000 bytes. File ciphertext ≤ 1,900,000 bytes (D1 row limit 2 MB).
-  - Per-account total ≤ 500 MB, tracked in `accounts.bytes`.
-  - At most 50 docs and 5,000 files per account.
-- **Rate limits** (reuse `rateLimit`):
-  - sign-up: 5/hour per IP.
-  - salt / login / passkey-options / passkey-login / recover: 20/hour per IP, plus 10/hour per username where a username is given.
-  - sync: 600/hour per session.
-  - After 10 consecutive failed password or recovery checks, the account is locked for 15 minutes (`locked_until`). A success resets `fails`.
-- **Unknown usernames:** `/api/auth/salt` returns a deterministic fake salt, so it doesn't reveal which usernames exist: the first 16 bytes of `HMAC-SHA256(key = REGISTER_KEY, "salt:" + username)`. `/api/auth/login` returns the same generic `401 Wrong username or password` for every failure.
-- **CORS:** same as today (ALLOWED_ORIGINS). Allow the header `X-Base-Rev`, plus methods `PATCH` and `PUT`.
-- **WebAuthn verification** (no libraries; a minimal CBOR decoder in `server/src/cbor.js`):
-  - rpId = hostname of the request `Origin`, which must be in ALLOWED_ORIGINS. `clientDataJSON.origin` must equal the request Origin.
-  - `type` must be `webauthn.create` or `webauthn.get`. `challenge` must match an unexpired (5 min), unused challenge of the right kind. The challenge is deleted on use.
-  - authData: `rpIdHash` = SHA-256(rpId); flags UP (0x01) and UV (0x04) set; AT (0x40) on create.
-  - At create, parse the attestation object (`fmt` any; `attStmt` ignored, since attestation is `none`). Get the credential id and the COSE key from attested credential data. Support alg −7 (ES256, EC2 P-256) → JWK, and −257 (RS256) → JWK.
-  - At get, verify the signature over `authData ‖ SHA-256(clientDataJSON)`. For ES256, convert the DER signature to raw r‖s for WebCrypto. signCount: if both stored and new are non-zero and new ≤ stored, reject; otherwise store the new value.
+## Crypto (client side, WebCrypto only)
+- `uname` = username trimmed, lower-cased; 3–40 chars of `[a-z0-9._-]`.
+- `salt` = SHA-256(`"daily-tracker/v1/" + uname`) (deterministic, so no salt lookup endpoint can leak which usernames exist).
+- `pwBits` = PBKDF2-SHA-256(password, salt, **600 000** iterations, 512 bits). Split: `authKey` = first 32 bytes, `kek` = last 32 bytes.
+- `authKey` (base64url) is what is sent to the server instead of the password. The password never leaves the device.
+- `dataKey` = random 32 bytes, created at sign-up. Wrapped with AES-256-GCM: `wrapped = b64url(iv12 || ciphertext)`.
+  - `wrappedPw` = wrap(`kek`, dataKey).
+  - Recovery key: random 32 bytes, shown as 52 base32 chars (RFC 4648, no padding) in groups of 4. `recBits` = HKDF-SHA-256(recoveryKey, salt, info `"daily-tracker/v1/recovery"`, 512 bits) → `recAuth` (first 32) and `recKek` (last 32). `wrappedRec` = wrap(`recKek`, dataKey).
+  - Passkey PRF (when the authenticator returns `prf.results.first`; eval input `first` = UTF-8 `"daily-tracker/v1/prf"`): `prfKek` = HKDF-SHA-256(prfOutput, salt, info `"daily-tracker/v1/prf-kek"`, 256 bits); `wrappedPrf` = wrap(`prfKek`, dataKey).
+- From `dataKey` via HKDF-SHA-256 (salt empty, distinct infos): `encKey` (AES-256-GCM, info `"daily-tracker/v1/enc"`) and `macKey` (HMAC-SHA-256, info `"daily-tracker/v1/rid"`).
+- On the device, `dataKey` is kept as raw bytes only long enough to derive `encKey`/`macKey`, which are stored **non-extractable** in IndexedDB `dailyTracker-sync` (store `keys`). Also store `wrappedPw`-free state; never store the password, `authKey`, `kek` or the recovery key.
 
-### Endpoints (JSON unless noted; auth = `Authorization: Bearer <token>`)
-| Method & path | Auth | Body → Result |
-|---|---|---|
-| `POST /api/auth/signup` | `X-Register-Key` (same REGISTER_KEY as push) | `{username, salt, authKey, recAuth, wrapPw, wrapRec, label}` → `201 {accountId, token, sessionId}`. Server makes auth_salt/rec_salt, hashes. 409 username taken. 503 MAX_ACCOUNTS reached. |
-| `POST /api/auth/salt` | — | `{username}` → `{salt}` (real or fake) |
-| `POST /api/auth/login` | — | `{username, authKey, label}` → `{accountId, username, token, sessionId, wrapPw}` or 401 / 429 (locked) |
-| `POST /api/auth/recover` | — | `{username, recAuth, label}` → `{accountId, username, token, sessionId, wrapRec}`; the client must then set a new password |
-| `POST /api/auth/passkey/options` | — (or auth when adding a passkey) | `{purpose:"login"}` → `{challengeId, challenge, rpId}`; `{purpose:"register"}` (auth required) → `{challengeId, challenge, rpId, user:{id, name}, exclude:[credIds]}` |
-| `POST /api/auth/passkey/register` | auth | `{challengeId, clientDataJSON, attestationObject, name, wrapPrf?}` (b64url) → `201 {credentialId}` |
-| `POST /api/auth/passkey/login` | — | `{challengeId, credentialId, clientDataJSON, authenticatorData, signature, label}` → `{accountId, username, token, sessionId, wrapPw, wrapPrf}` (wrapPrf null if none) |
-| `PUT /api/auth/passkey/:credId/prf` | auth | `{wrapPrf}` → `{ok}` (the credential must belong to the account) |
-| `GET /api/account` | auth | → `{accountId, username, bytes, docs, files, passkeys:[{id,name,createdAt,lastUsed,prf}], sessions:[{id,label,createdAt,lastSeen,current}]}` |
-| `PUT /api/account/password` | auth | `{authKey (current), newSalt, newAuthKey, newWrapPw}` → `{ok}`. After `/recover`, a recovery session may skip `authKey` once: recover marks the session `recovery`, and it is cleared on use or after 15 min. |
-| `PUT /api/account/recovery` | auth | `{authKey, recAuth, wrapRec}` → `{ok}` (new recovery key) |
-| `DELETE /api/account/passkey/:credId` | auth | → `{ok}` |
-| `DELETE /api/account/session/:id` | auth | → `{ok}` (sign out a device; `current` = sign out) |
-| `DELETE /api/account` | auth + `{authKey}` | deletes everything for the account |
-| `GET /api/sync/changes?since=<seq>` | auth | → `{seq, docs:[{id, rev, seq, deleted, data(b64url or null)}]}`: docs with `seq > since`, at most 2 MB per page, plus `more:true` if truncated |
-| `PUT /api/sync/doc/:docId` | auth, header `X-Base-Rev: <rev or 0>` | `{data: b64url}` or `{deleted:true}` → `{rev, seq}`. 409 `{rev, seq, data, deleted}` if the current rev ≠ base. Doc ids: `index` or `p.<profileId>` (`[A-Za-z0-9._-]{1,64}`). Every write does `seq = accounts.seq + 1`. |
-| `GET /api/sync/files` | auth | → `{files:[{id,size,createdAt}]}` |
-| `PUT /api/sync/file/:fileId` | auth, `Content-Type: application/octet-stream` | raw ciphertext → `{ok}` (idempotent; existing id = 200 no-op) |
-| `GET /api/sync/file/:fileId` | auth | → raw bytes (`application/octet-stream`) |
-| `DELETE /api/sync/file/:fileId` | auth | → `{ok}` |
+## Records
+A synced profile is flattened into records. Record keys (`k`), `<pid>` = profile id:
+| k | value |
+|---|---|
+| `<pid>/meta` | `{ name, avatar, order }` (order = position in the profile list) |
+| `<pid>/task/<id>` | the task object |
+| `<pid>/habit/<id>` | the habit object (an `image` icon is kept as a reference; data in phase 2) |
+| `<pid>/cat/<id>` | category `{ id, name, color, order }` (order = index) |
+| `<pid>/ex/<id>` | exercise |
+| `<pid>/wo/<id>` | workout |
+| `<pid>/log/<habitId>/<date>` | number |
+| `<pid>/auto/<habitId>/<date>` | `true` |
+| `<pid>/journal/<date>` | journal entry |
+| `<pid>/set/<key>` | one top-level settings key (skip device-only keys: `notifications`, and anything the code marks device-only) |
 
-## Client sync model
-- **Docs:**
-  - `index` = `{ v:1, profiles:[{id,name,avatar,updatedAt}], deleted:[ids] }`. `activeId` stays local to each device.
-  - `p.<profileId>` = that profile's full state (the same JSON as `dailyTracker:data:<id>`).
-- **Base copies.** For each doc the device keeps the last-synced plaintext and rev in IndexedDB `dailyTracker-sync` › `bases`: `{docId, rev, json}`. Sync is a **three-way merge (base, local, remote)**.
-- **`mergeState(base, local, remote)`** is a pure function in `js/syncMerge.js`:
-  - **Lists by id** (tasks, habits, categories, exercises, workouts):
-    - only one side changed vs base → take that side;
-    - deleted on one side and unchanged on the other → delete;
-    - changed on both → higher `updatedAt` wins, and on a tie, remote wins;
-    - added on both → `updatedAt` wins.
-  - Item order stays a field (`order`) and isn't a conflict.
-  - **Maps per key:** `logs[habit][date]`, `autoHabit[habit][date]`, `journal[date]`.
-  - **Settings:** per top-level key, with the same rule (both changed → remote wins).
-  - Device-local settings are never taken from remote: `notifications` (permission or reminders on this device). Check for others.
-  - With **no base** (first sync of a device that already has data), it is a union: nothing is deleted, and on a conflict the newer `updatedAt` wins.
-  - Every mutation in `js/actions.js` / `js/workouts.js` / `js/forms.js` that changes a list item must set `updatedAt = Date.now()`. Audit this.
-- **Index merge:** union by id, newer `updatedAt` wins, tombstones stick (like the existing `mergeIndex`).
-- **Loop** (`js/sync.js`, one run at a time; use `navigator.locks` when present so two tabs don't sync at once):
-  1. Pull `changes?since=seq`.
-  2. Decrypt.
-  3. For each doc, merge (base, local, remote) → write local. The active profile uses the store's in-memory state, and views refresh with `emit({external:true})`. Other profiles go to localStorage.
-  4. Set base = remote.
-  5. Push every doc whose local JSON ≠ base (`X-Base-Rev` = base rev). On 409, merge with the returned doc and retry (at most 3 times).
-  6. Save the new base and seq.
-- **Unreadable profiles:** a profile whose local data can't be read (store `loadFailure` / `readProfileState` null) is never pushed and never overwritten by sync.
-- **Profile deletes:**
-  - A profile deleted locally → tombstone in index + `{deleted:true}` for its doc.
-  - A profile deleted remotely → removed locally (its data is first kept as a local backup key, as the store does today).
-- **Photos:**
-  - After docs sync, upload every IndexedDB file referenced by a task attachment that isn't uploaded yet (`dailyTracker-sync` › `uploaded` set). Upload the encrypted blob of `{meta, blob, thumbBlob}`, serialised as one binary: a JSON header length + JSON + bytes.
-  - Download referenced ids missing locally, and `putFile` them with the right `profileId`/`taskId`.
-  - Server GC: delete server files not referenced by any profile **and** older than 7 days (`createdAt`).
-  - Photos over the limit are skipped with a note in Settings.
-- **When to sync:**
-  - on start (after sign-in);
-  - on `visibilitychange` → visible;
-  - on `online`;
-  - 2 s after any local change (debounced, subscribed to the store);
-  - every 60 s while visible;
-  - on Today's pull-to-refresh.
-- **Offline:** quietly retry later. A locked account (no dataKey yet) never syncs.
+- Each record: `{ k, v, t, dev, sv }`: `v` = value, or `null` for a deletion (tombstone); `t` = edit time (ms, see Clock); `dev` = device id (random 16 bytes b64url, per device); `sv` = `SCHEMA_VERSION` of the writer.
+- **Latest edit wins:** a record replaces another when `(t, dev)` is greater (compare `t`, then `dev` as a string).
+- `rid` = b64url(HMAC-SHA-256(macKey, k)) – opaque to the server, stable for a key.
+- `blob` = b64url(iv12 || AES-256-GCM(encKey, JSON.stringify({k, v, t, dev, sv}), additionalData = UTF-8 rid)).
+- Applying a remote record: validate/normalize the value through the same normalizers imports use (`normTask`, `normHabit`, …, exported from `store.js` for this) – a record that fails validation is skipped and logged, never applied. A record with `sv > SCHEMA_VERSION` pauses sync and shows "Update the app to keep syncing" (Reload button).
+- A remote `<pid>/meta` tombstone deletes that profile on this device (with its photos, like deleteProfile). A profile **missing** locally is never treated as deleted – only explicit tombstones delete.
 
-## Settings › Account (new group at the top of Settings)
-- **Signed out:** an "Account and sync" row → sheet with **Sign in with passkey**, **Sign in with password**, **Create account**, and "Use recovery key".
-  - **Create account** asks for username, password (min 10 chars, confirm) and the register key (prefilled from Reminders › Advanced if set). It then shows the **recovery key** with Copy, and requires "I saved it" before continuing. Then it offers **Add a passkey** (recommended) or "Not now".
-- **First sign-in on a device with local data, when the account already has data:**
-  - **Merge** (default): union.
-  - **Use the account's data**: this device's profiles are kept as a downloadable backup first.
-- **Signed in:**
-  - username;
-  - "Last synced 2 min ago" / "Syncing…" / an error line;
-  - **Sync now**;
-  - **Passkeys** list (add / remove);
-  - **Devices** (sessions: sign out others);
-  - **Change password**;
-  - **New recovery key**;
-  - **Sign out** (keeps data on this device);
-  - **Delete account** (server data only; typed confirmation).
-- **Locked state:** "Enter your password to unlock sync on this device".
-- Text follows the app's style: short month names, sentence case. Destructive actions confirm. Undo isn't possible for server deletes, so confirm instead.
+## Clock
+- Server returns `now` (ms) in every sync response; the client keeps `offset = serverNow - Date.now()` (smoothed). Edit times are `t = max(Date.now() + offset, previous t of that record + 1)`.
+
+## Change tracking (client)
+- Per synced profile a **shadow** in localStorage `dailyTracker:sync:shadow:<pid>`: `{ [k]: [hash, t, dev] }` (hash = the existing `hashStr` of the canonical JSON of `v`).
+- After each save that affects a synced profile (debounced ~1.5 s, plus on `visibilitychange`→visible, `online`, app start, and every 60 s while visible), flatten the profile, diff with its shadow: new/changed → new record with fresh `t`; key in shadow but no longer present → tombstone. Queue them in an **outbox** (`dailyTracker:sync:outbox`, persisted, survives reloads/offline) and update the shadow.
+- An unreadable profile (`readProfileState` → null / load failure) is skipped – never produces tombstones.
+- Pull before push on each cycle. Remote record newer than the shadow entry → apply into the profile (active profile through a new store helper that saves + emits `{ remote: true }`; others through `mutateProfileData`), update shadow. Remote record older → ignore (our outbox copy will win on push).
+- Only one tab syncs at a time (`navigator.locks.request('dailyTracker-sync', …)`, fall back to a localStorage lease). Other tabs pick up changes through the existing storage events.
+- Remote changes must not break an open Undo: an Undo after a remote change applies to the current state (re-find items by id), never restores a whole old state snapshot over newer remote data. Audit `actions.js` Undo closures for whole-state snapshots.
+- Reminders: after remote changes are applied, the existing reminder/push reschedule path runs (the store emit already triggers it – verify).
+
+## Import / export while signed in
+- Export is unchanged (local data).
+- Import confirm adds: "Profiles in your account stay in the account." Imported profiles whose id matches a synced profile update it (normal edits → sync). Synced profiles missing from the import are not deleted from the account; they are downloaded again. Other imported profiles are device-only.
+
+## Server API (Worker, JSON, CORS as today)
+All `/api/account/*`, `/api/sync/*`, `/api/passkey/*` responses include `now`. Errors: `{ error }` with 400/401/403/404/409/413/429.
+Session auth: `Authorization: Bearer <session token>` (32 random bytes b64url; server stores SHA-256 only). Sessions last 400 days, `last_seen` updated at most hourly.
+
+| Method path | Body → response |
+|---|---|
+| `POST /api/account/create` (header `X-Register-Key`) | `{ username, authKey, wrappedPw, wrappedRec, recAuth, deviceName }` → `{ accountId, token }`. 409 if the username is taken. |
+| `POST /api/account/login` | `{ username, authKey, deviceName }` → `{ accountId, token, wrappedPw }`. Unknown user and wrong key give the same 401 "Wrong username or password". |
+| `POST /api/account/recover` | `{ username, recAuth, newAuthKey, newWrappedPw, deviceName }` – but the client needs `wrappedRec` first, so this is two steps: `POST /api/account/recover/start { username, recAuth }` → `{ wrappedRec }` (401 if wrong); then `POST /api/account/recover/finish { username, recAuth, newAuthKey, newWrappedPw, deviceName }` → `{ accountId, token }`; finishing ends every other session. |
+| `POST /api/account/password` (auth) | `{ authKey, newAuthKey, newWrappedPw }` → `{ ok }` |
+| `POST /api/account/logout` (auth) | → `{ ok }` (ends this session) |
+| `DELETE /api/account` (auth) | `{ authKey }` → `{ ok }`: deletes account, sessions, passkeys, records |
+| `GET /api/account` (auth) | → `{ accountId, username, passkeys: [{ id, name, createdAt, prf }], sessions: [{ id, deviceName, lastSeen, current }] }` |
+| `DELETE /api/account/session/<id>` (auth) | sign another device out |
+| `GET /api/sync/pull?since=<seq>&limit=<n≤1000>` (auth) | → `{ records: [{ rid, seq, t, dev, blob }], seq, more }` ordered by seq |
+| `POST /api/sync/push` (auth) | `{ records: [{ rid, t, dev, blob }] }` (≤ 500, blob ≤ 256 KB b64, body ≤ 4 MB) → `{ seq, accepted: n, stale: [rid…] }`. Server upserts each record only if `(t, dev)` is greater than the stored one; every accepted write gets the account's next `seq`. |
+| `POST /api/passkey/register/options` (auth) | → `{ challengeId, options }` (PublicKeyCredentialCreationOptions JSON: rp `{ id: <origin hostname>, name: "Daily Tracker" }`, user id = account id bytes, `residentKey: required`, `userVerification: required`, alg -7 and -257, `attestation: none`, excludeCredentials) |
+| `POST /api/passkey/register` (auth) | `{ challengeId, credential (JSON-serialised, b64url fields), name, wrappedPrf? }` → `{ ok, id }` |
+| `POST /api/passkey/login/options` | → `{ challengeId, options }` (empty allowCredentials, `userVerification: required`) |
+| `POST /api/passkey/login` | `{ challengeId, credential, deviceName }` → `{ accountId, username, token, wrappedPrf? }` |
+| `POST /api/passkey/prf` (auth) | `{ id, wrappedPrf }` – attach a PRF wrap to an existing passkey |
+| `DELETE /api/passkey/<id>` (auth) | remove a passkey |
+
+Server-side rules:
+- Stored password verifier: `PBKDF2-SHA-256(authKey, random 16-byte salt, 100 000 iterations)` (Workers' max), compared in constant time. Same for `recAuth`.
+- Rate limits (existing `rate` table): login/recover failures 10/hour per username and 30/hour per IP; create 5/hour per IP; passkey login 30/hour per IP; push 600/hour and pull 1200/hour per account.
+- Limits: 200 000 records and 200 MB of blobs per account (413 beyond); `MAX_ACCOUNTS` var (default 10).
+- Challenges: single-use, 5-minute expiry, bound to their purpose (and account for registration).
+- WebAuthn verification: `clientDataJSON.type`, `challenge`, `origin` ∈ ALLOWED_ORIGINS; `rpIdHash` = SHA-256(origin hostname); UP and UV flags set; signature over `authData || SHA-256(clientDataJSON)` with the stored COSE key (ES256: convert DER → raw r||s; RS256: RSASSA-PKCS1-v1_5 SHA-256); sign count: reject a non-zero count that doesn't increase. Minimal CBOR decoder for the attestation object and COSE key. No attestation verification (`none`).
+- Never log tokens, authKeys, blobs.
+- New D1 tables go in `schema.sql` (`CREATE TABLE IF NOT EXISTS`, safe to re-run on the live DB) – no change to existing tables. Purge expired challenges in the cron's purge.
+
+## Client flows (Settings › Account, a new section at the top of Settings)
+- Signed out: "Create account" and "Sign in" (password), "Sign in with passkey", "Forgot password? Use recovery key".
+- Create: username, password (≥ 10 chars, confirm), register key (prefilled from the reminders config if set) → shows the **recovery key** with Copy and "I've saved it" (required checkbox) → profile picker → offer "Add a passkey".
+- Sign in on a device: → downloads account profiles (progress) → profile picker for this device's profiles (rename step for name clashes).
+- Passkey sign-in without PRF on a device that has no key yet → ask for the password (or recovery key) once to unlock.
+- Signed in: username, sync status ("Synced just now" / "Offline – changes will sync" / error), each profile with "Synced" or "On this device only" + "Sync to account", passkeys (add/remove), signed-in devices (sign out other), change password, sign out, delete account.
+- All text uses short month names. Only show warnings when something won't sync.
+
+## Testing
+- `server/test/account.test.mjs`: Miniflare end-to-end – create/login/recover/password/logout/delete, rate limits, LWW push/pull with seq, limits, CORS, and WebAuthn register/login with software ES256 and RS256 authenticators (including PRF wrap passthrough, replayed challenge, wrong origin, wrong rpIdHash, missing UV, bad signature, sign-count regression).
+- `tests/t39.js`: two browser contexts against the real Worker in Miniflare (like t17): sign-up, recovery key shown, profile picker, sync of tasks/habits/logs/journal/settings both ways, offline edit then reconnect, latest-wins conflict, tombstones, profile rename clash, device-only badge before sign-in, sign out keep/remove, deleting a synced profile, import while signed in, unreadable profile never tombstones, newer `sv` pauses sync.
+- Passkeys in the browser: Playwright CDP virtual authenticator (`WebAuthn.addVirtualAuthenticator`, ctap2, internal, resident key, UV) – test with and without PRF support.
