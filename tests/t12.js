@@ -13,7 +13,9 @@ const meta = (id, name) => ({ id, name, avatar: { type: 'emoji', emoji: '', colo
 
 /** Seed localStorage once per context (keys → strings), with the "settings moved" tip already seen. */
 function seedScript(entries) {
-  return `(() => { if (sessionStorage.getItem('seeded')) return; ${Object.entries(entries).map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join('')}
+  // Only on app pages: a helper tab on the same origin (e.g. icon.svg in test 2) must not seed again –
+  // its write of the legacy key raced with the old-tab write (the cause of the "storage event" flake).
+  return `(() => { if (sessionStorage.getItem('seeded') || !(location.pathname.endsWith('/') || location.pathname.endsWith('index.html'))) return; ${Object.entries(entries).map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join('')}
     if (!localStorage.getItem('dailyTracker:tips')) localStorage.setItem('dailyTracker:tips', '{"settingsMoved":true}'); sessionStorage.setItem('seeded', '1'); })();`;
 }
 async function context(browser, { seed = {}, width = 390, init = null } = {}) {

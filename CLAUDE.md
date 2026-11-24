@@ -28,7 +28,7 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
 ## Testing
 - `tests/run-all.sh` runs every suite (servers on 127.0.0.1:8080 root and :8081 sub-path are started automatically). `tests/run-all.sh t21 t25` runs specific ones. Chromium + `require('playwright')` are preinstalled in cloud sessions; don't reinstall.
 - t17 (push client) needs `cd server && npm ci` first. Server tests: `cd server && npm test`.
-- Known flake: t12's "storage event → sheet appears" occasionally timed out under full-suite load; likely caused by http.servers left running by older `run-all.sh` versions (fixed: the servers are now direct children the trap kills). If it recurs, check `ss -ltnp | grep 808` / `pgrep -af http.server`, kill leftovers, re-run it alone.
+- t12's old "storage event → sheet appears" flake: leftover http.servers from older `run-all.sh` versions were suspected (fixed: the servers are now direct children the trap kills), but the real cause was t12's seed script re-seeding the legacy key in a helper tab (fixed in 1.15.0). If a suite flakes, check `pgrep -af http.server` for leftovers first.
 - Add a new `tests/tNN.js` for each feature; update expectations in older suites when behaviour changes on purpose.
 
 ## Release workflow (tiered – keep it token-efficient)
