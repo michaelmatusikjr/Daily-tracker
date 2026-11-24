@@ -430,6 +430,8 @@ async function runCycle(my, token, keys, dev) {
   const local = new Set(getProfiles().map((p) => p.id));
   const missing = (s.synced || []).filter((id) => !local.has(id) && !(s.deletes || {})[id]);
   if (missing.length) s = patchState((x) => ({ fresh: { ...(x.fresh || {}), ...Object.fromEntries(missing.map((id) => [id, 1])) }, full: true }));
+  // Recovered profiles (placeholder name/avatar) get the account's real meta: pull everything once.
+  if (getProfiles().some((p) => p.recovered && (s.synced || []).includes(p.id))) s = patchState({ full: true });
   // A profile that was unreadable while remote changes arrived and is readable again: what's on this
   // device now is unknown (not what the shadow describes), so never diff it against the old shadow
   // (that could tombstone the account's data). Merge instead: empty shadow, full pull, remote wins
@@ -581,11 +583,15 @@ function nextT(e) {
 function diffProfile(pid, meta, data, sh, dev) {
   const pre = flatten(pid, meta, data);
   let changedHere = false;
+  // A recovered profile (index rebuilt with placeholder name/avatar) never produces a meta record
+  // while the account's copy is known (its shadow): the account's name/avatar must not be overwritten.
+  const mk = `${pid}/meta`, skipMeta = !!meta.recovered && !!sh[mk];
   for (const [k, v] of pre) {
+    if (skipMeta && k === mk) continue;
     const h = hashOf(v), e = sh[k];
     if (!e || e[0] !== h) { sh[k] = [h, nextT(e), dev, 1]; changedHere = true; }
   }
-  for (const k of Object.keys(sh)) if (!pre.has(k) && sh[k][0] !== null) { sh[k] = [null, nextT(sh[k]), dev, 1]; changedHere = true; }
+  for (const k of Object.keys(sh)) if (!(skipMeta && k === mk) && !pre.has(k) && sh[k][0] !== null) { sh[k] = [null, nextT(sh[k]), dev, 1]; changedHere = true; }
   return changedHere;
 }
 /** Diff every readable synced profile (never an unreadable or to-be-downloaded one). Returns the pids changed. */
@@ -828,7 +834,8 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     }
     // Edits made while the pull was in flight are recorded before anything remote is applied.
     const changedHere = diffProfile(pid, prof, data, sh, dev);
-    const win = recs.filter((r) => { const e = sh[r.k]; return !e || newer(r.t, r.dev, e[1], e[2]); });
+    // A recovered profile takes the account's meta even if it isn't newer than the shadow.
+    const win = recs.filter((r) => { const e = sh[r.k]; return !e || newer(r.t, r.dev, e[1], e[2]) || (prof.recovered && r.p.kind === 'meta' && r.v); });
     if (changedHere) dirty.add(pid);
     if (!win.length) continue;
     let next = data;

@@ -95,6 +95,27 @@ const errs = [];
     await a.waitForTimeout(700);
     const f2 = await a.evaluate(() => document.activeElement?.closest('.task')?.dataset.id || null);
     assert(f2 === null, `no matching control: focus is not restored onto another one (${f2})`);
+    // Background render while `main` itself has focus (after every tab change): still no scrollTo.
+    await a.evaluate(() => { location.hash = '#habits'; }); await a.waitForTimeout(300);
+    await a.evaluate(() => { location.hash = '#today'; }); await a.waitForTimeout(400);
+    assert(await a.evaluate(() => document.activeElement?.id) === 'main', 'main has focus after a tab change');
+    await a.evaluate(() => { window.scrollTo(0, 300); }); await a.waitForTimeout(200);
+    await a.evaluate(() => { window.__scrolls = 0; });
+    await b.evaluate(() => { const o = JSON.parse(localStorage.getItem('dailyTracker:data:p')); o.tasks = o.tasks.filter((t) => t.id !== 't7'); localStorage.setItem('dailyTracker:data:p', JSON.stringify(o)); });
+    await a.waitForTimeout(700);
+    assert(await a.locator('.task[data-id="t7"]').count() === 0 && await a.evaluate(() => window.__scrolls) === 0, 'a background render with main focused never calls scrollTo');
+    // A browser-caused scroll right after a user-caused render is undone (restore is not cancelled by scroll events).
+    await a.evaluate(() => { window.scrollTo(0, 300); }); await a.waitForTimeout(200);
+    await a.evaluate(() => { window.__rnd = 0; });
+    const restored = await a.evaluate(async () => {
+      const box = document.querySelector('#main button, #main a');
+      box.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      window.dispatchEvent(new HashChangeEvent('hashchange')); // same-route render shortly after input
+      window.scrollTo(0, 0); // what an iOS focus scroll would do
+      await new Promise((r) => setTimeout(r, 300));
+      return window.scrollY;
+    });
+    assert(Math.abs(restored - 300) <= 2, `a scroll right after a user render is restored (${restored})`);
     await c2.close();
   }
   assert(!errs.length, 'no page errors ' + errs.join(' | '));

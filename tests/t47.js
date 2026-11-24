@@ -69,6 +69,51 @@ const hasPhoto = (p, id) => p.evaluate(async (id) => !!(await (await import('./j
     assert(ix.profiles.length === 1 && ix.profiles[0].placeholder === true && !(await p.evaluate(() => Object.keys(localStorage).some((k) => k.includes(':backup-')))), 'C1 fresh install: one placeholder, no backups');
     await ctx.close();
   }
+  // ===== D: recovered entries carry recovered:true / updatedAt -1; names come from the backed-up text =====
+  {
+    const good = '{"version":1,"activeId":"p2","profiles":[{"id":"p1","name":"Ava","avatar":{"type":"emoji","emoji":"x","color":"#6366f1"},"updatedAt":5},{"id":"p2","name":"B\\u00e9n","avatar":{"type":"emoji","emoji":"y","color":"#6366f1"},"updatedAt":6},{"id":"p3","name":"Cy","avat';
+    const { ctx, p } = await open({ 'dailyTracker:profiles': good, 'dailyTracker:data:p1': JSON.stringify(data()), 'dailyTracker:data:p2': JSON.stringify(data()), 'dailyTracker:data:p3': JSON.stringify(data()) });
+    const ix = JSON.parse(await ls(p, 'dailyTracker:profiles'));
+    assert(ix.profiles.every((x) => x.recovered === true && x.updatedAt === -1), 'D1 recovered entries are marked recovered with updatedAt -1');
+    assert(ix.activeId === 'p2', 'D2 the active profile is read from the backed-up text (' + ix.activeId + ')');
+    assert(ix.profiles.map((x) => x.name).join() === 'Ava,Bén,Cy', 'D3 names are parsed from the backed-up text (' + ix.profiles.map((x) => x.name) + ')');
+    await p.evaluate(async () => (await import('./js/store.js')).updateProfile('p1', { name: 'Ava2' }));
+    const ix2 = JSON.parse(await ls(p, 'dailyTracker:profiles')).profiles;
+    assert(!ix2[0].recovered && ix2[0].updatedAt > 0 && ix2[1].recovered === true, 'D4 an edit clears recovered (only that profile)');
+    await ctx.close();
+  }
+  // ===== E: a second tab never overwrites good names / the active profile with recovered ones =====
+  {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
+    await ctx.addInitScript(() => {
+      if (localStorage.getItem('dailyTracker:seeded')) return;
+      localStorage.setItem('dailyTracker:seeded', '1');
+      localStorage.setItem('dailyTracker:profiles', JSON.stringify({ version: 1, activeId: 'p2', profiles: [{ id: 'p1', name: 'Ava', avatar: { type: 'emoji', emoji: 'x', color: '#6366f1' } }, { id: 'p2', name: 'Ben', avatar: { type: 'emoji', emoji: 'y', color: '#6366f1' } }] }));
+      localStorage.setItem('dailyTracker:data:p1', JSON.stringify({ version: 6, settings: { onboarded: true }, tasks: [], habits: [], logs: {}, journal: {}, exercises: [], workouts: [] }));
+      localStorage.setItem('dailyTracker:data:p2', localStorage.getItem('dailyTracker:data:p1'));
+    });
+    const a = await ctx.newPage(); a.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
+    await a.goto(APP); await a.waitForTimeout(700);
+    await a.evaluate(() => localStorage.setItem('dailyTracker:profiles', '{"broken'));
+    const b = await ctx.newPage(); b.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
+    await b.goto(APP); await b.waitForTimeout(700);
+    const names = (pg) => pg.evaluate(async () => (await import('./js/store.js')).getProfiles().map((x) => x.id + ':' + x.name).join());
+    // A saves the index (a rename): its real names win over B's recovered ones, and so on in B.
+    await a.evaluate(async () => (await import('./js/store.js')).updateProfile('p1', { name: 'Avvy' }));
+    await b.waitForTimeout(400);
+    assert(await names(a) === 'p1:Avvy,p2:Ben', 'E1 tab A keeps its good names (' + await names(a) + ')');
+    const stored = JSON.parse(await a.evaluate(() => localStorage.getItem('dailyTracker:profiles')));
+    assert(stored.profiles.map((x) => x.name).join() === 'Avvy,Ben', 'E2 the stored index has the good names (' + stored.profiles.map((x) => x.name) + ')');
+    assert(await names(b) === 'p1:Avvy,p2:Ben', 'E3 tab B takes the real names from the storage event (' + await names(b) + ')');
+    await ctx.close();
+  }
+  // ===== F: every recovered id tombstoned: the normal fresh path runs (never zero profiles) =====
+  {
+    const { ctx, p } = await open({ 'dailyTracker:profiles': '{"version":1,"profiles":[],"deleted":["p1"]}', 'dailyTracker:data:p1': JSON.stringify(data()) });
+    const ix = JSON.parse(await ls(p, 'dailyTracker:profiles'));
+    assert(ix.profiles.length === 1 && !!ix.activeId, 'F1 not zero profiles: a fresh profile is created (' + ix.profiles.length + ')');
+    await ctx.close();
+  }
   assert(!errs.length, 'no page errors ' + errs.join(' | '));
   await browser.close();
 })().catch((e) => { console.log('FAIL: ' + e.stack); process.exitCode = 1; });

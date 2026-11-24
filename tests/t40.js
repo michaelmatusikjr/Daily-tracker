@@ -217,6 +217,34 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   const shared = await E.p.evaluate(async () => (await (await import('./js/attachments.js')).getFile('fS1'))?.profileId);
   assert(shared === 'px', 'P3 deleting a profile’s photos keeps files another profile still refers to');
 
+  // ===== A recovered synced profile never uploads its placeholder name/avatar; it takes the account's =====
+  const RA = await openApp(browser, { profiles: [['pr', 'Real Name', data({ tasks: [task('rt1', 'Real task')] })]] });
+  await S(RA.p, `await S.createAccount({ username: 'recfam', password: '${PW}', registerKey: '${RKEY}' }); await S.syncProfiles(['pr']); await S.syncNow();`);
+  await RA.p.evaluate(async () => (await import('./js/store.js')).updateProfile('pr', { avatar: { type: 'emoji', emoji: '🐶', color: '#6366f1' } }));
+  await syncNow(RA.p);
+  const RQ = await openApp(browser, { profiles: [['pq', 'Q', data()]] });
+  await S(RQ.p, `await S.signIn({ username: 'recfam', password: '${PW}' });`);
+  await syncNow(RQ.p);
+  assert((await profiles(RQ.p)).some((x) => x.id === 'pr' && x.name === 'Real Name'), 'V0 the second device has the profile');
+  await RA.p.evaluate(() => localStorage.setItem('dailyTracker:profiles', '{"version":1,"profiles":[{"id":"pr","na'));
+  await RA.p.reload(); await RA.p.waitForTimeout(800);
+  const rp0 = (await profiles(RA.p)).find((x) => x.id === 'pr');
+  assert(rp0.name === 'Real Name', 'V1 recovered profile is named from the sync state (never a placeholder): ' + rp0.name);
+  await syncNow(RA.p); await syncNow(RA.p);
+  await waitFor(async () => !(await profiles(RA.p)).find((x) => x.id === 'pr').recovered, 8000);
+  const rp1 = (await profiles(RA.p)).find((x) => x.id === 'pr');
+  assert(!rp1.recovered && rp1.name === 'Real Name' && rp1.avatar.emoji === '🐶', 'V2 after the pull this device shows the real name and avatar, recovered cleared: ' + JSON.stringify(rp1));
+  await syncNow(RQ.p);
+  const rq = (await profiles(RQ.p)).find((x) => x.id === 'pr');
+  assert(rq.name === 'Real Name' && rq.avatar.emoji === '🐶', 'V3 the other device keeps the real name and avatar: ' + JSON.stringify(rq));
+  // Recovered while the account has no meta change pending: no meta record is produced (shadow stays unchanged).
+  await RA.p.evaluate(() => localStorage.setItem('dailyTracker:profiles', '{"version":1,"profiles":[{"id":"pr","na'));
+  await RA.p.reload(); await RA.p.waitForTimeout(800);
+  await syncNow(RA.p);
+  await waitFor(async () => !(await profiles(RA.p)).find((x) => x.id === 'pr').recovered, 8000);
+  await syncNow(RQ.p);
+  assert((await profiles(RQ.p)).find((x) => x.id === 'pr').name === 'Real Name', 'V4 a second recovery doesn’t rename the profile elsewhere');
+
   console.log(errs.length ? 'errors: ' + errs.join('\n') : 'no page errors');
   await browser.close();
   await mf.dispose();

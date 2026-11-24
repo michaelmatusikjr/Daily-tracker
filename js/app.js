@@ -131,13 +131,18 @@ function trackHeaderHeight(head) {
   if (head && 'ResizeObserver' in window) { headObserver = new ResizeObserver(set); headObserver.observe(head); }
 }
 
-// Pending post-render scroll restore: cancelled by any scroll we didn't cause, or user input.
+// Pending post-render scroll restore: cancelled by user input or an explicit scroll (deep link), but
+// not by generic scroll events (iOS focus scroll, scroll anchoring are what the restore undoes).
 let restoreGen = 0;
 let ownY = null;
 function ownScrollTo(y) { ownY = y; window.scrollTo(0, y); }
 const cancelRestore = () => { restoreGen++; };
-window.addEventListener('scroll', () => { if (ownY !== null && Math.abs(window.scrollY - ownY) <= 1) return; cancelRestore(); }, { passive: true });
-for (const ev of ['touchmove', 'wheel', 'keydown', 'pointerdown']) window.addEventListener(ev, cancelRestore, { passive: true, capture: true });
+for (const ev of ['touchstart', 'touchmove', 'wheel', 'keydown', 'pointerdown']) window.addEventListener(ev, cancelRestore, { passive: true, capture: true });
+// A render counts as user-caused only shortly after real input inside main (focus is no signal: iOS
+// doesn't focus tapped buttons, and main itself has focus after every tab change).
+let lastMainInput = -Infinity;
+const markMainInput = (e) => { if (e.target instanceof Node && main.contains(e.target)) lastMainInput = performance.now(); };
+for (const ev of ['pointerup', 'click', 'change', 'input', 'keydown']) window.addEventListener(ev, markMainInput, { passive: true, capture: true });
 
 /** Identity of a focused control: tag + role + aria-label (or text) and its ordinal among identical ones. */
 function focusIdentity(el, sel) {
@@ -168,9 +173,9 @@ function render() {
   // lands once the tapped button is replaced). Background renders (tick, sync, storage) never scroll.
   const FOCUSABLE = 'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])';
   const ae = document.activeElement;
-  const userRender = !changedRoute && ae && ae !== document.body && main.contains(ae);
+  const userRender = !changedRoute && performance.now() - lastMainInput < 1000;
   const scrollY = window.scrollY;
-  const fid = !fk && userRender ? focusIdentity(ae, FOCUSABLE) : null;
+  const fid = !fk && !changedRoute && ae && ae !== document.body && ae !== main && main.contains(ae) ? focusIdentity(ae, FOCUSABLE) : null;
   let view;
   switch (name) {
     case 'habits': view = renderHabits(); break;
@@ -223,7 +228,7 @@ function render() {
       // Again after layout settles (fonts/images, iOS's own focus scroll) – unless the user scrolled
       // or something else (a deep link, a "Show" button) scrolled in the meantime.
       const gen = ++restoreGen;
-      requestAnimationFrame(() => { if (gen === restoreGen && parseRoute().name === name && Math.abs(window.scrollY - scrollY) > 1) ownScrollTo(scrollY); });
+      requestAnimationFrame(() => { if (gen === restoreGen && parseRoute().name === name && Math.abs(window.scrollY - scrollY) > 1) ownScrollTo(scrollY); ownY = null; });
     }
   }
   lastRoute = routeKey;

@@ -329,6 +329,7 @@ function normProfileMeta(p, i) {
     updatedAt: Number.isFinite(p.updatedAt) ? p.updatedAt : 0,
     ...(p.introPending ? { introPending: true } : {}),
     ...(p.placeholder === true ? { placeholder: true } : {}),
+    ...(p.recovered === true ? { recovered: true } : {}),
   };
 }
 
@@ -524,17 +525,38 @@ export function storedDataProfileIds() {
 function recoverIndex() {
   const ids = storedDataProfileIds().filter((id) => /^[A-Za-z0-9_-]{1,40}$/.test(id)).sort();
   if (!ids.length) return false;
+  let raw = null;
   try {
-    const raw = lsGet(PROFILES_KEY);
+    raw = lsGet(PROFILES_KEY);
     if (raw) localStorage.setItem(`${PROFILES_KEY}:backup-${Date.now()}`, raw);
   } catch { /* storage full: the recovery below still matters more */ }
+  // Names the account knows (sync state survives) or that can still be read out of the broken text.
+  let known = {};
+  try { const k = JSON.parse(localStorage.getItem('dailyTracker:sync') || 'null')?.known; if (isObj(k)) known = k; } catch { /* ignore */ }
+  const parsedName = (id) => {
+    if (!raw) return null;
+    try {
+      const m = new RegExp(`"id"\\s*:\\s*"${id.replace(/[^A-Za-z0-9_-]/g, '')}"\\s*,\\s*"name"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*")`).exec(raw);
+      return m ? str(JSON.parse(m[1]), 40).trim() || null : null;
+    } catch { return null; }
+  };
+  let active = null;
+  try { const m = /"activeId"\s*:\s*"([A-Za-z0-9_-]{1,40})"/.exec(raw || ''); active = m && ids.includes(m[1]) ? m[1] : null; } catch { /* ignore */ }
+  // updatedAt -1 and recovered: any real copy of the profile (another tab, the account) wins, and the
+  // placeholder meta is never uploaded (see sync.js diffProfile). An edit clears the mark.
   index = {
-    activeId: ids[0], deleted: [],
-    profiles: ids.map((id, i) => ({ id, name: `Recovered profile ${i + 1}`, avatar: { type: 'emoji', emoji: '', color: PROFILE_COLORS[i % PROFILE_COLORS.length] }, updatedAt: 0 })),
+    activeId: active || ids[0], deleted: [],
+    profiles: ids.map((id, i) => ({
+      id,
+      name: (typeof known[id] === 'string' && str(known[id], 40).trim()) || parsedName(id) || `Recovered profile ${i + 1}`,
+      avatar: { type: 'emoji', emoji: '', color: PROFILE_COLORS[i % PROFILE_COLORS.length] },
+      updatedAt: -1, recovered: true,
+    })),
     migratedLegacy: null,
   };
   saveIndex();
-  return true;
+  // Every recovered id may have been tombstoned by another tab: then fall back to the normal path.
+  return index.profiles.length > 0;
 }
 
 /** Read (or create) the profile index, moving pre-1.3 single-profile data into the first profile. */
@@ -694,9 +716,11 @@ export function updateProfile(id, patch) {
   const next = normProfileMeta({ ...p, ...patch, id }, index.profiles.indexOf(p));
   delete next.introPending;
   delete next.placeholder;
+  delete next.recovered;
   Object.assign(p, next, { updatedAt: Date.now() });
   if (!patch.introPending) delete p.introPending;
   delete p.placeholder;
+  delete p.recovered; // an edit makes it a real profile: its name/avatar sync normally now
   if (!saveIndex()) { Object.keys(p).forEach((k) => delete p[k]); Object.assign(p, prev); return false; }
   emit({ profileChanged: true });
   return true;
@@ -855,10 +879,13 @@ export function updateProfileRemote(id, { name, avatar }) {
   const p = index.profiles.find((x) => x.id === id);
   if (!p) return false;
   const next = normProfileMeta({ ...p, name, avatar, id }, index.profiles.indexOf(p));
-  if (next.name === p.name && JSON.stringify(next.avatar) === JSON.stringify(p.avatar)) return true;
+  // A recovered profile (placeholder name/avatar, see recoverIndex) takes the account's meta even
+  // when it looks equal or older, and stops being "recovered".
+  if (!p.recovered && next.name === p.name && JSON.stringify(next.avatar) === JSON.stringify(p.avatar)) return true;
   const prev = { ...p };
   Object.assign(p, { name: next.name, avatar: next.avatar, updatedAt: Date.now() });
-  if (!saveIndex()) { Object.assign(p, prev); return false; }
+  delete p.recovered;
+  if (!saveIndex()) { Object.keys(p).forEach((k) => delete p[k]); Object.assign(p, prev); return false; }
   emit({ profileChanged: true, remote: true });
   return true;
 }
