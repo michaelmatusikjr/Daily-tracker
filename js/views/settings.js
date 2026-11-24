@@ -410,6 +410,9 @@ async function resetAll() {
   const fresh = defaultState();
   fresh.settings = { ...getState().settings, onboarded: true, notifications: false, workoutHabit: { habitId: null, filter: 'any' } };
   const pid = getActiveProfile().id;
+  // A copy kept from an account (signed out): the reset is local only, so it must never be resumed
+  // against its preserved shadow (that would tombstone everything in the account).
+  if (!isSynced(pid)) await forgetKept([pid]).catch(() => {});
   replaceState(fresh);
   deleteProfileFiles(pid); // its photos go too
   ctx.setDate(todayKey());

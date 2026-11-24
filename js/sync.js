@@ -42,7 +42,9 @@ export const DEVICE_ONLY_SETTINGS = new Set(['notifications', 'onboarded']);
 //   at sign-out, each with its preserved shadow in IndexedDB under "kept:<pid>"; kept across sign-outs),
 //   keptDeletes: {pid: {a: accountId, t}} (profile deletes still to push when signing in to that account
 //   again), refusedDeletes: {pid: 1} (profile deletes the server refused twice: still pending),
-//   cantSync: {tooLarge, refused, deletes} (counts of what can't be uploaded, for Settings › Account) }
+//   cantSync: {tooLarge, refused, deletes} (counts of what can't be uploaded, for Settings › Account),
+//   resumed: {pid: 1} (kept copies resumed at sign-in whose first full pull hasn't been applied yet: an
+//   account delete of one leaves it here as device-only instead of deleting it) }
 function readState() { try { const s = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); return s && typeof s === 'object' ? s : {}; } catch { return {}; } }
 function writeState(s) { try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); return true; } catch { return false; } }
 /** Read-modify-write (another tab may have written in between). */
@@ -514,6 +516,8 @@ async function resumeKept(my, token) {
     return {
       kept: k, keptDeletes: d, full: true,
       synced: [...new Set([...(x.synced || []), ...add])],
+      // Until a full pull has been applied: a delete from the account doesn't delete these copies here.
+      resumed: { ...(x.resumed || {}), ...Object.fromEntries(add.map((pid) => [pid, 1])) },
       merge: { ...(x.merge || {}), ...merge }, waitReadable: { ...(x.waitReadable || {}), ...wait },
       deletes: { ...dels, ...(x.deletes || {}) },
     };
@@ -691,6 +695,7 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
   const waitReadable = { ...(s.waitReadable || {}) };
   const merge = { ...(s.merge || {}) };
   const kept = { ...(s.kept || {}) };
+  const resumed = { ...(s.resumed || {}) };
   const known = full ? {} : { ...(s.known || {}) };
   for (const r of incoming.values()) if (r.p.kind === 'meta') known[r.p.pid] = r.v ? r.v.name : null;
   const dirty = new Set(), dropped = new Set(), keptGone = new Set();
@@ -780,6 +785,13 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     shadows.set(pid, sh);
     const metaRec = recs.find((r) => r.p.kind === 'meta');
     if (metaRec && metaRec.v === null && (!sh[metaRec.k] || newer(metaRec.t, metaRec.dev, sh[metaRec.k][1], sh[metaRec.k][2]))) {
+      if (resumed[pid]) {
+        // A copy the user chose to keep at sign-out, deleted from the account (on another device) while
+        // signed out: it may hold edits made since, so it stays here as a device-only profile (with its
+        // photos) and stops syncing. Synced again later, it gets a new id (the account deleted this one).
+        forget(pid);
+        continue;
+      }
       // Deleted in the account (on another device): delete it here too, with its photos. Unreadable
       // data keeps its raw backup (it can't be known what it holds).
       const unreadable = !readProfileForSync(pid);
@@ -843,7 +855,9 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
 
   for (const id of Object.keys(merge)) if (!synced.has(id)) delete merge[id];
   for (const id of Object.keys(kept)) if (!localIds().has(id) || synced.has(id)) { delete kept[id]; keptGone.add(id); }
-  patchState({ synced: [...synced], fresh, waitReadable, merge, kept, known });
+  // Resumed copies are ordinary synced profiles once a full pull was applied to them.
+  for (const id of Object.keys(resumed)) if (!synced.has(id) || (full && cursorOk)) delete resumed[id];
+  patchState({ synced: [...synced], fresh, waitReadable, merge, kept, known, resumed });
   return { needFull, cursorOk, dirty, dropped, keptGone };
 }
 
@@ -1026,9 +1040,10 @@ export async function syncProfiles(ids) {
 }
 
 /**
- * These device profiles' data was replaced wholesale (an import while signed out): a copy kept from an
- * account no longer matches its preserved shadow, so it is never resumed (on signing in again it stays
- * here under a new id beside the account's copy – nothing in the account is reverted).
+ * These device profiles' data was replaced or cleared wholesale (an import, "Reset data" or "Start
+ * fresh" while signed out, or the profile was deleted): a copy kept from an account no longer matches
+ * its preserved shadow, so it is never resumed (on signing in again it stays here under a new id beside
+ * the account's copy – nothing in the account is reverted or tombstoned).
  */
 export async function forgetKept(ids) {
   const s = readState();
@@ -1131,7 +1146,7 @@ function startSession(r, username, { created = false } = {}) {
     serverUrl: serverUrl(), expired: false, locked: false, error: null, signingOut: false, paused: null,
     // The same account again (e.g. after the session ended): carry on where it stopped.
     // A brand-new account is empty: nothing to download before profiles can be added.
-    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null }),
+    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null, resumed: {} }),
   });
   epoch++;
   changed();

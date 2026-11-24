@@ -27,7 +27,7 @@ import { openHabitView } from './habitSheet.js';
 import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
 import { initNoZoom } from './noZoom.js';
-import { initSync, onSyncChange, profileReset, syncState } from './sync.js';
+import { initSync, onSyncChange, profileReset, syncState, forgetKept } from './sync.js';
 import { refreshWeather } from './weather.js';
 
 const TABS = [
@@ -203,7 +203,11 @@ function loadFailureCard(failure) {
     if (!(await confirmDialog('Start fresh?', 'The unreadable data stays stored as a backup on this device, but the app will start empty and save new changes.', { ok: 'Start fresh', danger: true }))) return;
     // A synced profile is downloaded again from the account instead of uploading the empty data
     // (marked before the reset is saved, so a sync in another window never sees it as edits).
-    const refetch = profileReset(getActiveProfile().id);
+    const pid = getActiveProfile().id;
+    const refetch = profileReset(pid);
+    // Not synced (e.g. a copy kept from an account while signed out): the empty start must never be
+    // resumed against the kept shadow (that would tombstone the account's copy). Forgotten first.
+    if (!refetch) await forgetKept([pid]).catch(() => {});
     resolveLoadFailure();
     if (refetch) toast('Started fresh. Your old data is kept as a backup; the account’s copy is being downloaded.', { force: true });
     else toast('Started fresh. Your old data is still kept as a backup.');

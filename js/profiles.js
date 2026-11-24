@@ -7,7 +7,7 @@ import { ctx } from './ctx.js';
 import { afterDataRemoved } from './push.js';
 import { deleteProfileFiles } from './attachments.js';
 import { pruneWeatherCache } from './weather.js';
-import { isDeviceOnly, isSynced, canSyncProfiles, hasAccount, accountNameClash, syncProfiles, profileDeleted } from './sync.js';
+import { isDeviceOnly, isSynced, canSyncProfiles, hasAccount, accountNameClash, syncProfiles, profileDeleted, forgetKept } from './sync.js';
 import { openAccountSheet } from './account.js';
 
 const AVATAR_EMOJIS = ['', '😀', '😎', '🦊', '🐼', '🐱', '🐶', '🦁', '🐸', '🌻', '⭐', '🚀', '⚽', '🎧', '🌈', '🍀'];
@@ -114,6 +114,7 @@ async function confirmDeleteProfile(p) {
   if (!(await confirmDialog('Are you absolutely sure?', `This cannot be undone${synced ? `: ${p.name} is deleted from your account and every device` : ''}. Export a backup first if you might need it.`, { ok: `Delete ${p.name}`, danger: true }))) return;
   if (deleteProfile(p.id)) {
     if (synced) profileDeleted(p.id); // an explicit delete: removed from the account too
+    else forgetKept([p.id]).catch(() => {}); // a copy kept from an account: nothing left to resume
     toast(`Deleted ${p.name}. Switched to ${getActiveProfile().name}`); deleteProfileFiles(p.id); pruneWeatherCache(); afterDataRemoved();
   }
 }
