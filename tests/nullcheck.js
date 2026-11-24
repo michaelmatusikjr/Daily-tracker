@@ -3,6 +3,7 @@ const pw = require('./testprep');
   const b = await pw.chromium.launch();
   const p = await (await b.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' })).newPage();
   await p.goto('http://127.0.0.1:8080/'); await p.waitForTimeout(400);
+  await p.click('.ob-first button:has-text("Get started on this device")').catch(() => {}); await p.waitForTimeout(300); // 1.15.1 first screen
   await p.click('.ob-skip').catch(() => {});
   const found = [];
   const check = async (where) => { const t = await p.evaluate(() => document.body.innerText); if (/\bnull\b|undefined|NaN/.test(t)) found.push(where); };

@@ -1,10 +1,45 @@
 // First-run welcome tour: swipeable cards (scroll-snap), skippable.
 import { h } from './ui.js';
 import { icon } from './icons.js';
-import { update, getState, getActiveProfile, updateProfile } from './store.js';
+import { update, getState, getActiveProfile, updateProfile, isFreshInstall } from './store.js';
 import { seedExamples } from './actions.js';
+import { accountsAvailable } from './sync.js';
+import { openFirstSignIn, cancelFirstSignIn, offerSyncPicker } from './account.js';
+import { ctx } from './ctx.js';
 
-export function showOnboarding() {
+/**
+ * App start with nothing onboarded: a brand-new install (only the untouched placeholder profile) first
+ * asks whether to sign in to an account; everything else goes straight to the tour.
+ */
+export function startFirstRun() {
+  if (!(isFreshInstall() && accountsAvailable())) { showOnboarding(); return; }
+  if (document.querySelector('.onboarding')) return;
+  const behind = [...document.querySelectorAll('body > .app, body > .fab, body > .skip-link, body > #toasts')];
+  // Removed at once: the tour (or the next sheet) takes over and showOnboarding() refuses to open beside another .onboarding.
+  const close = () => { behind.forEach((el) => el.removeAttribute('inert')); root.remove(); };
+  const signIn = h('button.btn.primary.ob-choice', { type: 'button', onclick: () => {
+    openFirstSignIn({ onDone: ({ offerPicker }) => {
+      close();
+      ctx.rerender?.();
+      if (!getState().settings.onboarded) showOnboarding({ onFinish: offerPicker ? offerSyncPicker : null });
+    } });
+  } }, 'Sign in to your account');
+  const start = h('button.btn.secondary.ob-choice', { type: 'button', onclick: () => { cancelFirstSignIn(); close(); showOnboarding(); } }, 'Get started on this device');
+  const root = h('div.onboarding.ob-first', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Welcome to Daily Tracker' },
+    h('div.ob-panel',
+      h('div.ob-top', h('span.ob-brand', icon('check', { size: 16 }), 'Daily Tracker')),
+      h('div.ob-first-body',
+        h('div.ob-art', { 'aria-hidden': 'true' }, '👋'),
+        h('h2.ob-title', 'Welcome'),
+        h('p.ob-text', 'Already use Daily Tracker on another device? Sign in to bring your profiles here. Or start fresh on this device.')),
+      h('div.ob-first-actions', signIn, start)));
+  behind.forEach((el) => el.setAttribute('inert', ''));
+  document.body.append(root);
+  requestAnimationFrame(() => { root.classList.add('show'); signIn.focus(); });
+}
+
+
+export function showOnboarding({ onFinish = null } = {}) {
   if (document.querySelector('.onboarding')) return;
   const prevFocus = document.activeElement;
   // On a replay of the tour, don't add examples again unless asked.
@@ -76,6 +111,7 @@ export function showOnboarding() {
     update((s) => { s.settings.onboarded = true; });
     if (completed && seed) seedExamples();
     if (prevFocus && document.contains(prevFocus)) prevFocus.focus?.();
+    onFinish?.();
   }
   document.body.append(root);
   requestAnimationFrame(() => { root.classList.add('show'); sync(); next.focus(); });

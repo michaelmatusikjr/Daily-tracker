@@ -104,8 +104,8 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   await A.p.check('#rec-saved');
   await A.p.click('.sheet-root.open .sheet-foot .btn.primary');
   await waitFor(async () => (await sheetTitle(A.p)) === 'Sync this device’s profiles?');
-  assert(await A.p.locator('.picker-row').count() === 1 && await A.p.locator('.picker-row input[type=checkbox]').isChecked(), 'S5 profile picker lists this device’s profile (preselected for a new account)');
-  await A.p.click('.sheet-root.open .sheet-foot button:has-text("Sync selected")');
+  assert(await A.p.locator('.picker-row').count() === 1 && await A.p.locator('.picker-row input[value=sync]').isChecked(), 'S5 profile picker lists this device’s profile (preselected for a new account)');
+  await A.p.click('.sheet-root.open .sheet-foot button:has-text("Done")');
   await A.p.waitForTimeout(300);
   // Offer a passkey (with PRF)
   assert(await sheetTitle(A.p) === 'Add a passkey?', 'S6 a new account is offered a passkey');
@@ -139,16 +139,16 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   assert(pB.some((x) => x.id === 'pm' && x.name === 'Mick'), 'I2 sign-in downloads the account’s profiles');
   const mB = await profData(B.p, 'pm');
   assert(mB.tasks.map((t) => t.title).sort().join() === 'Buy milk,Call mom' && mB.logs.h1[TODAY] === 1 && mB.journal[TODAY].note === 'Good day' && mB.categories.map((c) => c.name).join() === 'Work', 'I3 tasks, habits, logs, journal and categories arrive');
-  assert(await B.p.locator('.picker-row').count() === 2 && !(await B.p.locator('.picker-row input[type=checkbox]').first().isChecked()), 'I4 picker lists B’s own profiles (not preselected when signing in)');
+  assert(await B.p.locator('.picker-row').count() === 2 && (await B.p.locator('.picker-row input[value=keep]').first().isChecked()), 'I4 picker lists B’s own profiles (not preselected when signing in)');
   // Select both; "mick " clashes with the account's "Mick" → inline rename.
-  for (const cb of await B.p.locator('.picker-row input[type=checkbox]').all()) await cb.check();
+  for (const cb of await B.p.locator('.picker-row input[value=sync]').all()) await cb.check();
   const clashRow = B.p.locator('.picker-row', { hasText: 'mick' });
   assert(await clashRow.locator('.picker-rename').isVisible() && /already has “Mick”/.test(await clashRow.locator('.picker-rename .field-hint').textContent()), 'I5 name clash (case/space-insensitive): rename field in the same flow');
-  await B.p.click('.sheet-root.open .sheet-foot button:has-text("Sync selected")');
+  await B.p.click('.sheet-root.open .sheet-foot button:has-text("Done")');
   await B.p.waitForTimeout(200);
   assert(await sheetTitle(B.p) === 'Sync this device’s profiles?' && /unique/.test(await B.p.locator('.sheet-root.open > .sheet .form-error').last().textContent()), 'I6 can’t sync with a clashing name');
   await clashRow.locator('.picker-rename input').fill('Mick B');
-  await B.p.click('.sheet-root.open .sheet-foot button:has-text("Sync selected")');
+  await B.p.click('.sheet-root.open .sheet-foot button:has-text("Done")');
   await B.p.waitForTimeout(300);
   await waitFor(async () => { await syncNow(B.p); const st = await syncSt(B.p); return st.synced.length === 3 && st.lastOk; });
   pB = await profiles(B.p);

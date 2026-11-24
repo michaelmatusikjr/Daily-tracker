@@ -2,7 +2,7 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.15.0';
+export const APP_VERSION = '1.15.1';
 export const SCHEMA_VERSION = 6;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
@@ -328,6 +328,7 @@ function normProfileMeta(p, i) {
     avatar: normAvatar(p.avatar, PROFILE_COLORS[i % PROFILE_COLORS.length]),
     updatedAt: Number.isFinite(p.updatedAt) ? p.updatedAt : 0,
     ...(p.introPending ? { introPending: true } : {}),
+    ...(p.placeholder === true ? { placeholder: true } : {}),
   };
 }
 
@@ -516,7 +517,9 @@ function loadIndex() {
   const id = 'p' + uid();
   index = {
     activeId: id, deleted: [],
-    profiles: [{ id, name: 'Me', avatar: { type: 'emoji', emoji: '', color: PROFILE_COLORS[0] }, updatedAt: 0, ...(legacy ? { introPending: true } : {}) }],
+    // A brand-new install gets a placeholder "Me": the first screen can offer signing in instead, and
+    // then the untouched placeholder is dropped (removePlaceholderProfile). Any edit clears the mark.
+    profiles: [{ id, name: 'Me', avatar: { type: 'emoji', emoji: '', color: PROFILE_COLORS[0] }, updatedAt: 0, ...(legacy ? { introPending: true } : { placeholder: true }) }],
     migratedLegacy: legacy !== null ? { profileId: id, hash: hashStr(legacy), length: legacy.length, at: Date.now() } : null,
   };
   if (legacy !== null) {
@@ -591,6 +594,7 @@ export function resolveLoadFailure() {
 
 export function save() {
   if (loadFailure || !index.activeId) return false;
+  clearPlaceholder(index.activeId);
   return lsSet(dataKey(index.activeId), JSON.stringify(state));
 }
 
@@ -655,11 +659,52 @@ export function updateProfile(id, patch) {
   const prev = { ...p };
   const next = normProfileMeta({ ...p, ...patch, id }, index.profiles.indexOf(p));
   delete next.introPending;
+  delete next.placeholder;
   Object.assign(p, next, { updatedAt: Date.now() });
   if (!patch.introPending) delete p.introPending;
+  delete p.placeholder;
   if (!saveIndex()) { Object.keys(p).forEach((k) => delete p[k]); Object.assign(p, prev); return false; }
   emit({ profileChanged: true });
   return true;
+}
+
+/** The profile has been edited or holds data: it is a real profile now (newer updatedAt, so another tab's stale copy can't bring the mark back). */
+function clearPlaceholder(id) {
+  const p = index.profiles.find((x) => x.id === id);
+  if (!p?.placeholder) return;
+  delete p.placeholder;
+  p.updatedAt = Date.now();
+  saveIndex();
+}
+
+const hasContent = (st) => !!st && (
+  (st.tasks || []).length || (st.habits || []).length || (st.exercises || []).length || (st.workouts || []).length
+  || Object.keys(st.logs || {}).length || Object.keys(st.journal || {}).length);
+
+/** True on a brand-new install that nothing has touched: only the untouched placeholder profile, not onboarded. */
+export function isFreshInstall() {
+  if (index.profiles.length !== 1 || loadFailure) return false;
+  const p = index.profiles[0];
+  return !!p.placeholder && !p.introPending && !state.settings.onboarded && !hasContent(state);
+}
+
+/**
+ * Drop the untouched placeholder profile (still marked, never edited, no data on disk) once the
+ * device has other profiles (the account's). Never removes a profile with data. Returns whether one was removed.
+ */
+export function removePlaceholderProfile() {
+  let removed = false;
+  for (const p of [...index.profiles]) {
+    if (!p.placeholder || index.profiles.length <= 1) continue;
+    let raw = null;
+    try { raw = lsGet(dataKey(p.id)); } catch { continue; }
+    let empty = raw === null;
+    if (!empty) { try { empty = !hasContent(migrate(JSON.parse(raw))); } catch { empty = false; } }
+    if (p.id === index.activeId && hasContent(state)) empty = false;
+    if (!empty) continue;
+    if (deleteProfile(p.id)) removed = true;
+  }
+  return removed;
 }
 
 export function deleteProfile(id, { keepBackups = false } = {}) {

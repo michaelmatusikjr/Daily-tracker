@@ -2,11 +2,11 @@
 // picker, devices, password, sign out and delete. All text goes through h() (never innerHTML).
 import { h, openSheet, toast, confirmDialog, choose } from './ui.js';
 import { icon } from './icons.js';
-import { getProfiles, updateProfile, readProfileForSync } from './store.js';
+import { getProfiles, updateProfile, readProfileForSync, removePlaceholderProfile } from './store.js';
 import { pushConfig } from './push.js';
 import { fmtDateShort, toKey } from './dates.js';
 import * as S from './sync.js';
-import { avatarEl } from './profiles.js';
+import { avatarEl, performDeleteProfile } from './profiles.js';
 import { photosOfProfiles } from './attachments.js';
 import { ctx } from './ctx.js';
 
@@ -269,7 +269,19 @@ function showRecovery(text) {
   });
 }
 
-function openSignIn({ username = '' } = {}) {
+// First screen of a brand-new install: signing in replaces the untouched placeholder profile.
+let firstFlow = null;
+/** Open the sign-in sheet from the first screen; onDone({ offerPicker }) runs once the account is on this device. */
+export function openFirstSignIn({ onDone }) { firstFlow = { onDone }; openSignIn({ first: true }); }
+/** The first screen was left another way (Get started): a later sign-in is an ordinary one. */
+export function cancelFirstSignIn() { firstFlow = null; }
+/** Offer this device's profiles for sync (the tour came first for an empty account). */
+export function offerSyncPicker() {
+  const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
+  if (candidates.length && S.canSyncProfiles()) openPicker(candidates, { preselect: false, onDone: () => ctx.rerender?.() });
+}
+
+function openSignIn({ username = '', first = false } = {}) {
   const user = h('input.input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxlength: 40, 'aria-label': 'Username', value: username, autofocus: !username });
   const pw = pwInput('Password');
   if (username) pw.setAttribute('autofocus', '');
@@ -287,6 +299,12 @@ function openSignIn({ username = '' } = {}) {
     title: 'Sign in', cls: 'acct',
     content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
       field('Username', user), field('Password', pw), err,
+      first && S.passkeysSupported() ? h('button.btn.secondary', { type: 'button', onclick: async (e) => {
+        const r = await busy(e.currentTarget, 'Waiting for passkey…', err, () => S.passkeySignIn());
+        if (!r) return;
+        sheet.close();
+        if (r.needsUnlock) openUnlock(); else afterSignIn({ created: false, error: r.error });
+      } }, icon('key', { size: 16 }), 'Sign in with passkey') : null,
       h('button.link-btn', { type: 'button', onclick: () => { sheet.close(); openRecovery(user.value); } }, 'Forgot password? Use recovery key'),
       h('button', { type: 'submit', hidden: true })),
     footer: [h('span'), btn],
@@ -359,8 +377,13 @@ function afterSignIn({ created, error = null }) {
   // The account must be downloaded completely before this device's profiles can be added to it
   // (otherwise it isn't known which profiles and names it already has).
   if (!created && !S.syncState().pulled) { openDownloadFailed(error, () => afterSignIn({ created })); return; }
+  // First screen of a new install: the account's profiles replace the untouched placeholder.
+  const first = firstFlow;
+  firstFlow = null;
+  const removed = first ? removePlaceholderProfile() : false;
+  if (first && !removed && getProfiles().length <= 1) { first.onDone({ offerPicker: true }); return; } // empty account: tour first
   const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
-  const then = () => { if (created && S.passkeysSupported()) offerPasskey(); else ctx.rerender?.(); };
+  const then = () => { if (first) first.onDone({ offerPicker: false }); else if (created && S.passkeysSupported()) offerPasskey(); else ctx.rerender?.(); };
   if (!candidates.length) { then(); return; }
   openPicker(candidates, { preselect: created, onDone: then });
 }
@@ -386,31 +409,40 @@ function openDownloadFailed(error, onPulled) {
   });
 }
 
+/** Per device profile: Sync to account / Keep on this device only (default) / Delete from this device. */
 function openPicker(candidates, { preselect, onDone }) {
   const rows = candidates.map((p) => {
-    const box = h('input', { type: 'checkbox', checked: preselect, 'aria-label': `Sync ${p.name}` });
+    const group = 'pick-' + p.id;
+    const opt = (value, label, checked) => h('label.check-row.picker-opt', h('input', { type: 'radio', name: group, value, checked }), h('span', label));
+    const opts = h('div.picker-opts', { role: 'radiogroup', 'aria-label': `What to do with ${p.name}` },
+      opt('sync', 'Sync to account', !!preselect), opt('keep', 'Keep on this device only', !preselect), opt('delete', 'Delete from this device', false));
     const rename = h('input.input', { type: 'text', maxlength: 40, value: p.name, 'aria-label': `New name for ${p.name}` });
     const note = h('p.field-hint');
     const renameWrap = h('div.picker-rename', { hidden: true }, note, rename);
-    const li = h('li.picker-row', h('label.check-row', box, avatarEl(p, 32), h('span.picker-name', p.name)), renameWrap);
-    return { p, box, rename, renameWrap, note, li };
+    const li = h('li.picker-row', h('div.picker-head', avatarEl(p, 32), h('span.picker-name', p.name)), opts, renameWrap);
+    const choice = () => opts.querySelector('input:checked')?.value || 'keep';
+    return { p, choice, rename, renameWrap, note, li, opts };
   });
   const err = h('p.form-error', { role: 'alert' });
   const refresh = () => {
     for (const r of rows) {
-      const clash = r.box.checked && S.accountNameClash(r.p.name, r.p.id);
+      const clash = r.choice() === 'sync' && S.accountNameClash(r.p.name, r.p.id);
       r.renameWrap.hidden = !clash && nameKey(r.rename.value) === nameKey(r.p.name);
       if (clash) r.note.textContent = `Your account already has “${clash.name}”. Rename this profile to sync it:`;
     }
   };
-  rows.forEach((r) => r.box.addEventListener('change', refresh));
+  rows.forEach((r) => r.opts.addEventListener('change', () => { err.textContent = ''; refresh(); }));
   refresh();
-  const btn = h('button.btn.primary', { type: 'button' }, 'Sync selected');
+  const btn = h('button.btn.primary', { type: 'button' }, 'Done');
   let finished = false;
   btn.onclick = async () => {
     err.textContent = '';
-    const chosen = rows.filter((r) => r.box.checked);
+    const chosen = rows.filter((r) => r.choice() === 'sync');
+    const doomed = rows.filter((r) => r.choice() === 'delete');
     if (chosen.length && !S.canSyncProfiles()) { err.textContent = 'Your account hasn’t finished downloading yet. Try again once it has synced.'; return; }
+    // The app always keeps at least one profile.
+    const gone = new Set(doomed.map((r) => r.p.id));
+    if (getProfiles().every((p) => gone.has(p.id))) { err.textContent = 'Keep at least one profile: choose Sync or Keep for one of them.'; return; }
     const taken = new Set(S.syncedIds().map((id) => nameKey(getProfiles().find((p) => p.id === id)?.name)));
     for (const r of chosen) {
       const n = (r.renameWrap.hidden ? r.p.name : r.rename.value).trim();
@@ -419,8 +451,15 @@ function openPicker(candidates, { preselect, onDone }) {
       taken.add(nameKey(n));
       r.newName = n;
     }
+    if (doomed.length) {
+      const names = doomed.map((r) => r.p.name);
+      const who = names.length === 1 ? names[0] : names.join(', ');
+      if (!(await confirmDialog(names.length === 1 ? `Delete ${who}?` : `Delete ${names.length} profiles?`, `All of ${names.length === 1 ? `${who}’s` : 'their'} tasks, habits, workouts, journal and settings will be removed from this device${names.length === 1 ? '' : `: ${who}`}.`, { ok: 'Continue', danger: true }))) return;
+      if (!(await confirmDialog('Are you absolutely sure?', `This cannot be undone: ${who} ${names.length === 1 ? 'is' : 'are'} deleted from this device. Export a backup first if you might need ${names.length === 1 ? 'it' : 'them'}.`, { ok: names.length === 1 ? `Delete ${who}` : `Delete ${names.length} profiles`, danger: true }))) return;
+    }
     for (const r of chosen) if (r.newName !== r.p.name && !updateProfile(r.p.id, { name: r.newName })) { err.textContent = 'Couldn’t rename – storage is full.'; return; }
     if (chosen.length && !(await S.syncProfiles(chosen.map((r) => r.p.id)))) { err.textContent = 'Couldn’t add the profiles – try again once your account has synced.'; return; }
+    for (const r of doomed) performDeleteProfile(r.p);
     finished = true;
     sheet.close();
     if (chosen.length) toast(`${chosen.length === 1 ? chosen[0].newName : `${chosen.length} profiles`} will sync to your account`, { force: true });
@@ -429,7 +468,7 @@ function openPicker(candidates, { preselect, onDone }) {
   const sheet = openSheet({
     title: 'Sync this device’s profiles?', cls: 'acct',
     content: [
-      h('p.set-desc', 'Profiles already in your account are on this device now. Choose which of this device’s profiles to add to the account. The others stay on this device only (you can sync them later in Settings › Account).'),
+      h('p.set-desc', 'Profiles already in your account are on this device now. For each of this device’s profiles, choose to add it to the account, keep it on this device only (you can sync it later in Settings › Account), or delete it from this device.'),
       h('ul.picker-list', { role: 'list' }, rows.map((r) => r.li)),
       err,
     ],

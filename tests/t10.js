@@ -97,6 +97,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
   }
   {
     const { ctx, p } = await open(browser);
+    await p.click('.ob-first button:has-text("Get started on this device")'); await p.waitForTimeout(300); // first screen (1.15.1)
     assert(await p.locator('.onboarding input.ob-name').count() === 1, 'P1 new user: name step in onboarding');
     await p.click('.ob-next'); await p.waitForTimeout(600); await p.click('.ob-next'); await p.waitForTimeout(600);
     await p.fill('.ob-name', 'Jo'); await p.click('.ob-next'); await p.waitForTimeout(400);

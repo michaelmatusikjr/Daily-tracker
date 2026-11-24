@@ -89,7 +89,7 @@ export function openProfileMenu() {
     }, avatarEl(p, 44), h('span.profile-name', p.name), p.id === active.id ? icon('check', { size: 20, cls: 'profile-check' }) : null),
     // Not in the account (also before anyone signed in): a persistent label that opens Account.
     isDeviceOnly(p.id) ? h('button.device-only-label', { type: 'button', 'aria-label': `${p.name} is on this device only – open Account`, onclick: () => { sheet.close(); openAccountSheet(); } },
-      icon('phone', { size: 13 }), 'On this device only') : null)));
+      icon('phone', { size: 13 }), h('span.device-only-text', 'On this device only')) : null)));
   const action = (ic, label, onclick, cls = '') => h(`button.menu-item${cls}`, { type: 'button', onclick }, icon(ic, { size: 20 }), h('span', label));
   const content = [
     list,
@@ -112,11 +112,17 @@ async function confirmDeleteProfile(p) {
   const where = synced ? 'from your account and every signed-in device' : 'from this device';
   if (!(await confirmDialog(`Delete ${p.name}?`, `All of ${p.name}’s tasks, habits, workouts, journal and settings will be removed ${where}.`, { ok: 'Continue', danger: true }))) return;
   if (!(await confirmDialog('Are you absolutely sure?', `This cannot be undone${synced ? `: ${p.name} is deleted from your account and every device` : ''}. Export a backup first if you might need it.`, { ok: `Delete ${p.name}`, danger: true }))) return;
-  if (deleteProfile(p.id)) {
-    if (synced) profileDeleted(p.id); // an explicit delete: removed from the account too
-    else forgetKept([p.id]).catch(() => {}); // a copy kept from an account: nothing left to resume
-    toast(`Deleted ${p.name}. Switched to ${getActiveProfile().name}`); deleteProfileFiles(p.id); pruneWeatherCache(); afterDataRemoved();
-  }
+  performDeleteProfile(p);
+}
+
+/** Delete a profile now (confirmation is the caller's job): the account too if it syncs, its photos, reminders and kept copy. */
+export function performDeleteProfile(p) {
+  const synced = isSynced(p.id);
+  if (!deleteProfile(p.id)) return false;
+  if (synced) profileDeleted(p.id); // an explicit delete: removed from the account too
+  else forgetKept([p.id]).catch(() => {}); // a copy kept from an account: nothing left to resume
+  toast(`Deleted ${p.name}. Switched to ${getActiveProfile().name}`); deleteProfileFiles(p.id); pruneWeatherCache(); afterDataRemoved();
+  return true;
 }
 
 // ---------------- Profile editor ----------------

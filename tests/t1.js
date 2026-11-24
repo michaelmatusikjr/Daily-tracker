@@ -10,6 +10,7 @@ const SP = __dirname;
   await p.goto('http://127.0.0.1:8080/');
   await p.waitForTimeout(700);
   await p.screenshot({ path: SP + '/m-onboard.png' });
+  await p.click('.ob-first button:has-text("Get started on this device")'); await p.waitForTimeout(500); // first screen of a fresh install (1.15.1)
   await p.click('.ob-next'); await p.waitForTimeout(500);
   await p.click('.ob-next'); await p.waitForTimeout(500);
   await p.screenshot({ path: SP + '/m-onboard3.png' });

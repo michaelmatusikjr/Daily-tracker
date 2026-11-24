@@ -261,6 +261,7 @@ p { margin: 0; }
   transition: transform .12s, background-color .2s, opacity .2s;
 }
 .btn:active { transform: scale(.97); }
+.btn.wrap { white-space: normal; max-width: 100%; padding-top: 8px; padding-bottom: 8px; text-align: center; }
 .btn.primary { background: var(--accent); color: var(--on-accent); }
 .btn.primary:hover { filter: brightness(1.05); }
 .btn.secondary { background: var(--surface-2); color: var(--text); }
@@ -854,6 +855,10 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 @media (min-width: 600px) {
   .ob-panel { max-width: 440px; height: auto; min-height: 560px; border-radius: var(--r-xl); box-shadow: var(--shadow-lg); padding: 0; overflow: hidden; }
 }
+.onboarding.ob-first { z-index: 40; } /* below sheets (z 50): sign-in opens over it */
+.ob-first-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: var(--s6) var(--s8); }
+.ob-first-actions { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4) var(--s5) calc(var(--s6) + env(safe-area-inset-bottom, 0px)); }
+.ob-choice { width: 100%; min-height: 48px; }
 .ob-top { display: flex; align-items: center; justify-content: space-between; padding: var(--s3) var(--s3) 0 var(--s5); }
 .ob-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 760; }
 .ob-brand svg { width: 24px; height: 24px; padding: 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent); }
@@ -1552,7 +1557,8 @@ html { scroll-padding-top: var(--head-h, 72px); }
 .acct-rename { flex-basis: 100%; padding: 0; }
 .acct-rename .input { flex: 1; min-width: 0; }
 .badge.small-badge { padding: 2px 8px; font-size: 12px; gap: 4px; }
-.device-only-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 620; color: var(--warn); }
+.device-only-tag { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; font-size: 12.5px; font-weight: 620; color: var(--warn); }
+.device-only-tag svg { flex: none; }
 .acct-list li { display: flex; align-items: center; gap: var(--s3); padding: 8px 0; border-top: 1px solid var(--border); }
 .acct-list li:first-child { border-top: none; }
 .acct-bottom { flex-wrap: wrap; padding-bottom: 14px; }
@@ -1563,22 +1569,32 @@ html { scroll-padding-top: var(--head-h, 72px); }
 }
 .picker-row { padding: 4px 0; border-top: 1px solid var(--border); }
 .picker-row:first-child { border-top: none; }
-.picker-row .check-row { gap: 12px; }
-.picker-name { font-weight: 620; overflow-wrap: anywhere; }
-.picker-rename { padding: 0 0 8px 32px; display: flex; flex-direction: column; gap: 6px; }
+.picker-row { padding: 10px 0; }
+.picker-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.picker-name { font-weight: 620; overflow-wrap: anywhere; min-width: 0; }
+.picker-opts { display: flex; flex-direction: column; margin: 2px 0 0 44px; }
+.picker-opt { gap: 10px; min-height: 40px; }
+.picker-opt input { accent-color: var(--accent); flex: none; width: 20px; height: 20px; }
+.picker-rename { padding: 0 0 8px 44px; display: flex; flex-direction: column; gap: 6px; }
 .picker-rename .field-hint { color: var(--warn); margin: 0; }
 /* "On this device only": badge on the header avatar, label under the profile-menu row. */
 .device-badge {
   position: absolute; right: 0; bottom: 1px; width: 16px; height: 16px; border-radius: 50%;
   display: grid; place-items: center; background: var(--warn); color: var(--bg); box-shadow: 0 0 0 2px var(--surface);
 }
-.profile-list li.device-only { display: flex; flex-direction: column; }
+.profile-list li.device-only { position: relative; }
+.profile-list li.device-only .profile-item { padding-bottom: 34px; align-items: flex-start; }
+.profile-list li.device-only .profile-item .avatar { margin-top: 2px; }
+.profile-list li.device-only .profile-name { padding-top: 12px; }
+/* The tag sits inside the row (so the active highlight contains it), under the name, and never overflows it. */
 .device-only-label {
-  align-self: flex-start; margin: -14px 0 4px 66px; padding: 2px 6px; min-height: 28px; border: none; background: none; border-radius: 8px;
-  display: inline-flex; align-items: center; gap: 4px; color: var(--warn); font-size: 12.5px; font-weight: 650; position: relative;
+  position: absolute; left: 66px; right: 10px; bottom: 5px; max-width: max-content; min-width: 0; padding: 2px 6px; min-height: 28px;
+  border: none; background: none; border-radius: 8px; display: flex; align-items: center; gap: 4px;
+  color: var(--warn); font-size: 12.5px; font-weight: 650;
 }
+.device-only-label svg { flex: none; }
+.device-only-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-only-label:hover { background: color-mix(in srgb, var(--warn) 10%, transparent); }
-.profile-list li.device-only .profile-item { padding-bottom: 18px; }
 .photo-elsewhere {
   position: absolute; inset: 0; display: grid; place-items: center; padding: 4px; text-align: center;
   font-size: 10.5px; line-height: 1.2; font-weight: 620; color: var(--text-3); background: var(--surface-2);

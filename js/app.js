@@ -13,7 +13,7 @@ import { renderCalendar } from './views/calendar.js';
 import { renderJournal } from './views/journal.js';
 import { renderSettings } from './views/settings.js';
 import { openQuickAdd, openHabitForm } from './forms.js';
-import { showOnboarding } from './onboarding.js';
+import { showOnboarding, startFirstRun } from './onboarding.js';
 import { registerSW, onInstallChange, safeReload } from './pwa.js';
 import { reschedule } from './notify.js';
 import { initPush, scheduleSync, onPushChange } from './push.js';
@@ -383,7 +383,7 @@ function init() {
     syncSig = sig;
     if (!isSheetOpen() && !document.activeElement?.matches?.('input, textarea')) render();
   });
-  if (!getState().settings.onboarded) showOnboarding();
+  if (!getState().settings.onboarded) startFirstRun();
   else if (getActiveProfile()?.introPending) setTimeout(() => openProfileEditor(getActiveProfile(), { intro: true, onDone: () => offerLegacyMerge() }), 400);
   else setTimeout(() => offerLegacyMerge(), 500);
   registerSW();

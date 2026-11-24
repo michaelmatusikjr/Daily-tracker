@@ -194,7 +194,7 @@ export function renderSettings() {
       fileInput),
     h('div.set-actions',
       h('button.btn.ghost', { type: 'button', onclick: () => showOnboarding() }, icon('sparkles', { size: 18 }), 'Show welcome tour'),
-      h('button.btn.danger-ghost', { type: 'button', onclick: resetAll }, icon('trash', { size: 18 }), `Reset ${profile.name}’s data`))));
+      h('button.btn.danger-ghost.wrap', { type: 'button', onclick: resetAll }, icon('trash', { size: 18 }), `Reset ${profile.name}’s data`))));
 
   root.append(h('footer.about',
     h('p', h('b', 'Daily Tracker'), ` · version ${APP_VERSION}`),
