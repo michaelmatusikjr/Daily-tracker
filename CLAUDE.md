@@ -29,6 +29,7 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
 - `tests/run-all.sh` runs every suite (servers on 127.0.0.1:8080 root and :8081 sub-path are started automatically). `tests/run-all.sh t21 t25` runs specific ones. Chromium + `require('playwright')` are preinstalled in cloud sessions; don't reinstall.
 - t17 (push client) needs `cd server && npm ci` first. Server tests: `cd server && npm test`.
 - t12's old "storage event → sheet appears" flake: leftover http.servers from older `run-all.sh` versions were suspected (fixed: the servers are now direct children the trap kills), but the real cause was t12's seed script re-seeding the legacy key in a helper tab (fixed in 1.15.0). If a suite flakes, check `pgrep -af http.server` for leftovers first.
+- Always run browser suites through `tests/run-all.sh` (it holds a machine-wide lock so parallel agents/worktrees never share ports); never `node tests/tNN.js` directly while another run may be going.
 - Add a new `tests/tNN.js` for each feature; update expectations in older suites when behaviour changes on purpose.
 
 ## Release workflow (tiered – keep it token-efficient)

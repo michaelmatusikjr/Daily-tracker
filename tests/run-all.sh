@@ -5,6 +5,10 @@
 # Needs: node, python3, and `require('playwright')` with Chromium available.
 # t17 (push client) and t39–t43 (accounts and sync) also need the push server's dev dependencies: (cd server && npm ci).
 set -u
+# Suites use fixed ports (8080/8081, Miniflare ports): only one run at a time on this machine,
+# even from several checkouts/worktrees. Other runs wait here.
+exec 9>/tmp/daily-tracker-tests.lock
+flock 9
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TESTS="$ROOT/tests"
 TMP="$(mktemp -d)"
