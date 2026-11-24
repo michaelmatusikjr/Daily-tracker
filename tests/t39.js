@@ -284,21 +284,31 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   // ===== Import while signed in =====
   await go(B.p, '#settings');
   const backup = { app: 'daily-tracker', format: 'profiles', activeId: 'pm', profiles: [
-    { id: 'pm', name: 'Mick R', avatar: { type: 'emoji', emoji: '', color: '#6366f1' }, data: { ...(await profData(B.p, 'pm')), tasks: [task('imp1', 'Imported task')] } },
+    { id: 'pm', name: 'Mick (backup)', avatar: { type: 'emoji', emoji: '', color: '#6366f1' }, data: { ...(await profData(B.p, 'pm')), tasks: [task('imp1', 'Imported task')] } },
     { id: 'pnew', name: 'Imported one', avatar: { type: 'emoji', emoji: '', color: '#6366f1' }, data: data() },
   ] };
   const bfile = require('path').join(fs.mkdtempSync(require('path').join(require('os').tmpdir(), 't39-')), 'backup.json');
   fs.writeFileSync(bfile, JSON.stringify(backup));
   await B.p.setInputFiles('input[type=file][accept*="json"]', bfile);
   await B.p.waitForTimeout(400);
-  assert(/Profiles in your account stay in the account\./.test(await B.p.locator('.dialog-msg').textContent()), 'M1 import confirm: "Profiles in your account stay in the account."');
+  const impMsg = await B.p.locator('.dialog-msg').textContent();
+  assert(/Profiles in your account stay in the account\./.test(impMsg), 'M1 import confirm: "Profiles in your account stay in the account."');
+  assert(/Mick \(backup\) is also synced in your account: the account’s version stays unchanged/.test(impMsg), 'M1b the confirm names the synced profile the backup also has, and says it becomes a device-only copy');
+  const pmBefore = (await profData(A.p, 'pm')).tasks.map((t) => t.id).sort().join();
   await B.p.click('.dialog-actions .btn.danger'); await B.p.waitForTimeout(500);
   const pB2 = await profiles(B.p);
   const stB = await syncSt(B.p);
   assert(pB2.some((x) => x.id === 'pk') && pB2.some((x) => x.id === gma.id), 'M2 synced profiles missing from the backup stay');
   assert(pB2.some((x) => x.id === 'pnew') && !stB.synced.includes('pnew'), 'M3 other imported profiles are device-only');
   await syncNow(B.p); await syncNow(A.p);
-  assert((await profData(A.p, 'pm')).tasks.map((t) => t.id).join() === 'imp1', 'M4 an imported profile with a synced id updates it (normal edits sync)');
+  const impCopy = pB2.find((x) => x.name === 'Mick (backup)');
+  assert(impCopy && impCopy.id !== 'pm' && !stB.synced.includes(impCopy.id) && (await profData(B.p, impCopy.id)).tasks.map((t) => t.id).join() === 'imp1', 'M4 an imported profile with a synced id becomes a device-only copy (new id)');
+  assert((await profData(A.p, 'pm')).tasks.map((t) => t.id).sort().join() === pmBefore && (await profData(B.p, 'pm')).tasks.map((t) => t.id).sort().join() === pmBefore, 'M4b the account’s profile is not changed by the import');
+  // Normal edits (rename + replace the tasks) sync as usual; the rest of this test builds on them.
+  await B.p.evaluate(async () => (await import('./js/store.js')).updateProfile('pm', { name: 'Mick R' }));
+  await mutate(B.p, 'pm', `s.tasks = [${JSON.stringify(task('imp1', 'Imported task'))}];`);
+  await syncNow(B.p); await syncNow(A.p);
+  assert((await profData(A.p, 'pm')).tasks.map((t) => t.id).join() === 'imp1', 'M4c normal edits of a synced profile sync');
   assert((await profiles(A.p)).some((x) => x.id === 'pk'), 'M5 nothing is deleted from the account');
 
   // ===== An unreadable profile never produces tombstones =====
@@ -344,7 +354,8 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   await A.p.waitForTimeout(300);
   assert(await A.p.locator('.dialog-actions .btn').first().textContent() === 'Keep copies on this device', 'X1 sign out: "Keep copies on this device" is the default');
   await A.p.click('.dialog-actions button:has-text("Remove from this device")');
-  await A.p.waitForTimeout(300);
+  await waitFor(async () => (await A.p.locator('.dialog-actions .btn.danger:has-text("Remove")').count()) === 1, 15000);
+  assert(/has been uploaded/.test(await A.p.locator('.sheet-root.open .dialog-msg').last().textContent()), 'X1b the Remove confirm says everything was uploaded (checked first)');
   await A.p.click('.dialog-actions .btn.danger'); await A.p.waitForTimeout(800);
   let pA2 = await profiles(A.p);
   assert(pA2.map((x) => x.name).sort().join() === 'Guest', 'X2 "Remove from this device": only the device-only profile is left');
@@ -382,9 +393,10 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   await waitFor(async () => (await sheetTitle(B.p)) === 'Sync this device’s profiles?', 15000);
   const pB3 = await profiles(B.p);
   const copies = pB3.filter((x) => x.name === 'Mick R');
-  assert(copies.length === 2 && copies.some((x) => x.id === 'pm') && copies.some((x) => x.id !== 'pm'), 'K5 signing in again: the kept copy keeps its data under a new id, the account’s copy is downloaded');
-  const copyId = copies.find((x) => x.id !== 'pm').id;
-  assert((await profData(B.p, copyId)).tasks.some((t) => t.id === 'signedout1') && !(await profData(B.p, 'pm')).tasks.some((t) => t.id === 'signedout1'), 'K6 nothing edited while signed out is lost or mixed in');
+  assert(copies.length === 1 && copies[0].id === 'pm' && (await syncSt(B.p)).synced.includes('pm') && (await syncSt(B.p)).synced.includes('pk'), 'K5 signing in again to the same account: the kept copies are merged back (no duplicates)');
+  const copyId = impCopy.id; // the device-only import copy stays as it is
+  await syncNow(B.p); await syncNow(A.p);
+  assert((await profData(B.p, 'pm')).tasks.some((t) => t.id === 'signedout1') && (await profData(A.p, 'pm')).tasks.some((t) => t.id === 'signedout1') && (await profData(B.p, 'pm')).tasks.some((t) => t.id === 'imp1'), 'K6 nothing edited while signed out is lost: it is uploaded on sign-in');
   await B.p.click('.sheet-root.open .sheet-foot button:has-text("Not now")'); await B.p.waitForTimeout(300);
   await go(B.p, '#settings');
   await waitFor(async () => (await B.p.locator('.acct-panel button:has-text("Add a passkey")').count()) === 1, 8000);
@@ -395,7 +407,8 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   if (!(B.p.__toasts || []).some((m) => /New devices will ask/.test(m))) console.log('toasts', B.p.__toasts);
   assert((B.p.__toasts || []).some((m) => /New devices will ask for your password once/.test(m)), 'K7 a passkey without PRF is added (needs the password on new devices)');
   await B.p.click('.acct-bottom button:has-text("Sign out")'); await B.p.waitForTimeout(300);
-  await B.p.click('.dialog-actions button:has-text("Remove from this device")'); await B.p.waitForTimeout(300);
+  await B.p.click('.dialog-actions button:has-text("Remove from this device")');
+  await waitFor(async () => (await B.p.locator('.dialog-actions .btn.danger:has-text("Remove")').count()) === 1, 15000);
   await B.p.click('.dialog-actions .btn.danger'); await B.p.waitForTimeout(800);
   assert(!(await profiles(B.p)).some((x) => x.id === 'pm') && (await profiles(B.p)).some((x) => x.id === copyId), 'K8 "Remove": synced profiles removed, device-only copies kept');
   await B.p.click('.acct-panel button:has-text("Sign in with passkey")');
@@ -422,6 +435,10 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   await A.p.click('.sheet-root.open .sheet-foot .btn.primary');
   await waitFor(async () => /Password changed/.test(await A.p.locator('.toast-msg').textContent().catch(() => '')), 15000);
   assert(/Password changed/.test(await A.p.locator('.toast-msg').textContent()), 'C1 password changed');
+  await syncNow(B.p);
+  assert(!(await syncSt(B.p)).token && (await syncSt(B.p)).expired && await syncNow(A.p) === true, 'C1b a password change signs the other devices out (this one stays)');
+  await B.p.evaluate(async (pw) => (await import('./js/sync.js')).signIn({ username: 'family', password: pw }), NEWPW);
+  assert((await syncSt(B.p)).token && (await syncSt(B.p)).synced.includes('pm'), 'C1c …and they sign in again with the new password, carrying on');
   const C = await openApp(browser, { profiles: [['pc', 'Tablet', data()]] });
   await go(C.p, '#settings');
   await C.p.click('.acct-panel button:has-text("Sign in")');
