@@ -2,7 +2,10 @@
 // The app sends each device's reminder RULES (recurrence + local time + time zone). The server
 // works out each rule's next fire time, and a cron trigger sends due reminders as Web Push
 // messages, so reminders keep coming even if the app isn't opened for weeks.
-import { b64urlEncode, b64urlDecode, utf8 } from './b64.js';
+import { b64urlDecode } from './b64.js';
+import { HttpError, json, err, readJson, sha256Hex, timingSafeEqual, randomId, isStr, rateLimit } from './util.js';
+import { accountRoute, purgeAccounts } from './account.js';
+import { syncRoute } from './sync.js';
 import { importVapidKeys, sendPush } from './webpush.js';
 import { nextFire, isDateKey, isValidTimeZone, localToUTC, addDays } from './recur.js';
 
@@ -22,9 +25,6 @@ export const LIMITS = {
 };
 
 // ---------- HTTP helpers ----------
-const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } });
-const err = (status, message, headers) => json({ error: message }, status, headers);
-
 function allowedOrigins(env) {
   return String(env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean);
 }
@@ -38,30 +38,7 @@ function corsHeaders(origin) {
   };
 }
 
-async function readJson(request, max) {
-  const len = Number(request.headers.get('Content-Length') || 0);
-  if (len > max) throw new HttpError(413, 'Request too large');
-  const buf = await request.arrayBuffer();
-  if (buf.byteLength > max) throw new HttpError(413, 'Request too large');
-  try { return JSON.parse(new TextDecoder().decode(buf)); } catch { throw new HttpError(400, 'Invalid JSON'); }
-}
-class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
-
-async function sha256Hex(str) {
-  const d = new Uint8Array(await crypto.subtle.digest('SHA-256', utf8(str)));
-  return [...d].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-function timingSafeEqual(a, b) {
-  if (a.length !== b.length) return false;
-  let r = 0;
-  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return r === 0;
-}
-const randomId = (bytes) => b64urlEncode(crypto.getRandomValues(new Uint8Array(bytes)));
-
 // ---------- Validation ----------
-const isStr = (v, max, min = 0) => typeof v === 'string' && v.length >= min && v.length <= max;
-
 // Only real browser push services: the server must never be usable to call arbitrary hosts.
 const PUSH_HOSTS = ['fcm.googleapis.com', 'updates.push.services.mozilla.com'];
 const PUSH_SUFFIXES = ['.push.services.mozilla.com', '.push.apple.com', '.notify.windows.com'];
@@ -151,17 +128,6 @@ const fill = (tpl, date) => String(tpl).split('{date}').join(date);
 /** Rule object as stored (definition JSON) → the shape nextFire() expects. */
 const ruleFromRow = (row) => JSON.parse(row.def);
 
-// ---------- Rate limiting (fixed one-hour windows in D1) ----------
-async function rateLimit(env, key, limit, now) {
-  const win = Math.floor(now / 3600000);
-  const row = await env.DB.prepare(
-    `INSERT INTO rate (key, win, count) VALUES (?1, ?2, 1)
-     ON CONFLICT(key) DO UPDATE SET count = CASE WHEN rate.win = ?2 THEN rate.count + 1 ELSE 1 END, win = ?2
-     RETURNING count`,
-  ).bind(key, win).first();
-  if (row && row.count > limit) throw new HttpError(429, 'Too many requests, try again later');
-}
-
 // ---------- Auth ----------
 async function authDevice(request, env) {
   const id = request.headers.get('X-Device') || '';
@@ -173,12 +139,22 @@ async function authDevice(request, env) {
 }
 
 // ---------- Routes ----------
+/** Paths of the account/sync API, whose responses (errors too) include the server time `now`. */
+const isAccountPath = (path) => path === '/api/account' || /^\/api\/(account|passkey|sync)\//.test(path);
+
 async function route(request, env, now) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, '');
   const ip = request.headers.get('CF-Connecting-IP') || 'local';
 
   if (path === '/api/health' && request.method === 'GET') return json(await health(env, now));
+
+  // Accounts, passkeys and sync (see SYNC.md). These answer with `now` in every response.
+  if (isAccountPath(path)) {
+    const res = path.startsWith('/api/sync/') ? await syncRoute(request, env, now, path, url) : await accountRoute(request, env, now, path, ip);
+    if (res) return res;
+    throw new HttpError(404, 'Not found');
+  }
 
   if (path === '/api/register' && request.method === 'POST') {
     // Only people who know the register key (set by the server's owner) can add devices.
@@ -259,18 +235,20 @@ export async function handleFetch(request, env, now = Date.now()) {
   const allowed = allowedOrigins(env);
   const okOrigin = origin && allowed.includes(origin);
   const cors = okOrigin ? corsHeaders(origin) : {};
-  const isHealth = new URL(request.url).pathname.replace(/\/+$/, '') === '/api/health';
+  const path = new URL(request.url).pathname.replace(/\/+$/, '');
+  const isHealth = path === '/api/health';
+  const extra = isAccountPath(path) ? { now } : undefined;
   if (request.method === 'OPTIONS') return okOrigin ? new Response(null, { status: 204, headers: cors }) : err(403, 'Origin not allowed');
   // Browsers always send Origin on these cross-origin calls; anything else is refused (health is open).
-  if (!okOrigin && !isHealth) return err(403, 'Origin not allowed');
+  if (!okOrigin && !isHealth) return err(403, 'Origin not allowed', {}, extra);
   try {
     const res = await route(request, env, now);
     for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
     return res;
   } catch (e) {
-    if (e instanceof HttpError) return err(e.status, e.message, cors);
-    console.error(e);
-    return err(500, 'Server error', cors);
+    if (e instanceof HttpError) return err(e.status, e.message, cors, (e.extra || extra) && { ...extra, ...e.extra });
+    console.error(e?.message || 'error'); // never log request data (tokens, keys, blobs)
+    return err(500, 'Server error', cors, extra);
   }
 }
 
@@ -380,7 +358,7 @@ async function cronRun(env, now, { fetchImpl = fetch } = {}) {
   return stats;
 }
 
-/** Old send records, devices not seen for 180 days (and their rules), old rate-limit rows. */
+/** Old send records, devices not seen for 180 days (and their rules), old rate-limit rows, expired challenges and sessions. */
 export async function purge(env, now = Date.now()) {
   const stale = now - 180 * 86400000;
   await env.DB.batch([
@@ -390,6 +368,7 @@ export async function purge(env, now = Date.now()) {
     env.DB.prepare('DELETE FROM devices WHERE last_seen < ?1').bind(stale),
     env.DB.prepare('DELETE FROM rate WHERE win < ?1').bind(Math.floor(now / 3600000) - 2),
   ]);
+  await purgeAccounts(env, now); // expired challenges, sessions unused for 400 days
 }
 
 export default {
