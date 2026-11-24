@@ -16,7 +16,7 @@ import { setWorkoutHabit, setWeatherUnits } from '../actions.js';
 import { habitText } from '../habitIcon.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
 import { accountSection } from '../account.js';
-import { hasAccount, isSynced, syncedIds } from '../sync.js';
+import { hasAccount, isSynced, syncedIds, forgetKept } from '../sync.js';
 import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
 
 const setSetting = (key, value, silent = false) => update((s) => { s.settings[key] = value; }, { silent });
@@ -370,6 +370,7 @@ async function importFile(input) {
       }
       parsed.profiles.forEach((p) => { if (p.data) p.data.settings.onboarded = true; });
       if (!replaceAllProfiles(parsed, { deleteUnreadable, keepIds: inAccount ? syncedIds() : [] })) { toast('Couldn’t import – this device’s storage is full', { force: true }); return; }
+      await forgetKept(parsed.profiles.map((p) => p.id)).catch(() => {});
       toast('Backup imported');
       const ids = new Set(getProfiles().map((p) => p.id));
       await restorePhotos((pid) => (ids.has(pid) ? pid : getActiveProfile().id));
@@ -387,7 +388,7 @@ async function importFile(input) {
     if (choice === 'replace') {
       // Same as "add": fresh photo ids, so this profile never shares files with another one.
       if (Array.isArray(raw?.attachments)) raw.attachments = reIdPhotos(data, raw.attachments);
-      replaceState(data); toast('Backup imported'); await restorePhotos(() => getActiveProfile().id);
+      replaceState(data); forgetKept([profile.id]).catch(() => {}); toast('Backup imported'); await restorePhotos(() => getActiveProfile().id);
     }
     if (choice === 'add') {
       // New ids for the photos, so the copy never shares files with an existing profile.

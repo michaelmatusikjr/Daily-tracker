@@ -379,8 +379,8 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   await go(B.p, '#today');
   assert(await B.p.locator('.avatar-btn .device-badge').count() === 1, 'K2 …marked "On this device only"');
   await go(B.p, '#settings');
-  const shadowsLeft = await B.p.evaluate(async () => (await (await import('./js/syncCrypto.js')).idb('shadow', 'readonly', (s) => s.count())));
-  assert(shadowsLeft === 0, 'K3 shadows cleared');
+  const shadowsLeft = await B.p.evaluate(async () => (await (await import('./js/syncCrypto.js')).idb('shadow', 'readonly', (s) => s.getAllKeys())));
+  assert(shadowsLeft.length > 0 && shadowsLeft.every((k) => k.startsWith('kept:')), 'K3 live shadows cleared (each kept copy’s shadow is preserved for this account)');
   await mutate(B.p, 'pm', `s.tasks.push({ id: 'signedout1', title: 'Edited while signed out', date: '${TODAY}', recur: { type: 'none' }, doneDates: {}, exceptions: [], order: 5, createdAt: 1 });`);
   await syncNow(A.p);
   assert(!(await profData(A.p, 'pm')).tasks.some((t) => t.id === 'signedout1'), 'K4 a signed-out device doesn’t sync');
@@ -393,7 +393,7 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   await waitFor(async () => (await sheetTitle(B.p)) === 'Sync this device’s profiles?', 15000);
   const pB3 = await profiles(B.p);
   const copies = pB3.filter((x) => x.name === 'Mick R');
-  assert(copies.length === 1 && copies[0].id === 'pm' && (await syncSt(B.p)).synced.includes('pm') && (await syncSt(B.p)).synced.includes('pk'), 'K5 signing in again to the same account: the kept copies are merged back (no duplicates)');
+  assert(copies.length === 1 && copies[0].id === 'pm' && (await syncSt(B.p)).synced.includes('pm') && (await syncSt(B.p)).synced.includes('pk'), 'K5 signing in again to the same account: the kept copies resume (no duplicates)');
   const copyId = impCopy.id; // the device-only import copy stays as it is
   await syncNow(B.p); await syncNow(A.p);
   assert((await profData(B.p, 'pm')).tasks.some((t) => t.id === 'signedout1') && (await profData(A.p, 'pm')).tasks.some((t) => t.id === 'signedout1') && (await profData(B.p, 'pm')).tasks.some((t) => t.id === 'imp1'), 'K6 nothing edited while signed out is lost: it is uploaded on sign-in');

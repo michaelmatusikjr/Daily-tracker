@@ -90,14 +90,15 @@ const waitFor = async (fn, ms = 8000) => { const end = Date.now() + ms; let v; w
   const r1 = await S(A.p, `return await S.signIn({ username: 'fam', password: '${PW}' });`);
   assert(r1.pulled === false && typeof r1.error === 'string' && r1.error.length > 0, 'R2 a failed first download is reported (pulled: false, with a reason): ' + r1.error);
   assert(await S(A.p, `return S.canSyncProfiles();`) === false && await S(A.p, `return await S.syncProfiles(['pm']);`) === false, 'R3 profiles can’t be added before the account was downloaded');
-  assert(!(await syncSt(A.p)).synced.includes('pm'), 'R4 …so the kept copy isn’t synced from an empty shadow');
+  // The kept copy resumes with the shadow preserved at sign-out (never an empty one), even before the download.
+  assert((await syncSt(A.p)).synced.includes('pm') && !(await syncSt(A.p)).kept?.pm && Object.keys((await shadowOf(A.p, 'pm')) || {}).length > 1, 'R4 …the kept copy resumes with its preserved shadow, not an empty one');
   await A.ctx.unroute('**/api/sync/pull**');
   assert(await syncNow(A.p) === true && (await syncSt(A.p)).pulled === true, 'R5 the download completes later');
   await syncNow(B.p);
   const bm = await profData(B.p, 'pm'), am = await profData(A.p, 'pm');
-  assert(bm.tasks.find((t) => t.id === 't1').title === 'v2-from-B' && am.tasks.find((t) => t.id === 't1').title === 'v2-from-B', 'R6 B’s newer edit survives (the account wins over the kept copy)');
+  assert(bm.tasks.find((t) => t.id === 't1').title === 'v2-from-B' && am.tasks.find((t) => t.id === 't1').title === 'v2-from-B', 'R6 B’s newer edit survives (latest edit wins against the kept copy)');
   assert(!bm.tasks.some((t) => t.id === 't2') && !am.tasks.some((t) => t.id === 't2'), 'R7 B’s delete survives');
-  assert(bm.tasks.some((t) => t.id === 'whileout') && (await profiles(A.p)).filter((x) => x.name === 'Mick').length === 1, 'R8 the kept copy is merged back: its own edit is uploaded, no duplicate profile');
+  assert(bm.tasks.some((t) => t.id === 'whileout') && (await profiles(A.p)).filter((x) => x.name === 'Mick').length === 1, 'R8 the kept copy resumes: its own edit is uploaded, no duplicate profile');
   // UI: a sign-in whose download fails shows the reason and Retry, not the profile picker.
   await S(A.p, `await S.signOut({ remove: false });`);
   await A.ctx.route('**/api/sync/pull**', (r) => r.abort());

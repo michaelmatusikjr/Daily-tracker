@@ -7,7 +7,7 @@ import { pushConfig } from './push.js';
 import { fmtDateShort, toKey } from './dates.js';
 import * as S from './sync.js';
 import { avatarEl } from './profiles.js';
-import { profileUsage } from './attachments.js';
+import { photosOfProfiles } from './attachments.js';
 import { ctx } from './ctx.js';
 
 const nameKey = (n) => String(n || '').trim().toLowerCase();
@@ -47,7 +47,7 @@ export function openAccountSheet() {
 function accountPanel({ onNavigate = null } = {}) {
   const root = h('div.acct-panel');
   // Full render only when what's shown changes shape; otherwise just the status line (no refetch).
-  const sig = () => { const s = S.syncState(); const st = S.syncStatus(); return JSON.stringify([S.hasAccount(), s.username, st?.kind === 'busy' ? 'ok' : st?.kind, s.synced, !!s.pulled, getProfiles().map((p) => [p.id, p.name])]); };
+  const sig = () => { const s = S.syncState(); const st = S.syncStatus(); return JSON.stringify([S.hasAccount(), s.username, st?.kind === 'busy' ? 'ok' : st?.kind, s.synced, !!s.pulled, S.cantSyncNote(), getProfiles().map((p) => [p.id, p.name])]); };
   let last = null;
   const render = () => { last = sig(); root.replaceChildren(...(S.hasAccount() ? signedInView(render) : signedOutView())); };
   render();
@@ -93,13 +93,19 @@ function statusLine() {
   return h(`p.acct-status.${st.kind}`, { role: 'status', 'aria-live': 'polite' }, ...kids);
 }
 
+/** What can't be uploaded (too large, refused by the server): it stays on this device only. */
+function cantSyncLine() {
+  const t = S.cantSyncNote();
+  return t ? h('p.acct-cantsync', { role: 'status' }, t) : null;
+}
+
 function signedInView(rerender) {
   const s = S.syncState();
   const st = S.syncStatus();
   const out = [];
   out.push(h('div.set-row.acct-head',
     h('span.acct-user', icon('user', { size: 20 })),
-    h('div.set-text', h('span.set-label', s.username || 'Account'), statusLine()),
+    h('div.set-text', h('span.set-label', s.username || 'Account'), statusLine(), cantSyncLine()),
     st && ['ok', 'error', 'offline'].includes(st.kind) ? h('button.btn.ghost.small', { type: 'button', onclick: async (e) => { await busy(e.currentTarget, 'Syncing…', null, () => S.syncNow()); rerender(); } }, icon('refresh', { size: 16 }), 'Sync now') : null));
   if (st?.kind === 'expired') {
     out.push(h('div.set-actions.pad',
@@ -517,7 +523,7 @@ async function openSignOut() {
   if (c === 'remove') {
     const ids = S.syncedIds();
     let photos = 0;
-    for (const id of ids) { try { photos += (await profileUsage(id)).count; } catch { /* ignore */ } }
+    try { photos = await photosOfProfiles(ids); } catch { /* ignore */ }
     const names = synced.length ? synced.join(', ') : 'The account’s profiles';
     const photoNote = photos ? ` Their ${photos} photo${photos === 1 ? '' : 's'} on this device ${photos === 1 ? 'isn’t' : 'aren’t'} in the account (photos don’t sync yet) and will be deleted.` : '';
     if (!(await confirmDialog('Remove from this device?', `Everything in ${names} has been uploaded. ${synced.length === 1 ? 'It is' : 'They are'} removed from this device, stay in your account and come back when you sign in again.${photoNote}`, { ok: 'Remove', danger: true }))) return;

@@ -39,7 +39,10 @@ export const DEVICE_ONLY_SETTINGS = new Set(['notifications', 'onboarded']);
 //   deletes: {pid: t}, waitReadable: {pid: 1}, merge: {pid: 1}, offset, lastOk, error, paused: {sv}, expired,
 //   locked, signingOut, pulled (a full pull completed for this account), known: {pid: name | null}
 //   (profiles the account has a meta record for; null = deleted), kept: {pid: accountId} (copies kept
-//   at sign-out; kept across sign-outs) }
+//   at sign-out, each with its preserved shadow in IndexedDB under "kept:<pid>"; kept across sign-outs),
+//   keptDeletes: {pid: {a: accountId, t}} (profile deletes still to push when signing in to that account
+//   again), refusedDeletes: {pid: 1} (profile deletes the server refused twice: still pending),
+//   cantSync: {tooLarge, refused, deletes} (counts of what can't be uploaded, for Settings › Account) }
 function readState() { try { const s = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); return s && typeof s === 'object' ? s : {}; } catch { return {}; } }
 function writeState(s) { try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); return true; } catch { return false; } }
 /** Read-modify-write (another tab may have written in between). */
@@ -280,7 +283,16 @@ function applyRecords(s, recs) {
 const loadShadow = (pid) => C.idb('shadow', 'readonly', (s) => s.get(pid)).then((x) => (isObj(x) ? x : {}));
 const saveShadow = (pid, sh) => C.idb('shadow', 'readwrite', (s) => s.put(sh, pid));
 const dropShadow = (pid) => C.idb('shadow', 'readwrite', (s) => s.delete(pid)).catch(() => {});
-const clearShadows = () => C.idb('shadow', 'readwrite', (s) => s.clear()).catch(() => {});
+// Shadows preserved at a "Keep copies" sign-out live in the same store under "kept:<pid>" (pids never
+// contain ':'): { accountId, shadow, merge?, wait? }. Clearing the live shadows never touches them.
+const KEPT = 'kept:';
+const loadKept = (pid) => C.idb('shadow', 'readonly', (s) => s.get(KEPT + pid)).then((x) => (isObj(x) ? x : null)).catch(() => null);
+const saveKept = (pid, rec) => C.idb('shadow', 'readwrite', (s) => s.put(rec, KEPT + pid));
+const dropKept = (pid) => C.idb('shadow', 'readwrite', (s) => s.delete(KEPT + pid)).catch(() => {});
+const clearShadows = () => C.idb('shadow', 'readwrite', (s) => {
+  s.delete(IDBKeyRange.upperBound(KEPT, true)); // every key before "kept:"
+  return s.delete(IDBKeyRange.lowerBound('kept;')); // …and after "kept:\uffff"
+}).catch(() => {});
 const newer = (t1, d1, t2, d2) => t1 > t2 || (t1 === t2 && String(d1) > String(d2));
 
 // rid cache (k ↔ rid) for this page and these keys.
@@ -300,6 +312,7 @@ let debounceTimer = null, retryTimer = null, attempt = 0;
 let keysMem = null; // { accountId, encKey, macKey, check, wrappedPw }
 let progress = null; // { phase, n } while downloading/uploading
 let lastError = null; // plain words for the last failed cycle (also offline), for sign-in
+const triedRefused = new Set(); // refused records (k) / profile deletes (pid) already tried again since the app started
 class Aborted extends Error {}
 
 async function getKeys() {
@@ -403,6 +416,8 @@ function syncedProfiles(s) {
 }
 
 async function runCycle(my, token, keys, dev) {
+  // Copies kept at a sign-out from this same account carry on with their preserved shadows.
+  await resumeKept(my, token);
   let s = readState();
   const appliedOther = { v: false };
   // Synced profiles that vanished from this device without an explicit delete are downloaded again.
@@ -448,6 +463,7 @@ async function runCycle(my, token, keys, dev) {
     const res = applyIncoming(incoming, full, dev, shadows, appliedOther);
     for (const pid of res.dropped) await dropShadow(pid);
     for (const pid of res.dirty) await saveShadow(pid, shadows.get(pid));
+    for (const pid of res.keptGone) await dropKept(pid);
     checkAlive(my, token);
     // The cursor only moves on when everything that arrived was stored.
     if (res.cursorOk) patchState(res.needFull ? { full: true, ...(full ? {} : { cursor: seq }) } : { cursor: seq, full: false });
@@ -460,14 +476,92 @@ async function runCycle(my, token, keys, dev) {
 }
 
 /**
- * Edit time: (offset-corrected) now, or 1 more than the record's previous time – but never more than
- * a minute ahead of now (a record with a time in the future would be refused by the server). If the
- * previous time is already beyond that, the edit gets now + 1 min anyway (it then loses to later edits).
+ * Signing in to an account again: each copy kept at sign-out from this account resumes with the shadow
+ * preserved then (so edits made while signed out are diffed normally and pending ones are uploaded;
+ * latest edit wins against the account, never "account wins"). A kept marker without a preserved shadow
+ * (older data) is dropped: if the account has that profile id, the copy then stays here under a new id
+ * (see moveClashingProfiles), so nothing is lost. Profile deletes still pending at sign-out are restored.
  */
-const FUTURE_CAP = 60000;
+async function resumeKept(my, token) {
+  const s = readState();
+  const acc = s.accountId;
+  const kept = s.kept || {}, kd = s.keptDeletes || {};
+  const mine = Object.keys(kept).filter((pid) => kept[pid] === acc);
+  const myDel = Object.keys(kd).filter((pid) => kd[pid] && kd[pid].a === acc);
+  if (!acc || (!mine.length && !myDel.length)) return;
+  const local = new Set(getProfiles().map((p) => p.id));
+  const synced = new Set(s.synced || []);
+  const add = [], merge = {}, wait = {}, dels = {};
+  for (const pid of mine) {
+    const rec = await loadKept(pid);
+    if (!rec || rec.accountId !== acc || !isObj(rec.shadow) || !local.has(pid) || synced.has(pid)) continue;
+    await saveShadow(pid, rec.shadow);
+    add.push(pid);
+    if (rec.merge) merge[pid] = 1;
+    if (rec.wait) wait[pid] = 1;
+  }
+  for (const pid of myDel) {
+    if (local.has(pid) || synced.has(pid)) continue;
+    const rec = await loadKept(pid);
+    if (rec && rec.accountId === acc && isObj(rec.shadow)) await saveShadow(pid, rec.shadow);
+    dels[pid] = kd[pid].t;
+  }
+  checkAlive(my, token);
+  patchState((x) => {
+    const k = { ...(x.kept || {}) }, d = { ...(x.keptDeletes || {}) };
+    for (const pid of mine) if (k[pid] === acc) delete k[pid];
+    for (const pid of myDel) if (d[pid]?.a === acc) delete d[pid];
+    return {
+      kept: k, keptDeletes: d, full: true,
+      synced: [...new Set([...(x.synced || []), ...add])],
+      merge: { ...(x.merge || {}), ...merge }, waitReadable: { ...(x.waitReadable || {}), ...wait },
+      deletes: { ...dels, ...(x.deletes || {}) },
+    };
+  });
+  for (const pid of [...mine, ...myDel]) await dropKept(pid);
+}
+
+/**
+ * Before leaving an account (Keep copies sign-out, or signing in to another account while this one's
+ * session ended): preserve each synced profile's shadow (with its pending outbox) and the pending
+ * profile deletes, marked with this account's id. Returns { kept, keptDeletes } for the state; a
+ * profile whose shadow couldn't be preserved gets no marker (it is then never merged, only copied).
+ */
+async function preserveForAccount(s) {
+  const kept = {}, keptDeletes = {};
+  if (!s.accountId) return { kept, keptDeletes };
+  const local = new Set(getProfiles().map((p) => p.id));
+  const merge = s.merge || {}, fresh = s.fresh || {}, wait = s.waitReadable || {};
+  for (const pid of s.synced || []) {
+    if (!local.has(pid)) continue;
+    try {
+      const shadow = await loadShadow(pid);
+      await saveKept(pid, { accountId: s.accountId, shadow, ...(merge[pid] || fresh[pid] ? { merge: 1 } : {}), ...(wait[pid] ? { wait: 1 } : {}) });
+      kept[pid] = s.accountId;
+    } catch { /* no marker: never merged later */ }
+  }
+  for (const [pid, t] of Object.entries(s.deletes || {})) {
+    if (local.has(pid)) continue;
+    try {
+      const shadow = await loadShadow(pid).catch(() => ({}));
+      await saveKept(pid, { accountId: s.accountId, shadow });
+    } catch { /* the tombstone time falls back to the delete time */ }
+    keptDeletes[pid] = { a: s.accountId, t };
+  }
+  return { kept, keptDeletes };
+}
+
+/**
+ * Edit time: (offset-corrected) now, or 1 more than the record's previous time, so a new edit always
+ * wins over the previous one – even when that one has a time ahead of now (e.g. a device whose clock
+ * was fast) – up to 23 hours ahead (the server refuses times more than a day ahead). Only when the
+ * previous time is beyond that does the edit get now (it may then lose to that record).
+ */
+const FUTURE_CAP = 23 * 3600000;
 function nextT(e) {
   const now = Math.round(serverNow());
-  return Math.min(Math.max(now, (e ? e[1] : 0) + 1), now + FUTURE_CAP);
+  const after = (e ? e[1] : 0) + 1;
+  return after > now + FUTURE_CAP ? now : Math.max(now, after);
 }
 /** Record local edits of one profile in its shadow (new/changed → pending, gone → pending tombstone). */
 function diffProfile(pid, meta, order, data, sh, dev) {
@@ -494,17 +588,17 @@ function diffAll(s, shadows, dev) {
 }
 
 /**
- * Before applying a full pull: a device-only profile with the id of an account profile, which wasn't
- * kept from this same account, stays on this device under a new id. Its photos are copied (not moved),
+ * Before applying a full pull: a device-only profile with the id of an account profile (copies kept
+ * from this same account were resumed before, see resumeKept) stays on this device under a new id. Its photos are copied (not moved),
  * so the account's copy keeps them too.
  */
 async function moveClashingProfiles(my, token, incoming) {
   const s = readState();
-  const synced = new Set(s.synced || []), kept = s.kept || {}, deletes = s.deletes || {};
+  const synced = new Set(s.synced || []), deletes = s.deletes || {};
   for (const r of incoming.values()) {
     if (r.p.kind !== 'meta' || r.v === null) continue;
     const pid = r.p.pid;
-    if (synced.has(pid) || deletes[pid] || kept[pid] === s.accountId || !getProfiles().some((p) => p.id === pid)) continue;
+    if (synced.has(pid) || deletes[pid] || !getProfiles().some((p) => p.id === pid)) continue;
     await reIdWithPhotos(pid);
     checkAlive(my, token);
   }
@@ -520,6 +614,7 @@ async function reIdWithPhotos(pid) {
     deleteFiles([...map.values()]).catch(() => {}); // the copy keeps pointing at the original files
   }
   patchState((x) => { const k = { ...(x.kept || {}) }; delete k[pid]; return { kept: k }; });
+  await dropKept(pid);
   return nid;
 }
 
@@ -598,7 +693,7 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
   const kept = { ...(s.kept || {}) };
   const known = full ? {} : { ...(s.known || {}) };
   for (const r of incoming.values()) if (r.p.kind === 'meta') known[r.p.pid] = r.v ? r.v.name : null;
-  const dirty = new Set(), dropped = new Set();
+  const dirty = new Set(), dropped = new Set(), keptGone = new Set();
   let needFull = false, cursorOk = true;
   const byPid = new Map();
   for (const [k, r] of incoming) {
@@ -630,6 +725,7 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     const ok = exists ? applyRemoteProfile(pid, data) && (!meta || updateProfileRemote(pid, meta.v)) : addRemoteProfile({ id: pid, name: meta.v.name, avatar: meta.v.avatar, data });
     if (!ok) { cursorOk = false; return false; }
     synced.add(pid); delete fresh[pid];
+    if (kept[pid]) { delete kept[pid]; keptGone.add(pid); } // syncs to this account now
     const sh = {};
     const applied = new Map(recs.map((r) => [r.k, r]));
     const prof = getProfiles().find((p) => p.id === pid);
@@ -665,17 +761,12 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
     if (!meta || meta.v === null) continue; // deleted, or data without a profile: nothing to create
     if (!full) { needFull = true; continue; }
     if (localIds().has(pid)) {
-      if (kept[pid] && kept[pid] === s.accountId) {
-        // A copy kept at sign-out from this same account: merged (step 3) – the account's records
-        // win, records only on this device are uploaded, nothing is duplicated, photos stay.
-        synced.add(pid); merge[pid] = 1; delete kept[pid]; shadows.set(pid, {}); dropped.add(pid);
-        continue;
-      }
-      // A device-only profile with the same id (another account's copy, or the same backup imported
-      // on two devices) stays here under a new id (normally done before, with its photos copied).
+      // A device-only profile with the same id (a copy kept from another account, a kept copy without
+      // a preserved shadow, or the same backup imported on two devices) stays here under a new id
+      // (normally done before, with its photos copied). Kept copies are never merged account-wins.
       const nid = 'p' + uid();
       if (!reIdProfile(pid, nid)) { cursorOk = false; continue; }
-      delete kept[pid];
+      delete kept[pid]; keptGone.add(pid);
     }
     build(pid, recs, meta);
   }
@@ -751,9 +842,9 @@ function applyIncoming(incoming, full, dev, shadows, appliedOther) {
   }
 
   for (const id of Object.keys(merge)) if (!synced.has(id)) delete merge[id];
-  for (const id of Object.keys(kept)) if (!localIds().has(id)) delete kept[id];
+  for (const id of Object.keys(kept)) if (!localIds().has(id) || synced.has(id)) { delete kept[id]; keptGone.add(id); }
   patchState({ synced: [...synced], fresh, waitReadable, merge, kept, known });
-  return { needFull, cursorOk, dirty, dropped };
+  return { needFull, cursorOk, dirty, dropped, keptGone };
 }
 
 /** Upload every pending record (in batches). Shadows are updated as batches are accepted. */
@@ -766,13 +857,18 @@ async function pushPending(my, token, keys, dev, shadows) {
     shadows.set(prof.pid, sh);
     const flat = flatten(prof.pid, prof.meta, prof.order, prof.data);
     for (const [k, e] of Object.entries(sh)) {
-      if (e[3] !== 1) continue;
+      // Refused twice before (pending = 3): tried again once per app start, otherwise set aside.
+      if (e[3] === 3 && !triedRefused.has(k)) triedRefused.add(k);
+      else if (e[3] !== 1) continue;
       const v = e[0] === null ? null : flat.get(k);
       if (e[0] !== null && (v === undefined || hashOf(v) !== e[0])) continue; // edited again: next cycle
       items.push({ pid: prof.pid, k, v, t: e[1], dev: e[2] });
     }
   }
+  const refusedDel = s.refusedDeletes || {};
   for (const [pid, t0] of Object.entries(s.deletes || {})) {
+    // Refused twice before: still pending (shown in Settings › Account); tried again once per app start.
+    if (refusedDel[pid]) { if (triedRefused.has(pid)) continue; triedRefused.add(pid); }
     // The tombstone must be newer than the last meta record this device knew (its shadow is kept
     // until the delete is uploaded): t = max(now, meta t + 1).
     const mt = (await loadShadow(pid).catch(() => ({})))[`${pid}/meta`]?.[1] || 0;
@@ -783,7 +879,7 @@ async function pushPending(my, token, keys, dev, shadows) {
     }
     items.push({ pid, k: `${pid}/meta`, v: null, t, dev, del: true });
   }
-  if (!items.length) return;
+  if (!items.length) { noteCantSync(shadows); return; }
   progress = { phase: 'up', n: 0, of: items.length }; changed();
   let batch = [], bytes = 0, done = 0;
   const encode = async (it) => {
@@ -791,14 +887,18 @@ async function pushPending(my, token, keys, dev, shadows) {
     const blob = await C.encryptRecord(keys.encKey, rid, { k: it.k, v: it.v, t: it.t, dev: it.dev, sv: SCHEMA_VERSION });
     return { rid, t: it.t, dev: it.dev, blob };
   };
-  /** The server refused records[i] (e.g. a time too far ahead): give it a new time once, else set it aside. */
+  /**
+   * The server refused records[i] (e.g. a time too far ahead): give it a new time once, else set it
+   * aside – a record as "can't sync" (pending = 3, like too large: kept here, counted, shown), a profile
+   * delete stays pending (refusedDeletes) and is shown, never silently dropped.
+   */
   const fixRefused = async (i, retried) => {
     const b = batch[i];
     const sh = shadows.get(b.pid);
     if (retried.has(i)) {
       console.warn('Sync: the server refused a record; it stays on this device', b.k.split('/')[1]);
-      if (b.del) { patchState((x) => { const d = { ...(x.deletes || {}) }; if (d[b.pid] === b.t) delete d[b.pid]; return { deletes: d }; }); }
-      else if (sh?.[b.k] && sh[b.k][1] === b.t) { sh[b.k][3] = 2; await saveShadow(b.pid, sh); }
+      if (b.del) patchState((x) => ({ refusedDeletes: { ...(x.refusedDeletes || {}), [b.pid]: 1 } }));
+      else if (sh?.[b.k] && sh[b.k][1] === b.t) { sh[b.k][3] = 3; await saveShadow(b.pid, sh); }
       batch.splice(i, 1);
       const r = new Map();
       for (const j of retried) if (j !== i) r.set(j > i ? j - 1 : j, true);
@@ -833,8 +933,9 @@ async function pushPending(my, token, keys, dev, shadows) {
     const touched = new Set();
     const st = readState();
     const dels = { ...(st.deletes || {}) };
+    const refusedD = { ...(st.refusedDeletes || {}) };
     for (const b of batch) {
-      if (b.del) { if (dels[b.pid] === b.t) { delete dels[b.pid]; if (!(st.synced || []).includes(b.pid)) await dropShadow(b.pid); } continue; }
+      if (b.del) { delete refusedD[b.pid]; if (dels[b.pid] === b.t) { delete dels[b.pid]; if (!(st.synced || []).includes(b.pid)) await dropShadow(b.pid); } continue; }
       const sh = shadows.get(b.pid);
       const e = sh?.[b.k];
       // Accepted or stale (the server kept a newer copy, which the next pull brings): no longer pending.
@@ -842,7 +943,7 @@ async function pushPending(my, token, keys, dev, shadows) {
     }
     for (const pid of touched) await saveShadow(pid, shadows.get(pid));
     checkAlive(my, token);
-    patchState({ deletes: dels });
+    patchState({ deletes: dels, refusedDeletes: refusedD });
     done += batch.length;
     progress = { phase: 'up', n: done, of: items.length }; changed();
     batch = []; bytes = 0;
@@ -862,8 +963,33 @@ async function pushPending(my, token, keys, dev, shadows) {
     bytes += n;
   }
   await flush();
+  noteCantSync(shadows);
 }
 
+/** Count what can't be uploaded (too large, refused twice) for Settings › Account. */
+function noteCantSync(shadows) {
+  const s = readState();
+  const out = { tooLarge: 0, refused: 0, deletes: Object.keys(s.refusedDeletes || {}).filter((pid) => (s.deletes || {})[pid]).length };
+  for (const pid of s.synced || []) {
+    for (const e of Object.values(shadows.get(pid) || {})) { if (e[3] === 2) out.tooLarge++; else if (e[3] === 3) out.refused++; }
+  }
+  const prev = s.cantSync || {};
+  if (prev.tooLarge !== out.tooLarge || prev.refused !== out.refused || prev.deletes !== out.deletes) { patchState({ cantSync: out }); changed(); }
+}
+/** Plain words for what can't be uploaded (null when everything can). */
+export function cantSyncNote() {
+  const c = { ...(readState().cantSync || {}) };
+  const parts = [];
+  c.tooLarge = c.tooLarge || 0; c.refused = c.refused || 0;
+  if (c.tooLarge) parts.push(`${c.tooLarge.toLocaleString()} item${c.tooLarge === 1 ? ' is' : 's are'} too large to sync`);
+  if (c.refused) parts.push(`${c.refused.toLocaleString()} item${c.refused === 1 ? ' was' : 's were'} refused by the server`);
+  if (c.deletes) parts.push(`${c.deletes === 1 ? 'a profile deletion was' : `${c.deletes} profile deletions were`} refused by the server`);
+  if (!parts.length) return null;
+  const tail = [];
+  if (c.tooLarge) tail.push(`Too-large items stay on this device only (editing one tries again).`);
+  if (c.refused || c.deletes) tail.push(`What the server refused is kept here and tried again when the app starts.`);
+  return `Couldn’t sync: ${parts.join(', ')}. ${tail.join(' ')}`;
+}
 // ---------- state changes from the UI ----------
 /**
  * Start syncing these device profiles. Only after the account was downloaded completely (so it is
@@ -886,14 +1012,30 @@ export async function syncProfiles(ids) {
     add.push(id);
   }
   add.forEach(ensureStored);
-  for (const id of [...add, ...merged]) await dropShadow(id); // start from an empty shadow
+  for (const id of [...add, ...merged]) { await dropShadow(id); await dropKept(id); } // start from an empty shadow
+  const now = [...add, ...merged];
   s = patchState((x) => ({
+    // It syncs to this account now: a marker (and shadow) kept from another account no longer applies.
+    kept: Object.fromEntries(Object.entries(x.kept || {}).filter(([id]) => !now.includes(id))),
     synced: [...new Set([...(x.synced || []), ...add, ...merged])],
     ...(merged.length ? { full: true, merge: { ...(x.merge || {}), ...Object.fromEntries(merged.map((id) => [id, 1])) } } : {}),
   }));
   changed();
   scheduleSync(0);
   return true;
+}
+
+/**
+ * These device profiles' data was replaced wholesale (an import while signed out): a copy kept from an
+ * account no longer matches its preserved shadow, so it is never resumed (on signing in again it stays
+ * here under a new id beside the account's copy – nothing in the account is reverted).
+ */
+export async function forgetKept(ids) {
+  const s = readState();
+  const hit = ids.filter((id) => (s.kept || {})[id]);
+  if (!hit.length) return;
+  patchState((x) => ({ kept: Object.fromEntries(Object.entries(x.kept || {}).filter(([id]) => !hit.includes(id))) }));
+  for (const id of hit) await dropKept(id);
 }
 
 /** The user deleted a synced profile: delete it from the account (and so every device). */
@@ -967,10 +1109,15 @@ async function storeKeys(accountId, dataKey, wrappedPw) {
 async function resetForAccount(accountId) {
   const s = readState();
   if (s.accountId && s.accountId !== accountId) {
+    // The previous account's profiles stay here as copies kept from it (with their shadows), exactly
+    // like "Keep copies": signing in to it again later carries on where it stopped.
+    const pres = await preserveForAccount(s);
     await clearShadows();
     await C.clearKeys().catch(() => {});
     keysMem = null;
-    writeState({ dev: s.dev || deviceId(), ...(s.kept ? { kept: s.kept } : {}) });
+    const local = new Set(getProfiles().map((p) => p.id));
+    const kept = { ...Object.fromEntries(Object.entries(s.kept || {}).filter(([id]) => local.has(id))), ...pres.kept };
+    writeState({ dev: s.dev || deviceId(), kept, keptDeletes: { ...(s.keptDeletes || {}), ...pres.keptDeletes } });
     return;
   }
   if (s.accountId && s.accountId === accountId) return; // same account again: carry on where it stopped
@@ -984,7 +1131,7 @@ function startSession(r, username, { created = false } = {}) {
     serverUrl: serverUrl(), expired: false, locked: false, error: null, signingOut: false, paused: null,
     // The same account again (e.g. after the session ended): carry on where it stopped.
     // A brand-new account is empty: nothing to download before profiles can be added.
-    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {} }),
+    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null }),
   });
   epoch++;
   changed();
@@ -1266,7 +1413,8 @@ function sessionEnded() {
  */
 async function unsyncedReport() {
   const s = readState();
-  const out = { pending: 0, tooLarge: 0, unreadable: [], deletes: Object.keys(s.deletes || {}).length };
+  const refusedDel = s.refusedDeletes || {};
+  const out = { pending: 0, tooLarge: 0, refused: 0, unreadable: [], deletes: Object.keys(s.deletes || {}).filter((pid) => !refusedDel[pid]).length, refusedDeletes: Object.keys(s.deletes || {}).filter((pid) => refusedDel[pid]).length };
   for (const prof of syncedProfiles(s)) {
     if (!prof.data) { out.unreadable.push(prof.meta.name); continue; }
     if ((s.merge || {})[prof.pid] || (s.waitReadable || {})[prof.pid] || (s.fresh || {})[prof.pid]) { out.pending++; continue; }
@@ -1276,8 +1424,14 @@ async function unsyncedReport() {
       const e = sh[k];
       if (!e || e[0] !== hashOf(v) || e[3] === 1) out.pending++;
       else if (e[3] === 2) out.tooLarge++;
+      else if (e[3] === 3) out.refused++;
     }
-    for (const [k, e] of Object.entries(sh)) if (!flat.has(k) && (e[0] !== null || e[3] !== 0)) out.pending++;
+    for (const [k, e] of Object.entries(sh)) {
+      if (flat.has(k)) continue;
+      if (e[0] !== null || e[3] === 1) out.pending++;
+      else if (e[3] === 2) out.tooLarge++;
+      else if (e[3] === 3) out.refused++;
+    }
   }
   return out;
 }
@@ -1290,7 +1444,15 @@ async function removeBlocker() {
   const n = r.pending + r.deletes;
   if (r.unreadable.length) return `${r.unreadable.join(', ')} can’t be read on this device, so it isn’t known what would be lost. Keep the copies on this device instead.`;
   if (n) return `${n.toLocaleString()} change${n === 1 ? '' : 's'} on this device ${n === 1 ? 'hasn’t' : 'haven’t'} been uploaded yet${s.offline || navigator.onLine === false ? ' (you’re offline)' : ''}. Removing now would lose ${n === 1 ? 'it' : 'them'}. Try again once everything has synced, or keep the copies on this device.`;
-  if (r.tooLarge) return `${r.tooLarge.toLocaleString()} item${r.tooLarge === 1 ? ' is' : 's are'} too large to sync and only on this device. Keep the copies on this device instead.`;
+  const stuck = [];
+  if (r.tooLarge) stuck.push(`${r.tooLarge.toLocaleString()} item${r.tooLarge === 1 ? ' is' : 's are'} too large to sync`);
+  if (r.refused) stuck.push(`${r.refused.toLocaleString()} item${r.refused === 1 ? ' was' : 's were'} refused by the server`);
+  if (r.refusedDeletes) stuck.push(`${r.refusedDeletes === 1 ? 'a profile deletion was' : `${r.refusedDeletes} profile deletions were`} refused by the server`);
+  if (stuck.length) {
+    const one = r.tooLarge + r.refused + r.refusedDeletes === 1;
+    const text = `${stuck.join(', ')}. ${one ? 'It isn’t' : 'They aren’t'} in the account, so removing now would lose ${one ? 'it' : 'them'}. Keep the copies on this device instead.`;
+    return text[0].toUpperCase() + text.slice(1);
+  }
   return null;
 }
 /** Before "Remove from this device": sync, then report what would be lost. Resolves null (safe) or a reason. */
@@ -1300,8 +1462,9 @@ export async function checkRemove() {
 }
 
 /**
- * Sign out. remove = false: the account's profiles stay here as device-only profiles (shadows cleared;
- * they're remembered as kept from this account, so signing in to it again merges them back).
+ * Sign out. remove = false: the account's profiles stay here as device-only profiles; each one's shadow
+ * (with its pending outbox) and pending profile deletes are preserved for this account, so signing in
+ * to it again resumes them (normal diff and latest edit wins; see resumeKept).
  * remove = true: they're removed from this device – only when everything is uploaded, otherwise
  * nothing happens and { ok: false, reason } comes back. Account data is never touched.
  */
@@ -1319,21 +1482,24 @@ export async function signOut({ remove = false } = {}) {
     // Checked again while holding the lock: an edit may have landed since.
     if (remove) { blocked = await removeBlocker(); if (blocked) return; }
     if (s.token) await api('POST', '/api/account/logout', {}, { token: s.token }).catch(() => {});
+    if (!remove) pres = await preserveForAccount(readState());
     await clearShadows();
     await C.clearKeys().catch(() => {});
   };
+  let pres = { kept: {}, keptDeletes: {} };
   try { await withLock(finish); } catch {
     if (remove) blocked = 'Another window is syncing. Try again in a moment.';
-    else { await clearShadows(); await C.clearKeys().catch(() => {}); }
+    else { pres = await preserveForAccount(readState()); await clearShadows(); await C.clearKeys().catch(() => {}); }
   }
   if (blocked) { patchState({ signingOut: false }); epoch++; changed(); scheduleSync(0); return { ok: false, reason: blocked }; }
   keysMem = null; flowKey = null; pendingUnlock = null;
   ridCache = { keysRef: null, byK: new Map(), byRid: new Map() };
   const local = new Set(getProfiles().map((p) => p.id));
-  const kept = Object.fromEntries(Object.entries(readState().kept || {}).filter(([id]) => local.has(id) && !(remove && ids.includes(id))));
-  if (!remove && s.accountId) for (const id of ids) if (local.has(id)) kept[id] = s.accountId;
-  writeState({ dev: s.dev || deviceId(), kept });
-  if (remove) for (const id of ids) { if (removeProfileLocal(id)) deleteProfileFiles(id); }
+  const st = readState();
+  // Keep: each synced profile is remembered as kept from this account, with its preserved shadow.
+  const kept = { ...Object.fromEntries(Object.entries(st.kept || {}).filter(([id]) => local.has(id) && !ids.includes(id))), ...pres.kept };
+  writeState({ dev: s.dev || deviceId(), kept, keptDeletes: { ...(st.keptDeletes || {}), ...pres.keptDeletes } });
+  if (remove) for (const id of ids) { dropKept(id); if (removeProfileLocal(id)) deleteProfileFiles(id); }
   changed();
   return { ok: true };
 }
@@ -1344,6 +1510,12 @@ export async function deleteAccount(password) {
   const { authKey } = await C.fromPassword(s.username, password);
   try { await authed('DELETE', '/api/account', { authKey }); } catch (e) { throw new Error(e.status === 403 ? 'Wrong password' : plainError(e)); }
   await signOut({ remove: false });
+  // The account is gone: its copies are plain device-only profiles (nothing to resume).
+  const st = readState();
+  const gone = Object.keys(st.kept || {}).filter((id) => st.kept[id] === s.accountId);
+  const goneDel = Object.keys(st.keptDeletes || {}).filter((id) => st.keptDeletes[id]?.a === s.accountId);
+  patchState({ kept: Object.fromEntries(Object.entries(st.kept || {}).filter(([id]) => !gone.includes(id))), keptDeletes: Object.fromEntries(Object.entries(st.keptDeletes || {}).filter(([id]) => !goneDel.includes(id))) });
+  for (const id of [...gone, ...goneDel]) await dropKept(id);
 }
 
 // ---------- wiring ----------

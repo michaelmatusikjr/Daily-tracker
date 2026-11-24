@@ -97,6 +97,21 @@ export async function copyProfileFiles(data, toId) {
   }
   return map;
 }
+/**
+ * How many photos removing these profiles deletes: files their tasks refer to that exist on this device
+ * and that no other profile's tasks refer to (deleteProfileFiles keeps those).
+ */
+export async function photosOfProfiles(ids) {
+  const set = new Set(ids);
+  const mine = new Set(), others = new Set();
+  for (const p of getProfiles()) {
+    const st = readProfileState(p.id);
+    for (const t of st?.tasks || []) for (const a of t.attachments || []) (set.has(p.id) ? mine : others).add(a.id);
+  }
+  let n = 0;
+  for (const id of mine) if (!others.has(id) && (await getFile(id))) n++;
+  return n;
+}
 /** { count, bytes } for one profile (originals + thumbnails). */
 export async function profileUsage(profileId) {
   const f = await filesForProfile(profileId);
