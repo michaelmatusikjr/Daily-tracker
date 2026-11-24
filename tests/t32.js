@@ -269,7 +269,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
       }
       const multi = m.validateImport({ app: 'daily-tracker', format: 'profiles', activeId: 'a', profiles: [{ id: 'a', name: 'A', avatar: { type: 'emoji', emoji: '', color: '#6366f1' }, data: { version: 5, settings: { onboarded: true }, tasks: [], habits: [] } }] });
       out.multi = multi.profiles[0].data.settings.weather;
-      try { m.validateImport({ version: 7, settings: {}, tasks: [], habits: [] }); out.newer = 'accepted'; } catch (e) { out.newer = e.message; }
+      try { m.validateImport({ version: 8, settings: {}, tasks: [], habits: [] }); out.newer = 'accepted'; } catch (e) { out.newer = e.message; }
       const locs = Array.from({ length: 14 }, (_, i) => ({ id: 'x' + i, name: 'N' + i, lat: 10 + i, lon: 20 }));
       const dirty = m.validateImport({ version: 6, settings: { weather: { units: 'K', selected: 'nope', locations: [
         ...locs,
@@ -285,8 +285,8 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
       return out;
     });
     const def = { units: 'F', selected: 'current', locations: [] };
-    assert(res.version === 6, 'H1 SCHEMA_VERSION is 6');
-    for (const v of [1, 2, 3, 4, 5]) assert(JSON.stringify(res['v' + v].weather) === JSON.stringify(def) && res['v' + v].version === 6 && res['v' + v].task === 'Old', `H2 v${v} backup imports with default weather settings`);
+    assert(res.version === 7, 'H1 SCHEMA_VERSION is 7');
+    for (const v of [1, 2, 3, 4, 5]) assert(JSON.stringify(res['v' + v].weather) === JSON.stringify(def) && res['v' + v].version === 7 && res['v' + v].task === 'Old', `H2 v${v} backup imports with default weather settings`);
     assert(JSON.stringify(res.multi) === JSON.stringify(def), 'H3 multi-profile backup of v5 data gets the default');
     assert(/newer version/.test(res.newer), 'H4 newer-than-supported backups are still rejected: ' + res.newer);
     assert(res.dirty.units === 'F' && res.dirty.selected === 'current' && res.dirty.n === 10, 'H5 bad units/selected sanitised, locations capped at 10: ' + JSON.stringify(res.dirty));
@@ -303,7 +303,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const v5 = { version: 5, settings: { onboarded: true, theme: 'light' }, categories: [], tasks: [], habits: [], logs: {}, journal: {}, exercises: [], workouts: [] };
     const { ctx, p } = await open(browser, { data: v5, geo: false });
     const s = await stored(p);
-    assert(s.version === 6 && JSON.stringify(s.settings.weather) === JSON.stringify({ units: 'F', selected: 'current', locations: [] }), 'H11 stored v5 profile migrates to v6 with default weather');
+    assert(s.version === 7 && JSON.stringify(s.settings.weather) === JSON.stringify({ units: 'F', selected: 'current', locations: [] }), 'H11 stored v5 profile migrates to v7 with default weather');
     await ctx.close();
   }
 

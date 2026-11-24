@@ -1601,3 +1601,11 @@ html { scroll-padding-top: var(--head-h, 72px); }
 }
 .photo-item.missing:has(.photo-elsewhere)::after { content: none; }
 .photo-open { position: relative; }
+
+/* ---------- 1.16.0: Storage and clearing completed tasks ---------- */
+.clear-preview { background: var(--surface-2, var(--card)); border: 1px solid var(--border); border-radius: 12px; padding: var(--s3) var(--s4); min-height: 88px; }
+.clear-preview p { margin: 2px 0; }
+.clear-line { font-size: 15px; }
+.completed-clear { text-align: center; margin: var(--s5) 0 var(--s3); }
+.save-banner .link-btn { color: #fff; min-height: 0; font-weight: 700; }
+.clear-sheet .sheet-foot .btn.danger { min-width: 120px; }

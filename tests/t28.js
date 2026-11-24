@@ -39,7 +39,7 @@ const rules = (p) => p.evaluate(async (today) => (await import('./js/push.js')).
     const { ctx, p } = await open(browser, { data: v4 });
     const st = await stored(p);
     const t = Object.fromEntries(st.habits.map((x) => [x.id, x.target]));
-    assert(st.version === 6, 'M1 stored data upgraded to schema 6');
+    assert(st.version === 7, 'M1 stored data upgraded to schema 7');
     assert(t.h1 === null && t.h2 === '12:00' && t.h3 === '17:00' && t.h4 === '21:00' && t.h5 === null, 'M2 anytime/morning/afternoon/evening → null/12:00/17:00/21:00 (' + JSON.stringify(t) + ')');
     assert(st.habits.every((x) => !('timeOfDay' in x)), 'M3 timeOfDay dropped');
     assert(st.settings.habitWarnDefault === 30 && st.settings.taskDefaults.on === true && st.settings.taskDefaults.anytimeReminderTime === '06:00', 'M4 new profile settings defaulted');

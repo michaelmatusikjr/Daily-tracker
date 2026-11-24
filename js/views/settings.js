@@ -16,6 +16,7 @@ import { setWorkoutHabit, setWeatherUnits } from '../actions.js';
 import { habitText } from '../habitIcon.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
 import { accountSection } from '../account.js';
+import { storageSection, goToStorage } from '../clearCompleted.js';
 import { hasAccount, isSynced, syncedIds, forgetKept } from '../sync.js';
 import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
 
@@ -181,6 +182,9 @@ export function renderSettings() {
   } else installCtl = row('Install app', 'Use your browser menu (“Install app” or “Add to Home screen”). The option appears once the browser allows it.', h('span.badge', icon('phone', { size: 14 }), 'Browser menu'));
   installCtl.id = 'set-install';
   root.append(group('App', installCtl));
+
+  // Storage
+  root.append(storageSection(group));
 
   // Data
   const fileInput = h('input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: () => importFile(fileInput) });
@@ -369,7 +373,7 @@ async function importFile(input) {
         deleteUnreadable = c === 'delete';
       }
       parsed.profiles.forEach((p) => { if (p.data) p.data.settings.onboarded = true; });
-      if (!replaceAllProfiles(parsed, { deleteUnreadable, keepIds: inAccount ? syncedIds() : [] })) { toast('Couldn’t import – this device’s storage is full', { force: true }); return; }
+      if (!replaceAllProfiles(parsed, { deleteUnreadable, keepIds: inAccount ? syncedIds() : [] })) { toast('Couldn’t import – this device’s storage is full', { force: true, action: 'Storage', onAction: goToStorage }); return; }
       await forgetKept(parsed.profiles.map((p) => p.id)).catch(() => {});
       toast('Backup imported');
       const ids = new Set(getProfiles().map((p) => p.id));
@@ -395,7 +399,7 @@ async function importFile(input) {
       if (Array.isArray(raw?.attachments)) raw.attachments = reIdPhotos(data, raw.attachments);
       const newId = addProfile({ name: 'Imported', data });
       if (newId) { toast('Backup added as profile “Imported” – rename it from the profile menu'); await restorePhotos(() => (typeof newId === 'string' ? newId : getActiveProfile().id)); }
-      else toast('Couldn’t import – this device’s storage is full', { force: true });
+      else toast('Couldn’t import – this device’s storage is full', { force: true, action: 'Storage', onAction: goToStorage });
     }
   } catch (e) {
     toast(e instanceof SyntaxError ? 'That file is not valid JSON' : (e.message || 'Import failed'), { duration: 6000 });

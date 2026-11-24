@@ -26,6 +26,7 @@ import { openTaskView } from './taskView.js';
 import { openHabitView } from './habitSheet.js';
 import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
+import { goToStorage } from './clearCompleted.js';
 import { initNoZoom } from './noZoom.js';
 import { initSync, onSyncChange, profileReset, syncState, forgetKept } from './sync.js';
 import { refreshWeather } from './weather.js';
@@ -231,6 +232,11 @@ function render() {
       requestAnimationFrame(() => { if (gen === restoreGen && parseRoute().name === name && Math.abs(window.scrollY - scrollY) > 1) ownScrollTo(scrollY); ownY = null; });
     }
   }
+  if (ctx.ui.scrollTo) { // e.g. the "storage full" banner: land on Settings › Storage
+    const target = document.getElementById(ctx.ui.scrollTo);
+    ctx.ui.scrollTo = null;
+    if (target) requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+  }
   lastRoute = routeKey;
 }
 
@@ -282,7 +288,7 @@ async function offerLegacyMerge() {
   if (choice === 'discard' && !(await confirmDialog('Discard those changes?', 'They can’t be recovered afterwards.', { ok: 'Discard', danger: true }))) { offerLegacyMerge(); return; }
   const res = resolveLegacy(choice, target?.id);
   const msg = { Merged: `Merged into ${name}`, Added: 'Added as profile “Older version”', Discarded: 'Older changes discarded', Unreadable: 'Those changes couldn’t be read', 'Storage full': 'Couldn’t save – storage is full' }[res] || res;
-  toast(msg, { force: true });
+  toast(msg, res === 'Storage full' ? { force: true, action: 'Storage', onAction: goToStorage } : { force: true });
 }
 
 function rollover() {
@@ -384,6 +390,7 @@ function init() {
   // A failed save shows a banner that stays until a save works again (success toasts are muted meanwhile).
   const banner = document.getElementById('save-banner');
   const showBanner = (on) => { banner.hidden = !on; };
+  banner.querySelector('[data-action="storage"]')?.addEventListener('click', () => goToStorage());
   onSaveError(() => showBanner(true));
   onSaveOk(() => showBanner(false));
   if (!isStorageOk()) showBanner(true);

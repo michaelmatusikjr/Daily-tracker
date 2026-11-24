@@ -43,6 +43,7 @@ const SHELL = [
   './js/taskView.js',
   './js/habitSheet.js',
   './js/attachments.js',
+  './js/clearCompleted.js',
   './js/views/completed.js',
   './js/habitIcon.js',
   './js/noZoom.js',
