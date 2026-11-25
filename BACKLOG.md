@@ -42,7 +42,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - After signing in, each device profile gets a choice: sync to the account, keep on this device only, or delete from this device.
   - Fix the "On this device only" tag in the profile menu, which overflows its row.
 - **Added:** 2026-11-24
-- **Status:** in progress (ships with sync phase 2 as v1.16.0)
+- **Shipped:** v1.15.1 (2026-11-25), with a fix that rebuilds a damaged profile list instead of starting over
 
 ### 31. Clear out completed tasks in bulk by date
 - **What:** an easy place to delete completed tasks in bulk by date, for when storage gets low.
@@ -59,7 +59,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Likely cause:** every change re-renders the whole screen (`render()` in `js/app.js` replaces the view); the scroll position and the tapped control's focus aren't kept.
 - **Type:** bug. **Size:** small.
 - **Added:** 2026-11-24
-- **Status:** planned for v1.16.0
+- **Shipped:** v1.15.1 (2026-11-25): scroll is kept only after the user's own tap; background refreshes never scroll
 
 ### 33. Register key syncs with the account
 - **What:** the reminders register key (Settings › Reminders › Advanced) travels with the account, end-to-end encrypted like the rest of the data, so a newly signed-in device gets closed-app reminders without typing it again.

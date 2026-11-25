@@ -442,7 +442,9 @@ async function runCycle(my, token, keys, dev) {
   const missing = (s.synced || []).filter((id) => !local.has(id) && !(s.deletes || {})[id]);
   if (missing.length) s = patchState((x) => ({ fresh: { ...(x.fresh || {}), ...Object.fromEntries(missing.map((id) => [id, 1])) }, full: true }));
   // Recovered profiles (placeholder name/avatar) get the account's real meta: pull everything once.
-  if (getProfiles().some((p) => p.recovered && (s.synced || []).includes(p.id))) s = patchState({ full: true });
+  // Only readable ones: an unreadable profile is skipped by the pull, so its flag couldn't clear and
+  // every cycle would pull everything again.
+  if (getProfiles().some((p) => p.recovered && (s.synced || []).includes(p.id) && !(s.waitReadable || {})[p.id] && readProfileForSync(p.id))) s = patchState({ full: true });
   // A profile that was unreadable while remote changes arrived and is readable again: what's on this
   // device now is unknown (not what the shadow describes), so never diff it against the old shadow
   // (that could tombstone the account's data). Merge instead: empty shadow, full pull, remote wins
@@ -917,6 +919,8 @@ async function pushPending(my, token, keys, dev, shadows) {
       // Refused twice before (pending = 3): tried again once per app start, otherwise set aside.
       if (e[3] === 3 && !triedRefused.has(k)) triedRefused.add(k);
       else if (e[3] !== 1) continue;
+      // A recovered profile's placeholder name/avatar never goes over the account's real one.
+      if (k === `${prof.pid}/meta` && prof.meta.recovered && typeof (s.known || {})[prof.pid] === 'string') continue;
       const v = e[0] === null ? null : flat.get(k);
       if (e[0] !== null && (v === undefined || hashOf(v) !== e[0])) continue; // edited again: next cycle
       items.push({ pid: prof.pid, k, v, t: e[1], dev: e[2] });
