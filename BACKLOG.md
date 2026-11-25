@@ -32,7 +32,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **The "On this device only" mark shows before sign-in too** (decided 2026-11-24).
   - **Phased release:**
     - **Phase 1 – shipped in v1.15.0 (2026-11-24):** account and sign-in (password **and passkeys**, with rate limiting), end-to-end encryption plus a recovery key, and sync of profile data (tasks, habits, workouts, journal, settings), including the profile-selection, device-only and migration rules above. Design: `SYNC.md`.
-    - **Phase 2 (in progress, with #30 in v1.16.0):** task photos sync (habit image icons already sync inside the habit record since phase 1).
+    - **Phase 2 – shipped in v1.16.0 (2026-11-25):** task photos sync (habit image icons already sync inside the habit record since phase 1).
   - **Follow-ups decided during phase 1 QA:** profile order is per device (only names/avatars sync); deleting a whole kept copy only removes it from that device; a kept copy deleted from the account elsewhere stays on the device as device-only.
   - **Defaults chosen for phase 1 (change if wanted):** creating an account needs the server's register key (the reminders one), so strangers can't use the server; signing out asks "keep copies on this device" (default) or "remove"; deleting a synced profile deletes it everywhere (the confirm says so); Settings › Account offers change password, sign out other devices, and delete account.
 
@@ -52,7 +52,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - **Repeating tasks (decided 2026-11-24):** old completions of running repeating tasks can be cleared too. The task keeps repeating; occurrences before the date no longer exist (not shown, not missed). Stored as `clearedBefore` on the task (schema v7). A finished series is cleared like a one-off.
   - **Safety:** a confirm, then Undo on the result. For a synced profile it also deletes them from the account and other devices (the confirm says so). Habits, workouts and the journal are never touched.
 - **Added:** 2026-11-24
-- **Status:** planned for v1.16.0
+- **Shipped:** v1.16.0 (2026-11-25)
 
 ### 32. Bug: Settings jumps (scrolls) when a setting changes
 - **What:** changing the accent colour, the week's start day, the theme, etc. makes the Settings screen scroll. It must stay exactly where it was.
@@ -65,7 +65,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **What:** the reminders register key (Settings › Reminders › Advanced) travels with the account, end-to-end encrypted like the rest of the data, so a newly signed-in device gets closed-app reminders without typing it again.
 - **Rules:** it's an account-level secret (not per profile); never shown in plain text in logs or exports; a key typed on a device updates the account's copy (latest wins); signing out leaves the device's copy as it is.
 - **Added:** 2026-11-24
-- **Status:** planned for v1.16.0
+- **Shipped:** v1.16.0 (2026-11-25)
 
 ## Done
 
