@@ -39,10 +39,13 @@ An offline-first **PWA** (plain HTML/CSS/vanilla JS ES modules, no build step) f
    - **Always (user, 2026-11-24):** `opus` only for QA reviews and for designing/building genuinely new data-safety logic. Fix rounds with a precise findings list → `sonnet`; small, well-described fixes → `sonnet` or `haiku`; running test suites and reporting results → a `haiku` agent (builders shouldn't sit waiting on long suite runs). Deploy/release commands: do them directly.
    - **Never commit half-done work** (e.g. while a builder is still editing the checkout), even if a hook asks. Commit only finished, tested steps; a builder commits its own work when done.
 3. **Build:** for anything beyond a small fix, use one *fresh* builder subagent on the cheapest model that can handle it (see step 2) with a self-contained spec. Don't resume long-lived agents across releases. Small fixes: do them directly.
-4. **Test:** run the relevant suites; full `tests/run-all.sh` before release.
-5. **QA gate (risk-based):**
+   - **Within a release, reuse the builder:** send scope additions and QA fix lists to the *same* builder (SendMessage) instead of spawning a new agent that has to re-learn the code. The builder records new items in `BACKLOG.md` itself, so the main session never edits files in a checkout a builder is using.
+   - **Specs point at BACKLOG.md** (item numbers + decisions) instead of restating them; ask for a short bullet report.
+4. **Test:** builders run only their new suites plus directly affected ones. The main session runs the full `tests/run-all.sh` once, directly in Bash with output trimmed to the summary (`| tail`), not through an agent. Re-run only failing suites after fixes.
+5. **QA gate (risk-based, diff-scoped):** give the QA agent only the risky part of the diff (`git diff main..HEAD -- <paths>`) plus the backlog items it implements, not the whole repo.
    - Data safety, storage/import/export, sync, reminders/push, security, server changes → one *fresh* QA subagent reviewing a `git archive` copy (adversarial, verdict + ranked findings).
    - Cosmetic/wording/layout → no QA agent; relevant suites + a screenshot check.
+   - **Don't poll:** no sleep loops waiting on GitHub Pages or agents; check Pages only if the user reports a problem.
 6. **Release:** fast-forward `main` to the tested commit (`git push origin <commit>:main`). Only QA-approved/tested commits go to `main` because Pages serves it live.
 7. Mark items Done in `BACKLOG.md` with the version. Tell the user briefly what changed and to tap **Reload** in the app.
 
