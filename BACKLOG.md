@@ -84,8 +84,9 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - Existing "Sign in to your account" path stays for the owner's own new devices.
 - **Every platform, one link (user, 2026-11-25):** each person sees only the steps for their own device (no iPhone steps elsewhere, no other-OS steps on iPhone). Detection in one module (feature detection first; user agent only for iOS/iPadOS and in-app browsers). iPhone/iPad tab → install first (Safari: Share › Add to Home Screen; other iOS browsers: open in Safari); iOS < 16.4 → no gate, reminders only while open; Android → no gate, optional one-tap Install (or menu instructions); desktop → no gate, optional Install only where the browser offers it, note that reminders arrive while the browser is running; in-app browsers (Instagram, Gmail, …) → "open in your browser" first; no push support → skip the permission step; permission denied → a re-allow hint for that platform only.
 - **Rules:** the owner's register key never goes to invited accounts (#33 syncs it only within the owner's own account); user text escaped; reminder notes only when reminders *won't* arrive with the app closed.
-- **QA:** server + security change → fresh QA review before release.
+- **QA:** server + security change → fresh QA review before release (done: ship after fixes; all 8 findings fixed – per-account cap of 5 notification devices, invited accounts never get the register key, purge hardening, wizard fixes).
 - **Added:** 2026-11-25
+- **Shipped:** v1.17.0 (2026-11-25). Server: D1 migration 0002 + invites table applied, Worker deployed with 25 accounts / 60 devices.
 
 ### 36. Count habits: past-day dots count one at a time
 - **What:** on the Habits tab (active habits), tapping a completion dot for a previous day of a count habit adds one completion per tap, as tapping today does, instead of marking the whole day done.
