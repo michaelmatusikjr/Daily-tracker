@@ -164,11 +164,11 @@ export async function accountRoute(request, env, now, path, ip) {
     const auth = await makeVerifier(authKey), rec = await makeVerifier(recAuth);
     const accountId = randomId(16);
     const s = await newSession(env, accountId, deviceName, now);
-    const insertAccount = 'INSERT INTO accounts (id, username, auth_salt, auth_hash, rec_salt, rec_hash, wrapped_pw, wrapped_rec, created_at, updated_at)';
+    const insertAccount = 'INSERT INTO accounts (id, username, auth_salt, auth_hash, rec_salt, rec_hash, wrapped_pw, wrapped_rec, created_at, updated_at, invited)';
     const accountArgs = [accountId, username, auth.salt, auth.hash, rec.salt, rec.hash, wrappedPw, wrappedRec, now];
     try {
       if (!inviteHash) {
-        await env.DB.batch([env.DB.prepare(`${insertAccount} VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)`).bind(...accountArgs), s.stmt]);
+        await env.DB.batch([env.DB.prepare(`${insertAccount} VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, 0)`).bind(...accountArgs), s.stmt]);
       } else {
         // One atomic batch: the conditional UPDATE spends the code (only if still unused, unrevoked and
         // unexpired); the account and session are only inserted when this request won it. Any failure
@@ -176,7 +176,7 @@ export async function accountRoute(request, env, now, path, ip) {
         const res = await env.DB.batch([
           env.DB.prepare('UPDATE invites SET used_at = ?2, account_id = ?3 WHERE code_hash = ?1 AND used_at IS NULL AND revoked = 0 AND expires_at > ?2')
             .bind(inviteHash, now, accountId),
-          env.DB.prepare(`${insertAccount} SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9 WHERE EXISTS (SELECT 1 FROM invites WHERE code_hash = ?10 AND account_id = ?1)`)
+          env.DB.prepare(`${insertAccount} SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, 1 WHERE EXISTS (SELECT 1 FROM invites WHERE code_hash = ?10 AND account_id = ?1)`)
             .bind(...accountArgs, inviteHash),
           env.DB.prepare('INSERT INTO sessions (token_hash, id, account_id, device_name, created_at, last_seen) SELECT ?1, ?2, ?3, ?4, ?5, ?5 WHERE EXISTS (SELECT 1 FROM accounts WHERE id = ?3)')
             .bind(await sha256Hex(s.token), s.id, accountId, deviceName, now),
@@ -188,7 +188,7 @@ export async function accountRoute(request, env, now, path, ip) {
       if (/UNIQUE/i.test(String(e?.message))) throw new HttpError(409, 'Username is taken');
       throw e;
     }
-    return ok({ accountId, username, token: s.token, sessionId: s.id }, 201);
+    return ok({ accountId, username, token: s.token, sessionId: s.id, invited: !!inviteHash }, 201);
   }
 
   if (path === '/api/account/login' && M === 'POST') {
@@ -201,7 +201,7 @@ export async function accountRoute(request, env, now, path, ip) {
     if (!(await checkSecret(row, 'auth', authKey))) { await failCount(env, username, ip, now); throw new HttpError(401, WRONG_LOGIN); }
     const s = await newSession(env, row.id, deviceName, now);
     await s.stmt.run();
-    return ok({ accountId: row.id, username: row.username, token: s.token, sessionId: s.id, wrappedPw: row.wrapped_pw });
+    return ok({ accountId: row.id, username: row.username, token: s.token, sessionId: s.id, wrappedPw: row.wrapped_pw, invited: !!row.invited });
   }
 
   if ((path === '/api/account/recover/start' || path === '/api/account/recover/finish') && M === 'POST') {
@@ -227,7 +227,7 @@ export async function accountRoute(request, env, now, path, ip) {
       env.DB.prepare('DELETE FROM sessions WHERE account_id = ?1').bind(row.id),
       s.stmt,
     ]);
-    return ok({ accountId: row.id, username: row.username, token: s.token, sessionId: s.id });
+    return ok({ accountId: row.id, username: row.username, token: s.token, sessionId: s.id, invited: !!row.invited });
   }
 
   if (path === '/api/passkey/login/options' && M === 'POST') {
@@ -247,7 +247,7 @@ export async function accountRoute(request, env, now, path, ip) {
     const { origin, rpId } = rpOf(request);
     const challenge = await takeChallenge(env, b.challengeId, 'login', null, now);
     const pk = await env.DB.prepare(
-      'SELECT p.alg, p.jwk, p.sign_count, p.wrapped_prf, a.id AS account_id, a.username, a.wrapped_pw FROM passkeys p JOIN accounts a ON a.id = p.account_id WHERE p.id = ?1',
+      'SELECT p.alg, p.jwk, p.sign_count, p.wrapped_prf, a.id AS account_id, a.username, a.wrapped_pw, a.invited FROM passkeys p JOIN accounts a ON a.id = p.account_id WHERE p.id = ?1',
     ).bind(id).first();
     if (!pk) throw new HttpError(401, 'Unknown passkey');
     const uh = cred.response && cred.response.userHandle;
@@ -264,7 +264,7 @@ export async function accountRoute(request, env, now, path, ip) {
       env.DB.prepare('UPDATE passkeys SET sign_count = ?2, last_used = ?3 WHERE id = ?1').bind(id, res.signCount, now),
       s.stmt,
     ]);
-    return ok({ accountId: pk.account_id, username: pk.username, token: s.token, sessionId: s.id, wrappedPw: pk.wrapped_pw, wrappedPrf: pk.wrapped_prf || null });
+    return ok({ accountId: pk.account_id, username: pk.username, token: s.token, sessionId: s.id, wrappedPw: pk.wrapped_pw, wrappedPrf: pk.wrapped_prf || null, invited: !!pk.invited });
   }
 
   // ----- Everything below needs a session -----
@@ -340,7 +340,7 @@ export async function accountRoute(request, env, now, path, ip) {
       env.DB.prepare('SELECT COUNT(*) AS n FROM files WHERE account_id = ?1').bind(aid),
     ]);
     return ok({
-      accountId: aid, username: account.username, records: account.records, bytes: account.bytes, files: files.results[0]?.n ?? 0,
+      accountId: aid, username: account.username, invited: !!account.invited, records: account.records, bytes: account.bytes, files: files.results[0]?.n ?? 0,
       passkeys: pks.results.map((p) => ({ id: p.id, name: p.name, createdAt: p.created_at, lastUsed: p.last_used ?? null, prf: !!p.prf })),
       sessions: sess.results.map((s) => ({ id: s.id, deviceName: s.device_name, createdAt: s.created_at, lastSeen: s.last_seen, current: s.id === sessionId })),
     });
@@ -383,6 +383,10 @@ export async function accountRoute(request, env, now, path, ip) {
   if (path === '/api/account' && M === 'DELETE') {
     await confirm(await readObject(request, L.smallBody));
     await env.DB.batch([
+      // The devices this account added for notifications go with it (register-key devices have account_id NULL).
+      env.DB.prepare('DELETE FROM rules WHERE device_id IN (SELECT id FROM devices WHERE account_id = ?1)').bind(aid),
+      env.DB.prepare('DELETE FROM fired WHERE device_id IN (SELECT id FROM devices WHERE account_id = ?1)').bind(aid),
+      env.DB.prepare('DELETE FROM devices WHERE account_id = ?1').bind(aid),
       env.DB.prepare('DELETE FROM records WHERE account_id = ?1').bind(aid),
       env.DB.prepare('DELETE FROM file_chunks WHERE account_id = ?1').bind(aid),
       env.DB.prepare('DELETE FROM file_uploads WHERE account_id = ?1').bind(aid),

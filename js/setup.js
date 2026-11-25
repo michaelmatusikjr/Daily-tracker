@@ -1,14 +1,15 @@
 // The friend's side of invites (backlog #35): the "Install first" screen for iPhone/iPad browser tabs and
 // the "Get set up" wizard (invite code → account → notifications → done). Every step can be skipped and
 // the wizard can be reopened from Settings › Account. All text goes through h() (never innerHTML).
-import { h, isSheetOpen } from './ui.js';
+import { h, isSheetOpen, confirmDialog } from './ui.js';
 import { icon } from './icons.js';
 import { promptInstall } from './pwa.js';
 import { platformContext, needsGate, offersInstall } from './platform.js';
 import * as S from './sync.js';
 import { pushConfigured, pushEnabled, enablePush, registerKeyMeta } from './push.js';
 import { showNotification } from './notify.js';
-import { openCreateWithInvite, openSignInSheet } from './account.js';
+import { openCreateWithInvite, openSignInSheet, openFirstSignIn } from './account.js';
+import { isFreshInstall } from './store.js';
 import { normalizeCode, formatCode, extractCode, checkInvite, clearPendingInvite, copyText, inviteLink } from './invites.js';
 
 /** A screen to go through before the wizard: an in-app browser, or an iPhone/iPad browser tab (web push needs the Home Screen app). */
@@ -77,7 +78,11 @@ export function showInstallFirst({ code = '', onContinue = null } = {}) {
         kind !== 'ios-safari' ? copyRow('Copy link', () => copyText(link, 'Link copied'), 'setup-copy-link') : null,
         h('ol.setup-steps', steps)),
       h('div.ob-first-actions',
-        h('button.btn.ghost.ob-choice', { type: 'button', id: 'setup-continue-browser', onclick: () => { unmount(); onContinue?.(); } }, kind === 'inapp' ? 'Continue here anyway' : 'Continue in this browser anyway'))));
+        h('button.btn.ghost.ob-choice', { type: 'button', id: 'setup-continue-browser', onclick: async () => {
+          // iPhone/iPad Safari: this tab's storage isn't the Home Screen app's, so a code spent here is gone there.
+          if (kind === 'ios-safari' && code && !(await confirmDialog('Use the invite here?', 'The invite code is used up as soon as you create your account here, and the Home Screen app doesn’t share this browser’s data. Later, in the Home Screen app, choose “Sign in to your account” (not “I have an invite”) and use the username and password you pick now.', { ok: 'Continue here' }))) return;
+          unmount(); onContinue?.();
+        } }, kind === 'inapp' ? 'Continue here anyway' : 'Continue in this browser anyway'))));
   unmount = mount(root, code ? '#setup-copy' : kind === 'ios-safari' ? '#setup-continue-browser' : '#setup-copy-link');
 }
 
@@ -185,7 +190,11 @@ export function openSetupWizard({ code = '', start = null, onDone = null } = {})
       art: '🔐', title: 'Create your account',
       text: codeOk ? 'Choose a username and password. Everything is encrypted on this device, so nobody else can read it. You’ll get a recovery key to save.' : 'Choose a username and password. Without an invite code you’ll also need the server’s register key.',
       content: [err],
-      actions: [create, secondary('I already have an account', () => openSignInSheet(), 'setup-signin'), skip('Skip this step', 'notify', 'setup-skip-account')], focus: '#setup-create',
+      actions: [create, secondary('I already have an account', () => {
+        // A brand-new install replaces its untouched placeholder profile, like the first screen's sign-in.
+        if (isFreshInstall()) openFirstSignIn({ onDone: ({ offerPicker }) => { if (offerPicker) deferPicker = true; if (!closed && step === 'account') go('notify'); } });
+        else openSignInSheet();
+      }, 'setup-signin'), skip('Skip this step', 'notify', 'setup-skip-account')], focus: '#setup-create',
     };
   }
 
@@ -246,10 +255,12 @@ export function openSetupWizard({ code = '', start = null, onDone = null } = {})
   function doneStep() {
     const line = (ok, label, text) => h('li.setup-sum', h('span.setup-sum-icon' + (ok ? '.ok' : ''), { 'aria-hidden': 'true' }, icon(ok ? 'check' : 'x', { size: 16 })), h('span', h('strong', label), ' ', text));
     const acct = S.hasAccount();
+    // iPhone/iPad browser tab: the Home Screen app keeps its own data, and an invite code works only once.
+    const tabNote = acct && pc.needsInstallForPush ? h('p.setup-note', { id: 'setup-tab-note' }, 'This account lives in this browser tab. In the Home Screen app, choose “Sign in to your account” (not “I have an invite”: the code is used up) with your username and password.') : null;
     return {
       art: '🎉', title: 'You’re all set',
       text: '',
-      content: [h('ul.setup-sums',
+      content: [tabNote, h('ul.setup-sums',
         line(acct, 'Account', acct ? `Signed in as ${S.syncState().username}.` : 'Not set up. You can do it later in Settings › Account.'),
         line(notifOn, 'Notifications', notifOn ? 'On – reminders arrive even when the app is closed.' : 'Off. Reminders only fire while the app is open or was recently used. Turn them on in Settings › Account.'))],
       actions: [primary('Start using Daily Tracker', () => finish(), 'setup-finish')], focus: '#setup-finish',

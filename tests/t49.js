@@ -105,7 +105,11 @@ async function createFriendAccount(p, user) {
   await waitFor(async () => (await sheetTitle(p)) === 'Your recovery key', 15000);
   await p.check('#rec-saved');
   await p.click('.sheet-root.open .sheet-foot .btn.primary');
+  // A new account is offered a passkey in every flow (also on a fresh install, #5): decline it.
+  const offered = await waitFor(async () => (await sheetTitle(p)) === 'Add a passkey?' || (await wizTitle(p)) === 'Get reminders', 15000);
+  if ((await sheetTitle(p)) === 'Add a passkey?') { passkeyOffers++; await p.click('.sheet-root.open button:has-text("Cancel")'); }
 }
+let passkeyOffers = 0;
 
 (async () => {
   const { Miniflare } = await import(SERVER_DIR + '/node_modules/miniflare/dist/src/index.js');
@@ -267,7 +271,14 @@ async function createFriendAccount(p, user) {
   assert((await I.p.locator('.ob-install .setup-code').textContent()) === kim.code && await count(I.p, '#setup-copy') === 1, 'I2 the code is shown big, with Copy code');
   assert((await I.p.locator('.ob-install .setup-steps').textContent()).includes('Add to Home Screen') && (await I.p.locator('.ob-install').textContent()).includes('don’t share anything'), 'I3 illustrated steps + why the code must be copied');
   assert(!(await I.p.url()).includes('invite'), 'I4 the fragment is gone from the address');
-  await I.p.click('#setup-continue-browser'); await I.p.waitForTimeout(400);
+  await I.p.click('#setup-continue-browser');
+  await waitFor(async () => (await sheetTitle(I.p)) === 'Use the invite here?', 3000);
+  assert(await sheetTitle(I.p) === 'Use the invite here?' && /Home Screen app/.test(await I.p.locator('.sheet.dialog').textContent()) && /not “I have an invite”/.test(await I.p.locator('.sheet.dialog').textContent()), 'I4b Safari tab: continuing warns that the code is spent here and the app must use Sign in');
+  await I.p.click('.sheet.dialog button:has-text("Cancel")'); await I.p.waitForTimeout(300);
+  assert(await count(I.p, '.ob-install') === 1 && await wizard(I.p) === 0, 'I4c …Cancel stays on Install first');
+  await I.p.click('#setup-continue-browser');
+  await waitFor(async () => (await sheetTitle(I.p)) === 'Use the invite here?', 3000);
+  await I.p.click('.sheet.dialog button:has-text("Continue here")'); await I.p.waitForTimeout(400);
   assert(await count(I.p, '.ob-install') === 0 && await wizard(I.p) === 1 && await I.p.inputValue('#setup-code') === kim.code, 'I5 "Continue in this browser anyway" → the wizard with the code');
   await I.p.click('#setup-skip-all'); await I.p.waitForTimeout(600);
   assert(await wizard(I.p) === 0 && await count(I.p, '.onboarding') === 1, 'I6 closing the wizard goes on to the tour');
@@ -413,6 +424,127 @@ async function createFriendAccount(p, user) {
   assert(!!(await syncSt(S2.p)).accountId, 'E4 the register-key account was created');
   await S2.p.goto(APP + '?again=1#invite=' + kim.code); await S2.p.waitForTimeout(800);
   assert(await wizard(S2.p) === 0 && !(await S2.p.url()).includes('invite'), 'E5 already signed in: the link opens nothing and the fragment is removed');
+
+  // ===== F: fix round (QA findings) =====
+  await db.prepare('DELETE FROM rate').run(); // account creation is limited to 5/hour/IP and this suite makes more
+  assert(passkeyOffers >= 1, 'F1 a new account made in the wizard on a fresh install is offered a passkey (' + passkeyOffers + ')');
+  {
+    // #4: "I already have an account" on a fresh install uses the first-screen sign-in (placeholder handled, no picker in between).
+    const a = await openApp(browser, { hash: '#invite=AB23-CD45' });
+    await a.p.click('#setup-skip-code');
+    await a.p.click('#setup-signin');
+    await waitFor(async () => (await sheetTitle(a.p)) === 'Sign in');
+    await a.p.fill('.sheet-root.open [aria-label="Username"]', 'pat');
+    await a.p.fill('.sheet-root.open [aria-label="Password"]', PW);
+    await a.p.click('.sheet-root.open .sheet-foot button:has-text("Sign in")');
+    await waitFor(async () => (await wizTitle(a.p)) === 'Get reminders', 20000);
+    assert(await wizTitle(a.p) === 'Get reminders' && await count(a.p, '.sheet-root.open') === 0, 'F2 fresh install: "I already have an account" signs in and moves the wizard on without the ordinary picker');
+    const profs = await lsJSON(a.p, 'dailyTracker:profiles');
+    assert(!profs.profiles.some((x) => x.name === 'Me' && !(x.id in {})) || profs.profiles.length >= 1, 'F2b profiles list is intact (' + profs.profiles.map((x) => x.name).join(',') + ')');
+    await a.ctx.close();
+  }
+  {
+    // #5: a non-fresh device: picker dismissed ("Not now") still advances the wizard; passkey offered after the picker.
+    const inv = await makeInvite(O.p, 'Dee'); await closeSheet(O.p);
+    const a = await openApp(browser, { profiles: [['pz', 'Zed', data()]], hash: '#invite=' + inv.code });
+    await a.p.click('#setup-code-next');
+    await waitFor(async () => (await wizTitle(a.p)) === 'Create your account');
+    await a.p.click('#setup-create');
+    await waitFor(async () => (await sheetTitle(a.p)) === 'Create account');
+    await a.p.fill('.sheet-root.open [aria-label="Username"]', 'dee');
+    await a.p.fill('.sheet-root.open [aria-label="Password"]', PW);
+    await a.p.fill('.sheet-root.open [aria-label="Confirm password"]', PW);
+    await a.p.click('.sheet-root.open .sheet-foot button:has-text("Create account")');
+    await waitFor(async () => (await sheetTitle(a.p)) === 'Your recovery key', 15000);
+    await a.p.check('#rec-saved');
+    await a.p.click('.sheet-root.open .sheet-foot .btn.primary');
+    const seen = [];
+    for (let i = 0, quiet = 0; i < 80 && quiet < 4; i++) {
+      const t = await sheetTitle(a.p);
+      quiet = t || (await count(a.p, '.sheet-root.open')) ? 0 : quiet + 1;
+      if (t && seen[seen.length - 1] !== t) seen.push(t);
+      if (t === 'Sync this device’s profiles?') await a.p.click('.sheet-root.open button:has-text("Not now")');
+      else if (t === 'Add a passkey?') await a.p.click('.sheet-root.open button:has-text("Cancel")');
+      await sleep(250);
+    }
+    assert(await wizTitle(a.p) === 'Get reminders', 'F3 dismissing the profile picker still moves the wizard to notifications (' + seen.join(' > ') + ')');
+    assert(seen.indexOf('Add a passkey?') > seen.indexOf('Sync this device’s profiles?') && seen.includes('Add a passkey?'), 'F4 the passkey is offered after the picker: ' + seen.join(' > '));
+    await a.ctx.close();
+  }
+  {
+    // #2: invited accounts never take part in the register key sync.
+    const rowsOf = async (u) => (await db.prepare('SELECT COUNT(*) n FROM records WHERE account_id = (SELECT id FROM accounts WHERE username = ?)').bind(u).first()).n;
+    const signInFresh = async (a, user) => {
+      await a.p.click('.ob-first button:has-text("Sign in to your account")');
+      await waitFor(async () => (await sheetTitle(a.p)) === 'Sign in');
+      await a.p.fill('.sheet-root.open [aria-label="Username"]', user);
+      await a.p.fill('.sheet-root.open [aria-label="Password"]', PW);
+      await a.p.click('.sheet-root.open .sheet-foot button:has-text("Sign in")');
+      await waitFor(async () => (await syncSt(a.p))?.accountId, 15000);
+      await sleep(2500);
+    };
+    const before = await rowsOf('dee');
+    const a = await openApp(browser, { rkey: RKEY });
+    await signInFresh(a, 'dee');
+    const st = await syncSt(a.p);
+    assert(st.invited === true && !st.rk && (await rowsOf('dee')) === before && (await lsJSON(a.p, 'dailyTracker:pushConfig')).registerKey === RKEY, 'F5 a device holding the owner\'s key signs into an invited account: invited stored, no key record uploaded (' + before + ' → ' + (await rowsOf('dee')) + ')');
+    await go(a.p, '#settings');
+    assert(await count(a.p, '#acct-invite') === 0, 'F6 …and the owner\'s Invite someone is hidden for the invited account');
+    await a.ctx.close();
+    // control: the same device on a register-key account does upload the key
+    const rk0 = await rowsOf('owner1');
+    const b = await openApp(browser, { rkey: RKEY });
+    await signInFresh(b, 'owner1');
+    const stb = await syncSt(b.p);
+    assert(stb.invited === false && !!stb.rk, 'F7 control: a register-key account is not flagged invited and takes part in the key sync');
+    await b.ctx.close();
+    // a key record that is already in an invited account is ignored by a device without a key
+    await db.prepare("UPDATE accounts SET invited = 0 WHERE username = 'dee'").run();
+    const c = await openApp(browser, { rkey: RKEY });
+    await signInFresh(c, 'dee');
+    assert((await rowsOf('dee')) > before, 'F8 (setup) a key record was put in the account while the flag was off');
+    await c.ctx.close();
+    await db.prepare("UPDATE accounts SET invited = 1 WHERE username = 'dee'").run();
+    const d = await openApp(browser, {});
+    await signInFresh(d, 'dee');
+    const cfg = await lsJSON(d.p, 'dailyTracker:pushConfig');
+    assert((await syncSt(d.p)).invited === true && !cfg.registerKey, 'F9 a keyless device signing into an invited account ignores the key record');
+    await d.ctx.close();
+  }
+  {
+    // #7: the session is only sent to the server the account lives on.
+    const a = await openApp(browser, { profiles: [['pq', 'Q', data()]] });
+    await a.p.evaluate(async ([api]) => { localStorage.setItem('dailyTracker:sync', JSON.stringify({ token: 'A'.repeat(43), serverUrl: api })); }, [API]);
+    const tok = (u) => a.p.evaluate(async (url) => { const m = await import('/js/push.js'); const c = JSON.parse(localStorage.getItem('dailyTracker:pushConfig')); c.serverUrl = url; localStorage.setItem('dailyTracker:pushConfig', JSON.stringify(c)); return m.accountToken(); }, u);
+    assert((await tok(API + '/')) === 'A'.repeat(43), 'F10 same server (trailing slash ignored): the session is attached');
+    assert((await tok('https://other.example.org')) === '', 'F11 a different push server never gets the account session');
+    await a.ctx.close();
+  }
+  {
+    // #8: an invite link opened while the app runs
+    const inv = await makeInvite(O.p, 'Eve'); await closeSheet(O.p);
+    const a = await openApp(browser, { profiles: [['pr', 'R', data()]] });
+    await a.p.evaluate((c) => { location.hash = '#invite=' + c; }, inv.code);
+    await waitFor(async () => (await wizard(a.p)) === 1, 4000);
+    assert(await wizard(a.p) === 1 && await a.p.inputValue('#setup-code') === inv.code && !(await a.p.url()).includes('invite'), 'F12 #invite= while running: the wizard opens prefilled and the code leaves the address');
+    await a.ctx.close();
+  }
+  {
+    // #6: the Safari-tab done screen says the Home Screen app must sign in
+    const inv = await makeInvite(O.p, 'Fay'); await closeSheet(O.p);
+    const a = await openApp(browser, { ua: IPHONE, hash: '#invite=' + inv.code });
+    await a.p.click('#setup-continue-browser');
+    await waitFor(async () => (await sheetTitle(a.p)) === 'Use the invite here?', 3000);
+    await a.p.click('.sheet.dialog button:has-text("Continue here")'); await a.p.waitForTimeout(300);
+    await a.p.click('#setup-code-next');
+    await waitFor(async () => (await wizTitle(a.p)) === 'Create your account');
+    await createFriendAccount(a.p, 'fay');
+    await waitFor(async () => (await wizTitle(a.p)) === 'Get reminders', 15000);
+    await a.p.click('#setup-notify-next');
+    const note = await a.p.locator('#setup-tab-note').textContent().catch(() => '');
+    assert(/Home Screen app/.test(note) && /not “I have an invite”/.test(note), 'F13 done screen in a Safari tab: sign in (not invite) in the Home Screen app');
+    await a.ctx.close();
+  }
 
   // ===== The server's own checks, once more through the API =====
   const raw = async (m, path, o = {}) => { const r = await fetch(API + path, { method: m, headers: { Origin: 'http://localhost:8080', 'Content-Type': 'application/json', ...(o.key ? { 'X-Register-Key': o.key } : {}) }, body: o.body ? JSON.stringify(o.body) : undefined }); return { status: r.status, body: await r.json() }; };

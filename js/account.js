@@ -435,13 +435,17 @@ function afterSignIn({ created, error = null }) {
   const hook = createdHook;
   createdHook = null;
   const removed = first ? removePlaceholderProfile() : false;
-  if (first && !removed && getProfiles().length <= 1) { first.onDone({ offerPicker: true }); return; } // empty account: tour first
+  // A new account is offered a passkey in every flow (after the picker, before the first screen / wizard moves on).
+  const passkey = async () => { if (created && S.passkeysSupported()) await offerPasskey(); };
+  if (first && !removed && getProfiles().length <= 1) { passkey().finally(() => first.onDone({ offerPicker: true })); return; } // empty account: tour first
   const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
+  let advanced = false; // runs once, whether the picker was finished or dismissed
   const then = async () => {
+    if (advanced) return;
+    advanced = true;
+    try { await passkey(); } catch { /* the offer is optional */ }
     if (first) first.onDone({ offerPicker: false });
-    else if (created && S.passkeysSupported()) await offerPasskey();
-    else ctx.rerender?.();
-    if (!first) hook?.();
+    else { ctx.rerender?.(); hook?.(); }
   };
   if (!candidates.length) { then(); return; }
   openPicker(candidates, { preselect: created, onDone: then });

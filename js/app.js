@@ -347,7 +347,14 @@ function init() {
     scheduleTimer = setTimeout(reschedule, 300);
     scheduleSync(); // push server copy (debounced; no-op unless push is on)
   });
-  window.addEventListener('hashchange', () => { closeAllSheets(); render(); });
+  window.addEventListener('hashchange', () => {
+    // An invite link opened while the app is running: take the code out of the address and open the wizard.
+    if (/^#invite=/i.test(location.hash)) { const inv = captureInviteFromUrl(); if (inv.present) {
+        if (accountsAvailable() && !hasAccount()) startInviteFlow({ code: inv.code }); else clearPendingInvite();
+        return;
+      } }
+    closeAllSheets(); render();
+  });
   // Keyboard shortcut: "n" opens quick add.
   document.addEventListener('keydown', (e) => {
     if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !isSheetOpen() && !document.querySelector('.onboarding')) {

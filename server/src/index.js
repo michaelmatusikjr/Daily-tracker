@@ -21,6 +21,7 @@ export const LIMITS = {
   sendBatch: 200,             // pushes per cron run (free-tier CPU friendly)
   perDevice: 10,              // due rules per device per cron run (round-robin, so no device starves another)
   concurrency: 6,
+  maxDevicesPerAccount: 5,    // device sign-ups through an account session (the register-key path is not capped per account)
   maxDevicesDefault: 20,      // override with the MAX_DEVICES var
   cronStaleMs: 5 * 60000,     // health: the timer counts as stopped after 5 min without a run
   rate: { register: 10, schedule: 120, subscription: 30 }, // per hour (register: per IP; others: per device)
@@ -167,18 +168,23 @@ async function route(request, env, now) {
     if (!env.REGISTER_KEY) throw new HttpError(503, 'Server not set up: REGISTER_KEY is missing');
     await rateLimit(env, 'reg:' + ip, LIMITS.rate.register, now);
     const given = request.headers.get('X-Register-Key') || '';
-    if (!given && request.headers.get('Authorization')) await authSession(request, env, now);
+    let sessionAccount = null; // set when the sign-up goes through an account session (capped per account)
+    if (!given && request.headers.get('Authorization')) sessionAccount = (await authSession(request, env, now)).account.id;
     else if (!timingSafeEqual(await sha256Hex(given), await sha256Hex(env.REGISTER_KEY))) throw new HttpError(403, 'Wrong register key');
     const max = Number(env.MAX_DEVICES) > 0 ? Number(env.MAX_DEVICES) : LIMITS.maxDevicesDefault;
     const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM devices').first();
     if (n >= max) throw new HttpError(503, 'Device limit reached');
+    if (sessionAccount) {
+      const mine = await env.DB.prepare('SELECT COUNT(*) AS n FROM devices WHERE account_id = ?1').bind(sessionAccount).first();
+      if (mine.n >= LIMITS.maxDevicesPerAccount) throw new HttpError(409, `This account already has ${LIMITS.maxDevicesPerAccount} devices with notifications; remove one first`);
+    }
     const body = await readJson(request, LIMITS.smallBody);
     const sub = validateSubscription(body.subscription);
     const deviceId = randomId(16); // 128-bit
     const token = randomId(32);
     await env.DB.prepare(
-      'INSERT INTO devices (id, token_hash, endpoint, p256dh, auth, tz, created_at, updated_at, last_seen) VALUES (?1, ?2, ?3, ?4, ?5, \'UTC\', ?6, ?6, ?6)',
-    ).bind(deviceId, await sha256Hex(token), sub.endpoint, sub.p256dh, sub.auth, now).run();
+      'INSERT INTO devices (id, token_hash, endpoint, p256dh, auth, tz, created_at, updated_at, last_seen, account_id) VALUES (?1, ?2, ?3, ?4, ?5, \'UTC\', ?6, ?6, ?6, ?7)',
+    ).bind(deviceId, await sha256Hex(token), sub.endpoint, sub.p256dh, sub.auth, now, sessionAccount).run();
     return json({ deviceId, token }, 201);
   }
 
@@ -373,9 +379,10 @@ export async function purge(env, now = Date.now()) {
     env.DB.prepare('DELETE FROM rules WHERE device_id IN (SELECT id FROM devices WHERE last_seen < ?1)').bind(stale),
     env.DB.prepare('DELETE FROM fired WHERE device_id IN (SELECT id FROM devices WHERE last_seen < ?1)').bind(stale),
     env.DB.prepare('DELETE FROM devices WHERE last_seen < ?1').bind(stale),
-    env.DB.prepare('DELETE FROM invites WHERE used_at IS NULL AND (revoked = 1 OR expires_at < ?1)').bind(now - 90 * 86400000),
     env.DB.prepare('DELETE FROM rate WHERE win < ?1').bind(Math.floor(now / 3600000) - 2),
   ]);
+  // Its own try/catch: an older database without the invites table must not fail the whole purge.
+  try { await env.DB.prepare('DELETE FROM invites WHERE used_at IS NULL AND (revoked = 1 OR expires_at < ?1)').bind(now - 90 * 86400000).run(); } catch (e) { console.error('invites purge failed', e?.message); }
   await purgeAccounts(env, now); // expired challenges, sessions unused for 400 days
   await purgeFiles(env, now); // photo uploads abandoned for a day
 }

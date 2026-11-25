@@ -181,3 +181,47 @@ test('CORS: invites calls need an allowed origin; X-Invite-Code is an allowed he
   const pre = await mf.dispatchFetch('https://push.local/api/account/create', { method: 'OPTIONS', headers: { Origin: ORIGIN } });
   assert.match(pre.headers.get('Access-Control-Allow-Headers'), /X-Invite-Code/);
 });
+
+const subFor = (i) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/cap${i}-${rnd(6)}`, keys: { p256dh: Buffer.concat([Buffer.from([4]), crypto.randomBytes(64)]).toString('base64url'), auth: rnd(16) } });
+
+test('invited flag on create/login/GET; per-account device cap of 5; account delete removes its devices', async () => {
+  await db.prepare('DELETE FROM invites WHERE used_at IS NULL').run(); // earlier tests left open codes (limit 50)
+  const inv = await mk('Cap');
+  const u = newUser();
+  const c = await create(u, inv.code);
+  assert.equal(c.status, 201, JSON.stringify([inv, c.body]));
+  assert.equal(c.body.invited, true);
+  const lg = await send('POST', '/api/account/login', { body: { username: u.username, authKey: u.authKey, deviceName: 'x' } });
+  assert.equal(lg.body.invited, true);
+  assert.equal((await send('GET', '/api/account', { token: lg.body.token })).body.invited, true);
+  const owner = newUser();
+  const oc = await send('POST', '/api/account/create', { body: owner, key: KEY });
+  assert.equal(oc.body.invited, false, 'register-key account is not invited');
+  assert.equal((await send('GET', '/api/account', { token: oc.body.token })).body.invited, false);
+
+  for (let i = 0; i < 5; i++) assert.equal((await send('POST', '/api/register', { body: { subscription: subFor(i) }, token: c.body.token })).status, 201);
+  const sixth = await send('POST', '/api/register', { body: { subscription: subFor(9) }, token: c.body.token });
+  assert.equal(sixth.status, 409);
+  assert.match(sixth.body.error, /5 devices/);
+  // Another account and the register-key path are unaffected.
+  assert.equal((await send('POST', '/api/register', { body: { subscription: subFor(10) }, token: oc.body.token })).status, 201);
+  assert.equal((await send('POST', '/api/register', { body: { subscription: subFor(11) }, key: KEY })).status, 201);
+  const before = await db.prepare('SELECT COUNT(*) n FROM devices WHERE account_id = ?').bind(c.body.accountId).first();
+  assert.equal(before.n, 5);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE account_id IS NULL').first()).n >= 1, true);
+
+  const del = await send('DELETE', '/api/account', { token: c.body.token, body: { authKey: u.authKey } });
+  assert.equal(del.status, 200);
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE account_id = ?').bind(c.body.accountId).first()).n, 0, 'its devices are gone');
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE account_id = ?').bind(oc.body.accountId).first()).n, 1, 'other accounts keep theirs');
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM devices WHERE account_id IS NULL').first()).n >= 1, true, 'owner devices stay');
+});
+
+test('daily purge survives a database without the invites table', async () => {
+  const { purge } = await import('../src/index.js');
+  const mf2 = new Miniflare({ modules: true, script: 'export default {}', compatibilityDate: '2026-07-01', d1Databases: ['DB'] });
+  const db2 = await mf2.getD1Database('DB');
+  for (const s of SCHEMA.filter((q) => !/invites/.test(q))) await db2.prepare(s).run();
+  await purge({ DB: db2 }, Date.now());
+  await mf2.dispose();
+});

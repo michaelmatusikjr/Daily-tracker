@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS devices (
   tz          TEXT NOT NULL,         -- IANA time zone of the device (for local reminder times)
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
-  last_seen   INTEGER NOT NULL
+  last_seen   INTEGER NOT NULL,
+  account_id  TEXT                   -- NULL: registered with the register key (the owner); else the signed-in account that added it
 );
 -- One row per reminder rule (a task's or habit's reminder, with its recurrence).
 CREATE TABLE IF NOT EXISTS rules (
@@ -54,7 +55,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   records     INTEGER NOT NULL DEFAULT 0, -- number of rows in records
   bytes       INTEGER NOT NULL DEFAULT 0, -- total blob length in records
   created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  invited     INTEGER NOT NULL DEFAULT 0 -- 1: created with an invite code (never gets the owner's register key)
 );
 -- Signed-in devices. Only the SHA-256 of the session token is stored.
 CREATE TABLE IF NOT EXISTS sessions (

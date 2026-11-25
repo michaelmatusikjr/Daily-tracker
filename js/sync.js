@@ -746,6 +746,7 @@ async function decryptAll(my, token, keys, records, full) {
 function applyAcct(acct) {
   if (!acct) return;
   const s = readState();
+  if (s.invited) return; // an invited account never takes a register key from its records
   if (!s.rk || newer(acct.t, acct.dev, s.rk[0], s.rk[1])) patchState({ rk: [acct.t, acct.dev] });
   const mine = registerKeyMeta();
   if (!mine.key && !mine.t) { applyRegisterKey(acct.v, acct.t, acct.dev); return; }
@@ -952,7 +953,7 @@ async function pushPending(my, token, keys, dev, shadows) {
   }
   // The register key, when this device's copy is newer than the account's (it keeps its edit time).
   const rk = registerKeyMeta();
-  if (rk.key && (!s.rk || newer(rk.t, rk.dev || dev, s.rk[0], s.rk[1]))) {
+  if (rk.key && !s.invited && (!s.rk || newer(rk.t, rk.dev || dev, s.rk[0], s.rk[1]))) {
     if (!rk.dev) restampRegisterKey(rk.t, dev); // a key from before it synced: name this device
     items.push({ acct: true, k: ACCT_REGISTER_KEY, v: rk.key, t: rk.t, dev: rk.dev || dev });
   }
@@ -1215,6 +1216,7 @@ function startSession(r, username, { created = false } = {}) {
   patchState({
     accountId: r.accountId, username: r.username || username, token: r.token, sessionId: r.sessionId,
     serverUrl: serverUrl(), expired: false, locked: false, error: null, signingOut: false, paused: null,
+    invited: !!r.invited, // made with an invite code: never uploads nor applies the owner's register key
     // The same account again (e.g. after the session ended): carry on where it stopped.
     // A brand-new account is empty: nothing to download before profiles can be added.
     ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null, resumed: {}, rk: null, skipped: false, behind: false }),
@@ -1223,6 +1225,9 @@ function startSession(r, username, { created = false } = {}) {
   F.resumeFiles();
   changed();
 }
+
+/** True when the signed-in account was made with an invite code (it never gets the owner's register key). */
+export const isInvitedAccount = () => !!readState().invited;
 
 /** Create an account. Returns { recovery } (the recovery key text, shown once). */
 export async function createAccount({ username, password, registerKey, inviteCode = '' }) {
@@ -1472,7 +1477,10 @@ export async function removePasskey(id) {
 
 // ---------- account management ----------
 export async function accountInfo() {
-  try { return await authed('GET', '/api/account'); } catch (e) { throw new Error(plainError(e)); }
+  let r;
+  try { r = await authed('GET', '/api/account'); } catch (e) { throw new Error(plainError(e)); }
+  if (r && typeof r.invited === 'boolean' && r.invited !== !!readState().invited) patchState({ invited: r.invited });
+  return r;
 }
 export async function signOutDevice(id) {
   try { return await authed('DELETE', '/api/account/session/' + encodeURIComponent(id)); } catch (e) { throw new Error(plainError(e)); }

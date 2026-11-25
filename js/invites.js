@@ -75,7 +75,7 @@ export async function checkInvite(code) {
   return !!(await call('POST', '/api/invites/check', { code: n })).valid;
 }
 const ownerKey = () => registerKeyMeta().key;
-export const isOwner = () => S.accountsAvailable() && !!ownerKey();
+export const isOwner = () => S.accountsAvailable() && !!ownerKey() && !S.isInvitedAccount();
 function ownerError(e) {
   if (e?.status === 403) return 'The server didn’t accept this device’s register key.';
   if (e?.status === 429) return 'Too many attempts – try again later';

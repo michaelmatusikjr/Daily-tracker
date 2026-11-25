@@ -273,7 +273,11 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
 // ---------- server calls ----------
 /** The signed-in account's session token (js/sync.js keeps it in its state), or ''. */
 export function accountToken() {
-  const t = (readJSON('dailyTracker:sync') || {}).token;
+  const st = readJSON('dailyTracker:sync') || {};
+  // Only for the server the account lives on: never send the session to a different push server.
+  const norm = (u) => String(u || '').trim().replace(/\/+$/, '').toLowerCase();
+  if (st.serverUrl && norm(st.serverUrl) !== norm(pushConfig().serverUrl)) return '';
+  const t = st.token;
   return typeof t === 'string' && /^[A-Za-z0-9_-]{43}$/.test(t) ? t : '';
 }
 class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
