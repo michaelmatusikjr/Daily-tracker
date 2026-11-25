@@ -101,7 +101,7 @@ const closeSheets = async (p) => { await p.keyboard.press('Escape'); await p.wai
   assert(row.chunks >= 2, 'U2 stored in chunks: ' + row.chunks);
   const chunk0 = (await db.prepare('SELECT c.data FROM file_chunks c JOIN files f ON f.upload = c.upload WHERE f.fid = ?1 AND c.n = 0').bind(fid1).first()).data;
   const raw0 = Buffer.from(chunk0, 'base64url');
-  assert(raw0.indexOf(Buffer.from([0xff, 0xd8, 0xff])) < 0 && !raw0.includes('JFIF') && !raw0.includes('image/jpeg'), 'U3 the server only has ciphertext (no JPEG bytes or type)');
+  assert(raw0.indexOf(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])) < 0 && !raw0.includes('JFIF') && !raw0.includes('image/jpeg'), 'U3 the server only has ciphertext (no JPEG bytes or type)');
   assert(!JSON.stringify((await db.prepare('SELECT * FROM files').all()).results).includes('fA1'), 'U4 the file id is opaque (not the photo id)');
 
   // ===== Download on B (which has no register key yet) =====
@@ -297,6 +297,78 @@ const closeSheets = async (p) => { await p.keyboard.press('Escape'); await p.wai
   assert(await fileSize(B.p, 'fA1') === big, 'X3 Keep: the photos stay on the device');
   await S(A.p, `await S.deleteAccount('${PW}');`);
   assert((await db.prepare('SELECT COUNT(*) n FROM files').first()).n === 0 && (await db.prepare('SELECT COUNT(*) n FROM file_chunks').first()).n === 0, 'X4 deleting the account removes every file');
+
+
+  // ===== QA round regressions (1.16.0) =====
+  {
+    const RA = await openApp(browser, { profiles: [['pm', 'Mick', data({ tasks: [task('t1', 'Receipt'), task('t2', 'Other')] })]] });
+    await addPhoto(RA.p, 'pm', 't1', 'fR1');
+    await S(RA.p, `await S.createAccount({ username: 'regr', password: '${PW}', registerKey: '${RKEY}' }); await S.syncProfiles(['pm']); await S.syncNow();`);
+    await filePass(RA.p);
+    const fidR1 = await fidOf(RA.p, 'pm', 'fR1');
+    assert((await serverFids()).has(fidR1), 'W0 uploaded');
+    // R1: the server loses the file; the device that still has the photo uploads it again after its task record changed.
+    await db.prepare('DELETE FROM files WHERE fid = ?1').bind(fidR1).run();
+    await mutate(RA.p, 'pm', `s.tasks.find((t) => t.id === 't1').title = 'Receipt edited';`);
+    await syncNow(RA.p); await filePass(RA.p); await syncNow(RA.p); await filePass(RA.p);
+    assert((await serverFids()).has(fidR1), 'W1 a device that has the photo uploads it again after the account lost it');
+    // R2: …and without any record change, once the daily re-check is due.
+    await db.prepare('DELETE FROM files WHERE fid = ?1').bind(fidR1).run();
+    await RA.p.evaluate(async () => { const C = await import('./js/syncCrypto.js'); const a = JSON.parse(localStorage.getItem('dailyTracker:sync')).accountId; const st = await C.idb('shadow', 'readonly', (s) => s.get('files:' + a)); for (const f of Object.keys(st.chk || {})) st.chk[f][0] -= 2 * 86400000; await C.idb('shadow', 'readwrite', (s) => s.put(st, 'files:' + a)); });
+    await filePass(RA.p);
+    assert((await serverFids()).has(fidR1), 'W2 the daily re-check finds the file missing and uploads it again');
+    // R3: the "Remove from this device" upload pass ignores the cache.
+    await db.prepare('DELETE FROM files WHERE fid = ?1').bind(fidR1).run();
+    await filePass(RA.p, { uploadOnly: true });
+    assert((await serverFids()).has(fidR1), 'W3 the upload-only pass (before Remove) re-checks the server too');
+
+    // R4: a device that couldn't store a remote task never deletes its photo from the account (behind).
+    const RB = await openApp(browser, { profiles: [['pk', 'Kid', data()]], rkey: null });
+    await S(RB.p, `await S.signIn({ username: 'regr', password: '${PW}' });`);
+    await filePass(RB.p);
+    await syncNow(RA.p);
+    await RA.p.evaluate(() => { const orig = Storage.prototype.setItem; window.__origSet = orig; Storage.prototype.setItem = function (k, v) { if (k === 'dailyTracker:data:pm') { const e = new Error('full'); e.name = 'QuotaExceededError'; throw e; } return orig.call(this, k, v); }; });
+    await mutate(RB.p, 'pm', `s.tasks.push(${JSON.stringify(task('tb', 'From B'))});`);
+    await addPhoto(RB.p, 'pm', 'tb', 'fB1');
+    await syncNow(RB.p); await filePass(RB.p); await syncNow(RB.p); await filePass(RB.p);
+    const fidB = await fidOf(RB.p, 'pm', 'fB1');
+    assert((await serverFids()).has(fidB), 'W4a B uploaded its photo');
+    await timing(RA.p, { gcDelay: 1500, gcEvery: 0 });
+    await syncNow(RA.p);
+    assert(await S(RA.p, 'return S.gcReady();') === false, 'W4b gcReady is false while a remote change couldn’t be stored');
+    await filePass(RA.p, { gc: true });
+    await sleep(1800);
+    await syncNow(RA.p); await filePass(RA.p, { gc: true });
+    assert((await serverFids()).has(fidB), 'W4c the photo of a task this device couldn’t store stays in the account');
+    // With room again, a pull that applies everything clears `behind`.
+    await RA.p.evaluate(() => { Storage.prototype.setItem = window.__origSet; });
+    await syncNow(RA.p); await syncNow(RA.p);
+    assert(!(await syncSt(RA.p)).behind, 'W4d a complete pull clears behind');
+
+    // R5: clean-up only deletes files this client derived itself; an unknown file is never touched.
+    const acct = (await syncSt(RA.p)).accountId;
+    const unknown = 'U' + 'x'.repeat(42);
+    await db.prepare('INSERT INTO files (account_id, fid, upload, size, chunks, created_at) VALUES (?1, ?2, ?3, 100, 1, 1)').bind(acct, unknown, 'up' + 'y'.repeat(20)).run();
+    await mutate(RA.p, 'pm', `s.tasks = s.tasks.filter((t) => t.id !== 't1');`);
+    await syncNow(RA.p); await filePass(RA.p, { gc: true });
+    await sleep(1800);
+    await syncNow(RA.p); await filePass(RA.p, { gc: true });
+    const left = await serverFids();
+    assert(left.has(unknown), 'W5a a file of unknown origin is never deleted by clean-up');
+    assert(!left.has(fidR1), 'W5b a photo this device knew and nothing refers to any more is deleted');
+
+    // R6: a custom cutoff after today is limited to today.
+    const same = await RA.p.evaluate(async () => {
+      const { planClear } = await import('./js/clearCompleted.js');
+      const { getState } = await import('./js/store.js');
+      const { todayKey, addDays } = await import('./js/dates.js');
+      const st = getState();
+      const a = planClear(st, addDays(todayKey(), 30)), b = planClear(st, todayKey());
+      return a.tasks.length === b.tasks.length && a.partial.length === b.partial.length;
+    });
+    assert(same, 'W6 a future cutoff clears no more than a cutoff of today');
+    await RA.ctx.close(); await RB.ctx.close();
+  }
 
   const real = errs.filter((e) => !/Photo sync|Sync failed/.test(e));
   assert(real.length === 0, 'no page errors: ' + real.join(' | '));

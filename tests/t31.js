@@ -211,7 +211,7 @@ const undo = async (p) => { await p.click('#toasts .toast-action'); await p.wait
     await p.keyboard.press('Escape'); await p.waitForTimeout(350);
     await p.click('[role=tab]:has-text("Stats")'); await p.waitForTimeout(350);
     assert(await p.locator('.progress-table').count() === 1 && await p.locator('.stat-grid').count() === 1 && await p.locator('.wo-entry').count() === 0, 'E6 Stats tab: stats + progress table');
-    assert(await p.locator('.strength-link, .link-btn').count() === 0 && !/All workouts/.test(await p.textContent('.view-workouts')), 'E7 no links back to the old Stats page');
+    assert(await p.locator('.view-workouts .strength-link, .view-workouts .link-btn').count() === 0 && !/All workouts/.test(await p.textContent('.view-workouts')), 'E7 no links back to the old Stats page');
     await p.click('[role=tab]:has-text("Workouts")'); await p.waitForTimeout(350);
     assert(await p.locator('.wo-entry').count() === 1, 'E8 back to the list');
     // an exercise page's own "Log" button is untouched

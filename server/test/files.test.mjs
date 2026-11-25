@@ -204,6 +204,40 @@ test('quota: files and records share the 200 MB limit (413), pending uploads cou
   assert.equal((await call('GET', `/api/files/${f1}/0`, { token: a.token })).status, 404);
 });
 
+test('parallel requests can’t overshoot the quota or the pending-upload limit', async () => {
+  const a = await account();
+  const MAX = 200 * 1024 * 1024;
+  // Parallel starts: at most 8 uploads in progress.
+  const starts = await Promise.all(Array.from({ length: 14 }, () => call('POST', '/api/files/upload', { token: a.token, body: { fid: rnd(32), size: 100 } })));
+  assert.ok(starts.every((r) => r.status === 200 || r.status === 429), 'only 200 / 429');
+  assert.equal(starts.filter((r) => r.status === 200).length, 8, 'exactly 8 started');
+  assert.equal((await db.prepare('SELECT COUNT(*) n FROM file_uploads WHERE account_id = ?1').bind(a.accountId).first()).n, 8);
+  // Parallel commits: 3 uploads of 4000 fit when started, but only room for two is left at commit time.
+  const b = await account();
+  const ups = [];
+  for (let i = 0; i < 3; i++) {
+    const fid = rnd(32), d = chars(4000);
+    const s = await call('POST', '/api/files/upload', { token: b.token, body: { fid, size: d.length } });
+    assert.equal(s.status, 200);
+    assert.equal((await call('PUT', `/api/files/upload/${s.body.upload}/0`, { token: b.token, raw: d })).status, 200);
+    ups.push({ fid, upload: s.body.upload });
+  }
+  await db.prepare('UPDATE accounts SET bytes = ?2 WHERE id = ?1').bind(b.accountId, MAX - 10000).run();
+  const res = await Promise.all(ups.map((u) => call('POST', `/api/files/upload/${u.upload}/commit`, { token: b.token })));
+  assert.ok(res.every((r) => r.status === 200 || r.status === 413), JSON.stringify(res.map((r) => r.status)));
+  assert.equal(res.filter((r) => r.status === 200).length, 2, 'exactly two fit');
+  assert.ok((await bytesOf(b.accountId)) <= MAX, 'never beyond the limit');
+  assert.equal(await bytesOf(b.accountId), MAX - 10000 + 8000);
+  const have = (await call('POST', '/api/files/check', { token: b.token, body: { fids: ups.map((u) => u.fid) } })).body.have;
+  assert.equal(have.length, 2, 'files match the bytes counted');
+  // Parallel starts for quota: room for two 4000-char uploads only.
+  const c = await account();
+  await db.prepare('UPDATE accounts SET bytes = ?2 WHERE id = ?1').bind(c.accountId, MAX - 9000).run();
+  const qs = await Promise.all(Array.from({ length: 5 }, () => call('POST', '/api/files/upload', { token: c.token, body: { fid: rnd(32), size: 4000 } })));
+  assert.equal(qs.filter((r) => r.status === 200).length, 2, 'two pending uploads fit the quota');
+  assert.ok(qs.every((r) => r.status === 200 || r.status === 413));
+});
+
 test('auth and isolation: no session → 401; another account can’t see, read, finish or delete a file', async () => {
   const a = await account(), b = await account();
   const fid = rnd(32), data = chars(3000);

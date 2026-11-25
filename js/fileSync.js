@@ -28,6 +28,7 @@ const CHECK_BATCH = 1000, DELETE_BATCH = 200;
 const BACKOFF = [30000, 120000, 600000, 3600000, 6 * 3600000];
 const ACCOUNT_FULL_RETRY = 3600000;     // account storage full: try uploading again after this
 const LARGE_RETRY = 7 * 86400000;
+const RECHECK = 86400000;              // ask the server again whether it still has a photo this device has
 // gcDelay: how long a file must have been unreferenced before it's deleted; gcEvery: how often the
 // clean-up runs; fullRetry: device storage full – try downloading again after this.
 let timing = { gcDelay: 7 * 86400000, gcEvery: 3600000, fullRetry: 15 * 60000 };
@@ -35,14 +36,15 @@ let timing = { gcDelay: 7 * 86400000, gcEvery: 3600000, fullRetry: 15 * 60000 };
 export function setFileTiming(t = {}) { timing = { ...timing, ...t }; }
 
 // ---------- per-account state ----------
-// { have: {fid: 1} (the server has it), tries: {fid: [n, nextAt, why]} (why: 'gone' | 'bad' | 'net' |
+// { have: {fid: 1} (the server has it), chk: {fid: [checkedAt, record hash]} (when `have` was last confirmed),
+//   seen: {fid: 1} (fids this client derived from a photo reference: the only ones clean-up may delete), tries: {fid: [n, nextAt, why]} (why: 'gone' | 'bad' | 'net' |
 //   'full' (account storage full) | 'large'), unref: {fid: since} (seen unreferenced), gcAt, deviceFull: at }
 const stateKey = (aid) => 'files:' + aid;
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
 async function loadState(aid) {
   const x = await C.idb('shadow', 'readonly', (s) => s.get(stateKey(aid))).catch(() => null);
   const o = isObj(x) ? x : {};
-  return { have: isObj(o.have) ? o.have : {}, tries: isObj(o.tries) ? o.tries : {}, unref: isObj(o.unref) ? o.unref : {}, gcAt: Number(o.gcAt) || 0, deviceFull: Number(o.deviceFull) || 0 };
+  return { have: isObj(o.have) ? o.have : {}, chk: isObj(o.chk) ? o.chk : {}, seen: isObj(o.seen) ? o.seen : {}, tries: isObj(o.tries) ? o.tries : {}, unref: isObj(o.unref) ? o.unref : {}, gcAt: Number(o.gcAt) || 0, deviceFull: Number(o.deviceFull) || 0 };
 }
 const saveState = (aid, st) => C.idb('shadow', 'readwrite', (s) => s.put(st, stateKey(aid))).catch(() => {});
 
@@ -156,7 +158,16 @@ async function pass(opts) {
 
     // 1. Which referenced files does the server have? (Only those not known yet; missing ones again
     // once their retry time has come.)
-    const ask = [...new Set(refs.filter((r) => !st.have[r.fid] && (local.has(r.id) || due(st, r.fid, now))).map((r) => r.fid))];
+    // A photo this device has is asked about only when its task record is in the account (otherwise it
+    // can't be uploaded yet and the answer is useless), and again at least daily, whenever that record
+    // changed, and always before "Remove from this device" – the server may have lost the file, and
+    // this device is then the one to upload it again.
+    for (const r of refs) st.seen[r.fid] = 1;
+    const stale = (r) => { const c = st.chk[r.fid]; return opts.uploadOnly || !c || now - c[0] >= RECHECK || c[1] !== r.rec; };
+    const recOf = new Map(refs.map((r) => [r.fid, r.rec]));
+    const ask = [...new Set(refs.filter((r) => local.has(r.id)
+      ? r.uploaded && (!st.have[r.fid] || stale(r))
+      : !st.have[r.fid] && due(st, r.fid, now)).map((r) => r.fid))];
     for (let i = 0; i < ask.length && !offline; i += CHECK_BATCH) {
       const part = ask.slice(i, i + CHECK_BATCH);
       try {
@@ -164,7 +175,8 @@ async function pass(opts) {
         alive();
         const have = new Set((Array.isArray(res.have) ? res.have : []).filter((f) => typeof f === 'string'));
         for (const f of part) {
-          if (have.has(f)) { st.have[f] = 1; if (st.tries[f]?.[2] === 'gone') delete st.tries[f]; } else delete st.have[f];
+          const rec = recOf.get(f) ?? '';
+          if (have.has(f)) { st.have[f] = 1; st.chk[f] = [now, rec]; if (st.tries[f]?.[2] === 'gone') delete st.tries[f]; } else { delete st.have[f]; delete st.chk[f]; }
         }
         // Missing from the account and from this device: look again later (another device may upload it).
         const asked = new Set(part);
@@ -181,7 +193,7 @@ async function pass(opts) {
       if (!due(st, r.fid, Date.now()) && !(opts.uploadOnly && st.tries[r.fid]?.[2] === 'net')) continue;
       try {
         await uploadOne(r, fc, call, alive);
-        st.have[r.fid] = 1; delete st.tries[r.fid];
+        st.have[r.fid] = 1; st.chk[r.fid] = [Date.now(), r.rec]; delete st.tries[r.fid];
       } catch (e) {
         stopOn(e);
         now = Date.now();
@@ -230,11 +242,12 @@ async function pass(opts) {
     now = Date.now();
     let next = Infinity;
     for (const r of refs) {
-      if (local.has(r.id) && st.have[r.fid]) continue;
+      if (local.has(r.id) && (st.have[r.fid] || !r.uploaded)) continue; // not uploaded: the next record sync starts a pass
       const t = st.tries[r.fid]?.[1];
       next = Math.min(next, t && t > now ? t : now + 30000);
     }
     if (st.deviceFull) next = Math.min(next, st.deviceFull + timing.fullRetry);
+    if (refs.some((r) => local.has(r.id) && r.uploaded)) next = Math.min(next, now + 3600000); // daily re-check of `have`
     if (offline) next = Math.min(next, now + 60000);
     if (next < Infinity) scheduleFilePass(Math.min(Math.max(next - now, 5000), 3600000));
     return !offline;
@@ -382,10 +395,13 @@ async function collect(fc, st, call, alive) {
   alive();
   const now = Date.now();
   for (const fid of Object.keys(st.unref)) if (!server.has(fid) || refs.has(fid)) delete st.unref[fid];
-  for (const fid of Object.keys(st.have)) if (!server.has(fid)) delete st.have[fid];
+  for (const fid of Object.keys(st.have)) if (!server.has(fid)) { delete st.have[fid]; delete st.chk[fid]; }
+  for (const fid of Object.keys(st.seen)) if (!server.has(fid) && !refs.has(fid)) delete st.seen[fid];
   const doomed = [];
   for (const fid of server.keys()) {
-    if (refs.has(fid)) continue;
+    // Only files this client derived itself from a photo reference are ever deleted: anything else
+    // (a file kind a newer app added) is not ours to judge.
+    if (refs.has(fid) || !st.seen[fid]) continue;
     if (!st.unref[fid]) st.unref[fid] = now;
     else if (now - st.unref[fid] >= timing.gcDelay) doomed.push(fid);
   }
@@ -400,7 +416,7 @@ async function collect(fc, st, call, alive) {
   for (let i = 0; i < go.length; i += DELETE_BATCH) {
     const res = await call('POST', '/api/files/delete', { fids: go.slice(i, i + DELETE_BATCH) });
     alive();
-    for (const f of Array.isArray(res.deleted) ? res.deleted : []) { delete st.have[f]; delete st.unref[f]; delete st.tries[f]; }
+    for (const f of Array.isArray(res.deleted) ? res.deleted : []) { delete st.have[f]; delete st.chk[f]; delete st.seen[f]; delete st.unref[f]; delete st.tries[f]; }
   }
 }
 

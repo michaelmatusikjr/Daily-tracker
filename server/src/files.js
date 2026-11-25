@@ -94,9 +94,20 @@ export async function filesRoute(request, env, now, path, url) {
       stmts.push(env.DB.prepare('DELETE FROM file_chunks WHERE account_id = ?1 AND upload = ?2').bind(aid, u));
       stmts.push(env.DB.prepare('DELETE FROM file_uploads WHERE account_id = ?1 AND upload = ?2').bind(aid, u));
     }
-    stmts.push(env.DB.prepare('INSERT INTO file_uploads (account_id, upload, fid, size, chunks, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
-      .bind(aid, upload, b.fid, b.size, chunksFor(b.size), now));
-    await env.DB.batch(stmts);
+    // The limits are checked again inside the statement itself (after the drops above), so parallel
+    // starts can't all pass on values read earlier and overshoot the pending limit or the quota.
+    stmts.push(env.DB.prepare(`INSERT INTO file_uploads (account_id, upload, fid, size, chunks, created_at)
+      SELECT ?1, ?2, ?3, ?4, ?5, ?6
+      WHERE (SELECT COUNT(*) FROM file_uploads WHERE account_id = ?1) < ?7
+        AND (SELECT bytes FROM accounts WHERE id = ?1) + COALESCE((SELECT SUM(size) FROM file_uploads WHERE account_id = ?1), 0) + ?4 <= ?8`)
+      .bind(aid, upload, b.fid, b.size, chunksFor(b.size), now, F.pendingUploads, SYNC_LIMITS.maxBytes));
+    stmts.push(env.DB.prepare('SELECT 1 AS x FROM file_uploads WHERE account_id = ?1 AND upload = ?2').bind(aid, upload));
+    const res = await env.DB.batch(stmts);
+    if (!res[res.length - 1].results.length) {
+      const q = await env.DB.prepare('SELECT (SELECT bytes FROM accounts WHERE id = ?1) + COALESCE((SELECT SUM(size) FROM file_uploads WHERE account_id = ?1), 0) AS used').bind(aid).first();
+      if ((q?.used || 0) + b.size > SYNC_LIMITS.maxBytes) throw new HttpError(413, 'Account storage is full');
+      throw new HttpError(429, 'Too many uploads in progress, try again later');
+    }
     return ok({ upload, chunks: chunksFor(b.size), chunkChars: F.chunkChars });
   }
 
@@ -134,14 +145,19 @@ export async function filesRoute(request, env, now, path, url) {
     const exists = fr.results.length > 0;
     if (!exists && account.bytes + u.size > SYNC_LIMITS.maxBytes) throw new HttpError(413, 'Account storage is full');
     const live = 'EXISTS (SELECT 1 FROM file_uploads WHERE account_id = ?1 AND upload = ?2)';
+    // The quota is checked in the UPDATE itself (parallel commits can't all pass on a stale read); the
+    // file is added only when that update happened (changes() is its row count), all in one transaction.
     await env.DB.batch([
-      env.DB.prepare(`INSERT INTO files (account_id, fid, upload, size, chunks, created_at) SELECT ?1, ?3, ?2, ?4, ?5, ?6 WHERE ${live} ON CONFLICT (account_id, fid) DO NOTHING`)
+      env.DB.prepare(`UPDATE accounts SET bytes = bytes + ?3, updated_at = ?4 WHERE id = ?1 AND ${live}
+        AND NOT EXISTS (SELECT 1 FROM files WHERE account_id = ?1 AND fid = ?5) AND bytes + ?3 <= ?6`)
+        .bind(aid, upload, u.size, now, u.fid, SYNC_LIMITS.maxBytes),
+      env.DB.prepare(`INSERT INTO files (account_id, fid, upload, size, chunks, created_at) SELECT ?1, ?3, ?2, ?4, ?5, ?6 WHERE ${live} AND changes() > 0 ON CONFLICT (account_id, fid) DO NOTHING`)
         .bind(aid, upload, u.fid, u.size, u.chunks, now),
-      env.DB.prepare(`UPDATE accounts SET bytes = bytes + ?3, updated_at = ?4 WHERE id = ?1 AND ${live} AND EXISTS (SELECT 1 FROM files WHERE account_id = ?1 AND upload = ?2)`)
-        .bind(aid, upload, u.size, now),
       env.DB.prepare('DELETE FROM file_chunks WHERE account_id = ?1 AND upload = ?2 AND NOT EXISTS (SELECT 1 FROM files WHERE account_id = ?1 AND upload = ?2)').bind(aid, upload),
       env.DB.prepare('DELETE FROM file_uploads WHERE account_id = ?1 AND upload = ?2').bind(aid, upload),
     ]);
+    const done = await env.DB.prepare('SELECT 1 AS x FROM files WHERE account_id = ?1 AND fid = ?2').bind(aid, u.fid).first();
+    if (!done) throw new HttpError(413, 'Account storage is full');
     return ok({ ok: true, have: true });
   }
 

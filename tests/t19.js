@@ -86,7 +86,8 @@ const discPng = (p) => p.evaluate(() => { const c = document.createElement('canv
     await p.fill('[aria-label="Register key"]', 'my-register-key');
     await p.click('.push-advanced .btn.secondary'); await p.waitForTimeout(300);
     let cfg = await p.evaluate(() => JSON.parse(localStorage.getItem('dailyTracker:pushConfig')));
-    assert(JSON.stringify(cfg) === '{"registerKey":"my-register-key"}', 'A1 saving unchanged URL/key stores only the register key: ' + JSON.stringify(cfg));
+    const { registerKeyT, registerKeyDev, ...cfgRest } = cfg; // the key's edit time + device (sync) may sit next to it
+    assert(JSON.stringify(cfgRest) === '{"registerKey":"my-register-key"}' && Number.isInteger(registerKeyT) && typeof registerKeyDev === 'string', 'A1 saving unchanged URL/key stores only the register key: ' + JSON.stringify(cfg));
     await p.fill('[aria-label="Push server URL"]', 'https://other.example.org');
     await p.click('.push-advanced .btn.secondary'); await p.waitForTimeout(300);
     cfg = await p.evaluate(() => JSON.parse(localStorage.getItem('dailyTracker:pushConfig')));

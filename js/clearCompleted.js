@@ -26,6 +26,8 @@ const completedDay = (t) => (t.completedAt ? toKey(new Date(t.completedAt)) : t.
  * the cutoff (see clearHistory: they get `clearedBefore`, so those days stop existing).
  */
 export function planClear(state, cutoff) {
+  const today = todayKey();
+  if (cutoff > today) cutoff = today; // never today or later, whatever a date field let through
   const tasks = [];
   const partial = []; // running repeating tasks: { t, n } n = completions before the cutoff to clear
   for (const t of state.tasks) {
@@ -143,11 +145,11 @@ export function openClearSheet() {
   let pick = '3m';
   let custom = addMonths(today, -6);
   const preview = h('div.clear-preview', { role: 'status', 'aria-live': 'polite' });
-  const dateIn = h('input.input', { type: 'date', value: custom, max: today, 'aria-label': 'Completed before', onchange: (e) => { custom = e.target.value; refresh(); } });
+  const dateIn = h('input.input', { type: 'date', value: custom, max: today, 'aria-label': 'Completed before', onchange: (e) => { custom = e.target.value; if (isValidKey(custom) && custom > today) { custom = today; e.target.value = today; } refresh(); } });
   const customRow = h('div.field', { hidden: true }, h('label.field-label', 'Completed before'), dateIn);
   const go = h('button.btn.danger', { type: 'button', disabled: true, onclick: () => run() }, 'Clear…');
   let plan = null, seq = 0;
-  const cutoff = () => (pick === 'custom' ? (isValidKey(custom) ? custom : null) : pickDate(pick, today));
+  const cutoff = () => (pick === 'custom' ? (isValidKey(custom) ? (custom > today ? today : custom) : null) : pickDate(pick, today));
 
   async function refresh() {
     const mine = ++seq;

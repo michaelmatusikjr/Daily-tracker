@@ -48,8 +48,9 @@ export const ACCT_REGISTER_KEY = 'acct/registerKey';
 //   cantSync: {tooLarge, refused, deletes} (counts of what can't be uploaded, for Settings › Account),
 //   resumed: {pid: 1} (kept copies resumed at sign-in whose first full pull hasn't been applied yet: an
 //   account delete of one leaves it here as device-only instead of deleting it), rk: [t, dev] (newest
-//   register key record known to be in the account), skipped (a pulled record couldn't be read or
+//   register key record known to be in the account), behind (the last pull didn't apply everything), skipped (a pulled record couldn't be read or
 //   validated: photo clean-up in the account waits) }
+let behindMem = false;
 function readState() { try { const s = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); return s && typeof s === 'object' ? s : {}; } catch { return {}; } }
 function writeState(s) { try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); return true; } catch { return false; } }
 /** Read-modify-write (another tab may have written in between). */
@@ -487,6 +488,11 @@ async function runCycle(my, token, keys, dev) {
     // photo clean-up in the account waits until a full pull reads everything (SYNC.md › Phase 2).
     if (incoming.skipped) patchState({ skipped: true });
     else if (full && res.cursorOk) patchState({ skipped: false });
+    // `behind`: this device may lack records the account has (something couldn't be stored here, or a
+    // further full pull is still needed). Cleared only by a pull that applied everything; photo
+    // clean-up in the account waits for it (gcReady).
+    behindMem = !res.cursorOk || !!res.needFull || !!incoming.skipped; // also in memory: the write fails when storage is full
+    patchState({ behind: behindMem });
     for (const pid of res.dropped) await dropShadow(pid);
     for (const pid of res.dirty) await saveShadow(pid, shadows.get(pid));
     for (const pid of res.keptGone) await dropKept(pid);
@@ -1207,7 +1213,7 @@ function startSession(r, username, { created = false } = {}) {
     serverUrl: serverUrl(), expired: false, locked: false, error: null, signingOut: false, paused: null,
     // The same account again (e.g. after the session ended): carry on where it stopped.
     // A brand-new account is empty: nothing to download before profiles can be added.
-    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null, resumed: {}, rk: null, skipped: false }),
+    ...(same ? {} : { synced: [], cursor: 0, full: true, fresh: {}, merge: {}, deletes: {}, waitReadable: {}, lastOk: null, pulled: created, known: {}, refusedDeletes: {}, cantSync: null, resumed: {}, rk: null, skipped: false, behind: false }),
   });
   epoch++;
   F.resumeFiles();
@@ -1646,7 +1652,7 @@ export async function photoRefs() {
       for (const a of t.attachments) {
         if (seen.has(a.id)) { if (uploaded) out.find((r) => r.pid === prof.pid && r.id === a.id).uploaded = true; continue; }
         seen.add(a.id);
-        out.push({ pid: prof.pid, taskId: t.id, id: a.id, uploaded });
+        out.push({ pid: prof.pid, taskId: t.id, id: a.id, uploaded, rec: e ? String(e[0]) : '' });
       }
     }
   }
@@ -1662,7 +1668,7 @@ export async function photoRefs() {
  */
 export async function gcReady() {
   const s = readState();
-  if (!s.token || s.locked || s.paused || s.signingOut || s.expired || !s.pulled || s.full || s.skipped || s.error || s.offline) return false;
+  if (!s.token || s.locked || s.paused || s.signingOut || s.expired || !s.pulled || s.full || s.skipped || s.behind || behindMem || s.error || s.offline) return false;
   if (!s.lastOk || Date.now() - s.lastOk > 5 * 60000) return false;
   const any = (o) => Object.keys(o || {}).length > 0;
   if (any(s.deletes) || any(s.merge) || any(s.fresh) || any(s.waitReadable) || any(s.resumed)) return false;

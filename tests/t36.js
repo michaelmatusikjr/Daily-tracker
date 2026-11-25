@@ -72,7 +72,7 @@ const go = async (p, tab) => { await p.evaluate((t) => { location.hash = '#' + t
     await go(p, 'today');
     assert(await p.locator('.app-head .week-strip').count() === 1, `${theme}: week strip pinned in the header`);
     assert(/Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct/.test(await p.locator('.app-title').innerText()), `${theme}: Today title is the date`);
-    assert(await p.locator('.progress-card .progress-greet').count() === 1 && /Good (morning|afternoon|evening)/.test(await p.locator('.progress-card .progress-greet').innerText()), `${theme}: greeting is in the top progress card`);
+    assert(await p.locator('.progress-card .progress-greet').count() === 1 && /Good (morning|afternoon|evening|night)/.test(await p.locator('.progress-card .progress-greet').innerText()), `${theme}: greeting is in the top progress card`);
     assert(await p.locator('.app-head [aria-label="Previous day"]').count() === 1 && await p.locator('.app-head [aria-label="Next day"]').count() === 1, `${theme}: Today has arrows in the header`);
     await p.locator('.app-head [aria-label="Next day"]').click(); await p.waitForTimeout(300);
     assert(await p.locator('.app-head .chip-btn', { hasText: 'Today' }).count() === 1, `${theme}: "Today" chip appears on another day`);
