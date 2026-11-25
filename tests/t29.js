@@ -56,10 +56,11 @@ const names = (p, sel) => p.locator(sel).evaluateAll((els) => els.map((e) => (e.
     assert(JSON.stringify(any) === JSON.stringify(['Buy milk', 'Call mom', 'Water', 'Read', 'Gym']), 'S5 Anytime: tasks, then habits by order (weekly last) (' + any.join(',') + ')');
     assert(/3 left this week/.test(await p.textContent('ul.tasks .habit-row:has-text("Gym")')), 'S6 weekly Anytime habit shows "3 left this week"');
     assert(!any.includes('Skipped') && !sched.includes('Skipped'), 'S7 missed habit is not in the lists');
-    assert((await p.textContent('.progress-big')).includes('0 of 10 done'), 'S8 ring/progress unchanged: 4 tasks + 5 daily habits... (' + (await p.textContent('.progress-big')) + ')');
+    const prog = () => p.evaluate(async () => { const L = await import('./js/logic.js'); const S = await import('./js/store.js'); const x = L.dayProgress(S.getState(), '2026-11-18'); return `${x.done} of ${x.total} done`; });
+    assert((await prog()).includes('0 of 10 done'), 'S8 progress numbers unchanged: 4 tasks + 5 daily habits... (' + (await prog()) + ')');
     // Complete from the timeline
     await p.click('ol.timeline .habit-row:has-text("Floss") .habit-check'); await p.waitForTimeout(400);
-    assert((await p.textContent('.progress-big')).includes('1 of 10 done') && (await stored(p)).logs.h1?.[TODAY] === 1, 'S9 habit check in the timeline logs it and updates progress');
+    assert((await prog()).includes('1 of 10 done') && (await stored(p)).logs.h1?.[TODAY] === 1, 'S9 habit check in the timeline logs it and updates progress');
     // Tap opens detail
     await p.click('ol.timeline .habit-row:has-text("Lunch") .habit-row-main'); await p.waitForTimeout(350);
     assert((await p.evaluate(() => location.hash)) === '#habit/h3', 'S10 tapping a habit row opens its detail');

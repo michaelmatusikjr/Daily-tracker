@@ -69,7 +69,7 @@ const active = (p) => p.evaluate(() => { const a = document.activeElement; retur
     assert((await p.textContent('.page-title .title-long')) === 'Thursday, Nov 19', 'M2 Today header for another day');
     await p.click('.task-main').catch(() => {});
     await go(p, '#calendar');
-    assert((await p.textContent('.page-title')) === 'Nov 2026', 'M3 calendar month title: ' + await p.textContent('.page-title'));
+    assert((await p.textContent('.cal-nav-title')) === 'Nov 2026', 'M3 calendar month title: ' + await p.textContent('.cal-nav-title'));
     const labels = await p.$$eval('.cal-day', (e) => e.map((x) => x.getAttribute('aria-label')).join(' '));
     assert(!/January|February|March|April|June|July|August|September|October|November|December/.test(labels), 'M4 calendar day labels use short months');
     await go(p, '#today'); await p.click('button:has-text("Today")').catch(() => {}); await p.waitForTimeout(200);

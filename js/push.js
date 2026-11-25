@@ -7,10 +7,11 @@ import { PUSH_SERVER_URL, VAPID_PUBLIC_KEY } from './pushConfig.js';
 import { getProfiles, readProfileState, getState, update } from './store.js';
 import { reschedule } from './notify.js';
 import { todayKey, addDays, timeToMin, minToTime, startOfWeek, fmtTime } from './dates.js';
-import { activeHabits, habitDone, weekCount, habitWarnAt, reminderText } from './logic.js';
+import { activeHabits, habitVal, weekCount, habitWarns, reminderText } from './logic.js';
 import { isIOS, isStandalone } from './pwa.js';
 import { blockedHelp } from './reminders.js';
 import { habitText } from './habitIcon.js';
+import { ensureKey, rotateKey, decryptFailed, encryptJson } from './pushKey.js';
 
 const STATE_KEY = 'dailyTracker:push';
 const CONFIG_KEY = 'dailyTracker:pushConfig';
@@ -241,27 +242,29 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
       rules.push(r);
     }
     for (const hb of activeHabits(st)) {
-      const warnAt = habitWarnAt(st, hb);
-      if (warnAt === null) continue;
+      const warns = habitWarns(st, hb);
+      if (!warns.length) continue;
       const type = hb.schedule?.type;
       const start = /^\d{4}-\d{2}-\d{2}$/.test(hb.createdAt || '') && hb.createdAt < today ? hb.createdAt : today;
       const recur = type === 'days' ? { type: 'weekly', start, days: [...(hb.schedule.days || [])] } : { type: 'daily', start };
       if (type === 'days' && !recur.days.length) continue;
-      const skip = [];
-      for (let k = from; k <= addDays(today, 1); k = addDays(k, 1)) if (habitDone(st, hb, k)) skip.push(k);
-      skip.push(...Object.keys(hb.missed || {})); // marked missed: no reminder that day
+      const base = Object.keys(hb.missed || {}); // marked missed: no reminder that day
       // X-per-week: once this week's target is met, skip the rest of the week (later weeks remind daily).
       if (type === 'perWeek' && weekCount(st, hb, today) >= (hb.schedule.times || 1)) {
         const ws = startOfWeek(today, st.settings.weekStart ?? 1);
-        for (let i = 0; i < 7; i++) { const k = addDays(ws, i); if (k >= today) skip.push(k); }
+        for (let i = 0; i < 7; i++) { const k = addDays(ws, i); if (k >= today) base.push(k); }
       }
-      // "N minutes left" warning: one more habit rule at target − warn, with the same done/missed skips.
-      if (warnAt !== null) {
+      // "N minutes left" warnings: one rule per time. With one time for the whole habit it is skipped on days the goal is met;
+      // with a time per instance, rule i is skipped on days when the count has reached i (that instance is done).
+      for (const w of warns) {
+        const skip = [...base];
+        for (let k = from; k <= addDays(today, 1); k = addDays(k, 1)) if (habitVal(st, hb, k) >= w.need) skip.push(k);
+        const sfx = w.idx ? `:${w.idx}` : '';
         rules.push({
-          id: safeId(`${profile.id}:hw:${hb.id}`).slice(0, 128), kind: 'habit',
-          ...text({ kind: 'habit', name: hb.name, left: timeToMin(hb.target) - warnAt, time: hb.target }),
-          url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:hw:${hb.id}:{date}`.slice(0, 128),
-          time: minToTime(warnAt), offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
+          id: safeId(`${profile.id}:hw:${hb.id}${sfx}`).slice(0, 128), kind: 'habit',
+          ...text({ kind: 'habit', name: hb.name, left: w.left, time: w.time }),
+          url: deepLink('habit', profile.id, hb.id), tag: `${profile.id}:hw:${hb.id}:{date}${sfx}`.slice(0, 128),
+          time: minToTime(w.at), offsetDays: 0, recur, exceptions: [], skipDates: nearDates(skip, from, to),
         });
       }
     }
@@ -411,8 +414,14 @@ export async function syncNow({ keepalive = false, force = false } = {}) {
   if (inflight) { await inflight.catch(() => {}); }
   inflight = (async () => {
     const { tz, rules, total } = buildRules();
+    // The key: a push the service worker couldn't decrypt means the old key is gone or wrong: make a new one and re-send everything.
+    let keyRec;
+    try { keyRec = (await decryptFailed()) ? await rotateKey() : await ensureKey(); } catch { keyRec = null; }
+    if (!keyRec) { saveState({ pending: true, error: 'This browser can’t keep the reminder key' }); changed(); reschedule(); return false; }
     const schedule = { tz, rules };
-    const hash = hashOf(schedule);
+    const hash = hashOf({ schedule, kid: keyRec.kid });
+    // What goes to the server: every rule's text encrypted (fresh IV, AAD = rule id); no names or times in plaintext.
+    const sealed = async () => ({ tz, rules: await Promise.all(rules.map(async ({ title, body, ...rest }) => ({ ...rest, enc: await encryptJson(keyRec.key, rest.id, { title, body }) }))) });
     if ((loadState().overLimit || 0) !== (total > MAX_RULES ? total : 0)) saveState({ overLimit: total > MAX_RULES ? total : 0 });
     let s = loadState();
     // Nothing changed and the server copy is fresh: skip the network.
@@ -420,12 +429,13 @@ export async function syncNow({ keepalive = false, force = false } = {}) {
     saveState({ pending: true });
     if (!navigator.onLine) { saveState({ error: null }); changed(); reschedule(); return false; }
     try {
+      const payload = await sealed();
       try {
-        await api('PUT', '/api/schedule', schedule, { keepalive });
+        await api('PUT', '/api/schedule', payload, { keepalive });
       } catch (e) {
         if (e.status !== 401) throw e;
         await reRegister(); // the server forgot this device (e.g. it was purged): register again
-        await api('PUT', '/api/schedule', schedule, { keepalive });
+        await api('PUT', '/api/schedule', payload, { keepalive });
       }
       attempt = 0;
       clearTimeout(retryTimer);

@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS devices (
 CREATE TABLE IF NOT EXISTS rules (
   device_id TEXT NOT NULL,
   rule_id   TEXT NOT NULL,
-  def       TEXT NOT NULL,           -- validated rule JSON (title, body, url, tag, time, recur, dates…)
+  def       TEXT NOT NULL,           -- validated rule JSON (enc, url, tag, time, recur, dates…); the reminder text is ciphertext (enc) only the device can read
   next_at   INTEGER,                 -- next fire time, UTC ms (NULL: nothing left to fire)
   next_date TEXT,                    -- occurrence date of next_at (YYYY-MM-DD, the device's local date)
   PRIMARY KEY (device_id, rule_id)

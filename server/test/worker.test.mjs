@@ -71,7 +71,8 @@ const pad = (n) => String(n).padStart(2, '0');
 const keyOf = (ms) => new Date(ms).toISOString().slice(0, 10);
 const hmOf = (ms) => new Date(ms).toISOString().slice(11, 16);
 /** A one-off rule firing at the minute of `at` (UTC). */
-const once = (id, at, extra = {}) => ({ id, kind: 'task', title: 'Title ' + id, body: 'Body', url: `./#open/task/p/${id}/{date}`, tag: `p:t:${id}:{date}`, time: hmOf(at), recur: { type: 'none' }, date: keyOf(at), ...extra });
+const encOf = (id) => `E${id.replace(/[^\w-]/g, '_')}_`.padEnd(40, 'x'); // stands for the device's ciphertext (opaque to the server)
+const once = (id, at, extra = {}) => ({ id, kind: 'task', enc: encOf(id), url: `./#open/task/p/${id}/{date}`, tag: `p:t:${id}:{date}`, time: hmOf(at), recur: { type: 'none' }, date: keyOf(at), ...extra });
 const daily = (id, at, extra = {}) => ({ ...once(id, at), recur: { type: 'daily', start: keyOf(at) }, date: undefined, ...extra });
 const minute = (ms) => Math.floor(ms / 60000) * 60000;
 
@@ -120,8 +121,13 @@ test('schedule: auth, strict validation, replace semantics', async () => {
   await bad([once('a', now, { url: 'https://evil.example/' })], 'absolute url');
   await bad([once('a', now, { url: '//evil.example/' })], 'protocol-relative url');
   await bad([once('a', now, { url: 'javascript:alert(1)' })], 'javascript url');
-  await bad([once('a', now, { title: '' })], 'empty title');
-  await bad([once('a', now, { title: 'x'.repeat(121) })], 'long title');
+  await bad([once('a', now, { title: 'Dentist', enc: undefined })], 'plaintext title (old client)');
+  await bad([once('a', now, { title: 'Dentist' })], 'plaintext title next to enc');
+  await bad([once('a', now, { body: 'Dentist – 6 PM' })], 'plaintext body');
+  await bad([once('a', now, { enc: undefined })], 'no enc');
+  await bad([once('a', now, { enc: 'short' })], 'enc too short');
+  await bad([once('a', now, { enc: 'x'.repeat(2049) })], 'enc too long');
+  await bad([once('a', now, { enc: 'not base64url! '.repeat(4) })], 'enc with other characters');
   await bad([once('a b', now)], 'bad id');
   await bad([once('a', now), once('a', now)], 'duplicate id');
   await bad([once('a', now, { time: '24:00' })], 'bad time');
@@ -158,9 +164,9 @@ test('cron: sends due occurrences once, fills {date}, catches up within 15 min, 
   await put(b, [daily('b-daily', t0)]);
   pushed.length = 0;
   await cron(t0);
-  assert.deepEqual(pushed.map((p) => p.payload.title).sort(), ['Title b-daily', 'Title every']);
-  const p = pushed.find((x) => x.payload.title === 'Title every');
-  assert.deepEqual(p.payload, { title: 'Title every', body: 'Body', url: `./#open/task/p/every/${keyOf(t0)}`, tag: `p:t:every:${keyOf(t0)}` });
+  assert.deepEqual(pushed.map((p) => p.payload.id).sort(), ['b-daily', 'every']);
+  const p = pushed.find((x) => x.payload.id === 'every');
+  assert.deepEqual(p.payload, { enc: encOf('every'), id: 'every', url: `./#open/task/p/every/${keyOf(t0)}`, tag: `p:t:every:${keyOf(t0)}` });
   assert.equal(p.headers['content-encoding'], 'aes128gcm');
   assert.match(p.headers.authorization, /^vapid t=.+, k=/);
   pushed.length = 0;
@@ -172,16 +178,16 @@ test('cron: sends due occurrences once, fills {date}, catches up within 15 min, 
   assert.equal(pushed.length, 0, 're-sync does not re-send');
   // Missed cron: the next run 10 minutes late still sends "single".
   await cron(t0 + 11 * 60000);
-  assert.deepEqual(pushed.map((x) => x.payload.title), ['Title single'], 'missed cron within 15 min still fires');
+  assert.deepEqual(pushed.map((x) => x.payload.id), ['single'], 'missed cron within 15 min still fires');
   // A cron gap longer than 15 min: "later" is skipped (not sent late), and the rule is done.
   pushed.length = 0;
   await cron(t0 + 3600000 + 20 * 60000);
-  assert.ok(!pushed.some((x) => x.payload.title === 'Title later'), 'late occurrence not sent');
+  assert.ok(!pushed.some((x) => x.payload.id === 'later'), 'late occurrence not sent');
   assert.equal((await db.prepare("SELECT next_at FROM rules WHERE rule_id = 'later'").first()).next_at, null);
   // Daily rule keeps firing weeks later with no new PUT (simulated time).
   pushed.length = 0;
   for (let day = 1; day <= 35; day++) await cron(t0 + day * 86400000);
-  assert.equal(pushed.filter((x) => x.payload.title === 'Title every').length, 35, 'fires every day for 35 days without a new PUT');
+  assert.equal(pushed.filter((x) => x.payload.id === 'every').length, 35, 'fires every day for 35 days without a new PUT');
   // Find day 35's push by its tag (other devices' pushes can come after it in the same run).
   const day35 = pushed.find((x) => x.payload.tag === `p:t:every:${keyOf(t0 + 35 * 86400000)}`);
   assert.equal(day35?.payload.url, `./#open/task/p/every/${keyOf(t0 + 35 * 86400000)}`);
@@ -202,7 +208,7 @@ test('moving a reminder later after it fired re-arms it (sent-marker is tied to 
   await put([once('mv', t0), daily('mvd', t0)]);
   pushed.length = 0;
   await cron(t0);
-  assert.deepEqual(pushed.map((p) => p.payload.title).sort(), ['Title mv', 'Title mvd']);
+  assert.deepEqual(pushed.map((p) => p.payload.id).sort(), ['mv', 'mvd']);
   // Same time re-synced: still not repeated.
   await put([once('mv', t0), daily('mvd', t0)]);
   pushed.length = 0;
@@ -215,7 +221,7 @@ test('moving a reminder later after it fired re-arms it (sent-marker is tied to 
   assert.equal(row.next_at, t1, 're-armed for the new time');
   pushed.length = 0;
   await cron(t1);
-  assert.deepEqual(pushed.map((p) => p.payload.title).sort(), ['Title mv', 'Title mvd'], 'fires again at the new time');
+  assert.deepEqual(pushed.map((p) => p.payload.id).sort(), ['mv', 'mvd'], 'fires again at the new time');
   pushed.length = 0;
   await cron(t1 + 60000);
   assert.equal(pushed.length, 0, 'and only once');
@@ -224,7 +230,7 @@ test('moving a reminder later after it fired re-arms it (sent-marker is tied to 
   await put([once('mv', t2)]);
   pushed.length = 0;
   await cron(t2);
-  assert.deepEqual(pushed.map((p) => p.payload.title), ['Title mv']);
+  assert.deepEqual(pushed.map((p) => p.payload.id), ['mv']);
   // Legacy markers (at = send time, up to 15 min after the fire time) still suppress a repeat.
   await db.prepare('DELETE FROM fired WHERE device_id = ?').bind(d.deviceId).run();
   await db.prepare("INSERT INTO fired (device_id, rule_id, date, at) VALUES (?, 'leg', ?, ?)").bind(d.deviceId, keyOf(t0), t0 + 30000).run();
@@ -346,7 +352,7 @@ test('fair cron: 8 flooding devices × 500 rules cannot starve one real reminder
   await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [once('dentist', t0)] }, token: real.token, device: real.deviceId });
   pushed.length = 0;
   await cron(t0);
-  assert.ok(pushed.some((p) => p.payload.title === 'Title dentist'), 'the real reminder is sent on time');
+  assert.ok(pushed.some((p) => p.payload.id === 'dentist'), 'the real reminder is sent on time');
   assert.ok(pushed.length <= 200, 'overall cap kept');
   const perDevice = new Map();
   for (const p of pushed) perDevice.set(p.url, (perDevice.get(p.url) || 0) + 1);
@@ -359,4 +365,40 @@ test('rate limits: register per IP', async () => {
   for (let i = 0; i < 11; i++) last = await call('POST', '/api/register', { body: { subscription: subscription('rl' + i) }, headers: { 'CF-Connecting-IP': '7.7.7.7' } });
   assert.equal(last.status, 429);
   assert.equal((await call('POST', '/api/register', { body: { subscription: subscription('rl-other') }, headers: { 'CF-Connecting-IP': '6.6.6.6' } })).status, 201);
+});
+
+test('encrypted reminder text: the server stores and sends only ciphertext; the 0003 migration wipes old plaintext', async () => {
+  const db = await mf.getD1Database('DB');
+  await db.prepare('DELETE FROM rules').run();
+  const d = await register('enc1');
+  const t0 = minute(Date.now()) + 2 * 60000;
+  const secret = 'Dentist – Maria Gonzalez';
+  // Plaintext from an old client is refused with a clear message, nothing is stored.
+  let res = await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [{ ...once('old', t0), enc: undefined, title: secret, body: 'x' }] }, token: d.token, device: d.deviceId });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /must be encrypted/);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM rules WHERE device_id = ?').bind(d.deviceId).first()).n, 0);
+  // Ciphertext is accepted and stored verbatim; the stored definition holds no readable text fields.
+  res = await call('PUT', '/api/schedule', { body: { tz: TZ, rules: [once('c1', t0), once('c2', t0)] }, token: d.token, device: d.deviceId });
+  assert.equal(res.status, 200);
+  const row = await db.prepare('SELECT def FROM rules WHERE device_id = ? AND rule_id = ?').bind(d.deviceId, 'c1').first();
+  const def = JSON.parse(row.def);
+  assert.equal(def.enc, encOf('c1'));
+  assert.ok(!('title' in def) && !('body' in def), 'no title/body stored');
+  // A row left over from before 1.18.0 (plaintext): the migration removes the text; it then fires a generic payload, never the old text.
+  const old = { ...JSON.parse((await db.prepare('SELECT def FROM rules WHERE device_id = ? AND rule_id = ?').bind(d.deviceId, 'c2').first()).def), title: secret, body: 'Body' }; delete old.enc;
+  await db.prepare('UPDATE rules SET def = ? WHERE device_id = ? AND rule_id = ?').bind(JSON.stringify(old), d.deviceId, 'c2').run();
+  const sql = readFileSync(new URL('../migrations/0003_encrypted_reminders.sql', import.meta.url), 'utf8').replace(/--.*$/gm, '').trim().replace(/;$/, '');
+  await db.prepare(sql).run();
+  const dump = JSON.stringify((await db.prepare('SELECT def FROM rules').all()).results);
+  assert.ok(!dump.includes('Maria') && !dump.includes('Dentist'), 'no plaintext left in D1 after the migration');
+  assert.equal(JSON.parse((await db.prepare('SELECT def FROM rules WHERE device_id = ? AND rule_id = ?').bind(d.deviceId, 'c1').first()).def).enc, encOf('c1'), 'encrypted rules untouched');
+  pushed.length = 0;
+  await cron(t0);
+  const mine = pushed.filter((p) => ['c1', 'c2'].includes(p.payload?.id) || p.payload?.url?.includes('/c2/'));
+  const c1 = pushed.find((p) => p.payload?.id === 'c1');
+  assert.deepEqual(c1.payload, { enc: encOf('c1'), id: 'c1', url: `./#open/task/p/c1/${keyOf(t0)}`, tag: `p:t:c1:${keyOf(t0)}` }, 'push payload carries ciphertext, not text');
+  const c2 = pushed.find((p) => p.payload?.url?.includes('/c2/'));
+  assert.ok(c2 && !('enc' in c2.payload) && !('title' in c2.payload) && !JSON.stringify(c2.payload).includes('Dentist'), 'a rule without ciphertext sends no text at all (the app shows a generic reminder)');
+  assert.ok(mine.length >= 1);
 });

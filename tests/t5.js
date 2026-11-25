@@ -72,10 +72,10 @@ async function swipe(p, sel, dx) {
   await p.click('a[data-tab="habits"]'); await p.waitForTimeout(200);
   await p.click('a[data-tab="today"]'); await p.waitForTimeout(300);
   assert((await p.locator('.page-title').textContent()) === title0, '19 Today tab resets to today');
-  await p.click('a[data-tab="calendar"]'); await p.waitForTimeout(300);
-  const m0 = await p.locator('.page-title').textContent();
+  await p.evaluate(() => { location.hash = '#calendar'; }); await p.waitForTimeout(400); // v1.18: the month calendar opens from Today
+  const m0 = await p.locator('.cal-nav-title').textContent();
   await swipe(p, '.cal-card', -120);
-  assert((await p.locator('.page-title').textContent()) !== m0, '4 calendar swipe changes month');
+  assert((await p.locator('.cal-nav-title').textContent()) !== m0, '4 calendar swipe changes month');
   await p.click('a[data-tab="today"]'); await p.waitForTimeout(300);
 
   // 20. minus button on today

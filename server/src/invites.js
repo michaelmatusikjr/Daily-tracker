@@ -56,7 +56,8 @@ async function requireOwner(request, env, now, ip) {
   }
 }
 
-const statusOf = (r, now) => (r.used_at ? 'used' : r.revoked ? 'revoked' : r.expires_at <= now ? 'expired' : 'unused');
+// Revoked wins (a used invite can be revoked too: it only changes the list, the friend's account is untouched); usedAt/username stay.
+const statusOf = (r, now) => (r.revoked ? 'revoked' : r.used_at ? 'used' : r.expires_at <= now ? 'expired' : 'unused');
 const publicRow = (r, now) => ({
   id: r.id, name: r.name, createdAt: r.created_at, expiresAt: r.expires_at, usedAt: r.used_at || null,
   username: r.used_at ? r.username || null : null, status: statusOf(r, now),
@@ -100,13 +101,17 @@ export async function invitesRoute(request, env, now, path, ip) {
   const m = /^\/api\/invites\/([A-Za-z0-9_-]{1,40})$/.exec(path);
   if (m && M === 'DELETE') {
     await requireOwner(request, env, now, ip);
-    // Only an unused code can be revoked; a used one stays as the record of who joined.
-    const r = await env.DB.prepare('UPDATE invites SET revoked = 1 WHERE id = ?1 AND used_at IS NULL').bind(m[1]).run();
-    if (!r.meta.changes) {
-      const row = await env.DB.prepare('SELECT used_at FROM invites WHERE id = ?1').bind(m[1]).first();
+    // ?purge=1 deletes a REVOKED invite for good (the owner's "Delete" swipe); nothing else can be deleted this way.
+    if (new URL(request.url).searchParams.get('purge') === '1') {
+      const row = await env.DB.prepare('SELECT revoked FROM invites WHERE id = ?1').bind(m[1]).first();
       if (!row) throw new HttpError(404, 'No such invite');
-      if (row.used_at) throw new HttpError(409, 'This invite was already used');
+      if (!row.revoked) throw new HttpError(409, 'Only a revoked invite can be deleted');
+      await env.DB.prepare('DELETE FROM invites WHERE id = ?1 AND revoked = 1').bind(m[1]).run();
+      return ok({ ok: true });
     }
+    // Revoke: any status, idempotent. For a used invite this only marks the list entry: the friend's account and devices are not touched.
+    const r = await env.DB.prepare('UPDATE invites SET revoked = 1 WHERE id = ?1').bind(m[1]).run();
+    if (!r.meta.changes) throw new HttpError(404, 'No such invite');
     return ok({ ok: true });
   }
   return null;

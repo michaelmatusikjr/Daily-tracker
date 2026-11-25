@@ -5,6 +5,9 @@ export const ctx = {
   ui: {
     date: todayKey(),
     calMonth: monthStart(todayKey()),
+    calOpen: false,       // Today's pull-down month calendar
+    statsMonth: null,
+    statsRange: 'month',  // Stats screen: 'month' | 'all'
     detailMonth: null,
     habitsReorder: false,
     showArchived: false,

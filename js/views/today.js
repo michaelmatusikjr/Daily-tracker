@@ -1,10 +1,10 @@
-import { h, iconBtn, ring, onSwipe, makeSortable, emptyState, sectionHead, toast, isSheetOpen } from '../ui.js';
+import { h, iconBtn, onSwipe, makeSortable, emptyState, sectionHead, toast, isSheetOpen } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { appHeader } from '../header.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, missedDaysRun, futureTasks, isWeekly, weekStatus, habitWeekStart, habitDone } from '../logic.js';
-import { fmt as fmtDate, diffDays, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, greeting, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
+import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, missedDaysRun, futureTasks, isWeekly, weekStatus, habitWeekStart, habitDone, habitShownTime } from '../logic.js';
+import { fmt as fmtDate, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
 import { taskRow, habitControl, streakBadge, timeRange, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
 import { moveToToday, reorderToday, bumpHabit, completeTaskEarly } from '../actions.js';
@@ -14,8 +14,8 @@ import { openJournalForm, entryBody } from '../journalForm.js';
 import { weatherSlot } from '../weatherUi.js';
 import { habitIcon } from '../habitIcon.js';
 import { openTaskView } from '../taskView.js';
-
-let lastRing = { date: null, pct: null }; // previous day-ring value, so the ring animates from it
+import { attachRowSwipe } from '../rowSwipe.js';
+import { monthGrid, monthNav, addMonths, monthStart } from '../monthGrid.js';
 
 /** One habit row (check/count control, long-press menu). `timed`: shows its "by" time in a rail like timed tasks. */
 function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
@@ -30,20 +30,21 @@ function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
     sub.push(ws.met ? 'Done for this week ✓' : `${ws.left} left this week`);
   }
   if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
-  if (hb.target) sub.push(`by ${fmtTime(hb.target, fmt)}`);
+  const shown = habitShownTime(hb, v, k === today ? nowMin() : k < today ? 1440 : null);
+  if (hb.target) sub.push(`by ${fmtTime(shown, fmt)}`);
   const warnBadge = habitWarnAt(st, hb) !== null && !canFire();
   // A daily habit missed 2+ days in a row (ending yesterday): warning text + colour until it's done.
   const missRun = k === today ? missedDaysRun(st, hb, today) : 0;
   const missWarn = missRun >= 2;
   const li = h(`li.habit-row${missWarn ? '.miss-warn' : ''}${timed ? '.timed' : ''}${isWeekly(hb) ? '.weekly' : ''}${weekMet ? '.week-done' : ''}`, { dataset: { id: hb.id, kind: 'habit' }, style: { '--c': hb.color } },
-    timed ? h('span.task-time', h('small', 'by'), h('span', fmtTime(hb.target, fmt))) : null,
+    timed ? h('span.task-time', h('small', 'by'), h('span', fmtTime(shown, fmt))) : null,
     h('button.habit-row-main', { type: 'button', onclick: () => ctx.go('habit/' + hb.id), 'aria-label': `${hb.name} details` },
       h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
       h('span.habit-row-text', h('span.habit-name', hb.name), sub.length || s.current || warnBadge || missWarn ? h('span.habit-sub', missWarn ? h('span.miss-text', `Missed ${missRun} days`) : null, streakBadge(s, hb.id), warnBadge ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))) : null)),
     hb.goal.type === 'count' && v > 0 && k <= today ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, k, -1), 'minus-btn') : null,
     habitControl(hb, k),
     draggable ? h('button.drag-handle', { type: 'button', 'data-fk': 'dh-' + hb.id, 'aria-label': `Reorder ${hb.name} (use arrow keys)` }, icon('grip', { size: 18 })) : null);
-  return typeBar(attachLi(li, () => habitMenu(hb.id, k)), 'Habit');
+  return attachRowSwipe(typeBar(attachLi(li, () => habitMenu(hb.id, k)), 'Habit'), 'habit', hb.id, k);
 }
 
 /** The coloured left-edge bar that tells habits from tasks (its text doubles as the row's type for screen readers). */
@@ -53,21 +54,39 @@ function typeBar(li, label) {
   return li;
 }
 
-/** "Tomorrow", "In 3 days", "12 days ago" (+ year when it differs) — never repeats the title. */
-function eyebrowLabel(k, today) {
-  const d = diffDays(today, k);
-  if (d === 1) return 'Tomorrow';
-  if (d === -1) return 'Yesterday';
-  const rel = d > 0 ? `In ${d} days` : `${-d} days ago`;
-  return k.slice(0, 4) !== today.slice(0, 4) ? `${rel} · ${k.slice(0, 4)}` : rel;
-}
-
 const TIPS_KEY = 'dailyTracker:tips';
 function tipsSeen() { try { return JSON.parse(localStorage.getItem(TIPS_KEY) || '{}'); } catch { return {}; } }
 export function markTipSeen() {
   try { localStorage.setItem(TIPS_KEY, JSON.stringify({ ...tipsSeen(), settingsMoved: true })); } catch { /* ignore */ }
   document.querySelector('.coach-tip')?.remove();
 }
+/**
+ * While the month calendar is open: scrolling (the page, the wheel, or a finger dragging on the content) closes it.
+ * Only one watch exists at a time (each render replaces the previous one); null stops watching.
+ */
+let stopWatch = null;
+function watchCal(close) {
+  stopWatch?.(); stopWatch = null;
+  if (!close) return;
+  const t0 = performance.now(), y0 = window.scrollY;
+  const outside = (e) => !(e.target instanceof Node && e.target.closest?.('.app-head'));
+  const onScroll = () => { if (performance.now() - t0 > 350 && Math.abs(window.scrollY - y0) > 6) close(); };
+  const onWheel = (e) => { if (outside(e) && Math.abs(e.deltaY) > 2) close(); };
+  let ty = null;
+  const onTouchStart = (e) => { ty = outside(e) && e.touches.length === 1 ? e.touches[0].clientY : null; };
+  const onTouchMove = (e) => { if (ty !== null && Math.abs(e.touches[0].clientY - ty) > 10) { ty = null; close(); } };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('wheel', onWheel, { passive: true });
+  window.addEventListener('touchstart', onTouchStart, { passive: true, capture: true });
+  window.addEventListener('touchmove', onTouchMove, { passive: true, capture: true });
+  stopWatch = () => {
+    window.removeEventListener('scroll', onScroll); window.removeEventListener('wheel', onWheel);
+    window.removeEventListener('touchstart', onTouchStart, true); window.removeEventListener('touchmove', onTouchMove, true);
+  };
+}
+/** Leaving Today closes the calendar and its watchers. */
+export function resetCalendar() { stopWatch?.(); stopWatch = null; }
+
 /** One-time hint for people upgrading from a version with a Settings tab. */
 function settingsTip() {
   if (tipsSeen().settingsMoved || !getState().settings.onboarded) return null;
@@ -95,7 +114,6 @@ export function renderToday() {
   const today = todayKey();
   const isToday = k === today;
   const fmt = st.settings.timeFormat;
-  const prog = dayProgress(st, k);
   const root = h('div.view.view-today');
 
   // ---- Header (v1.14: fixed; week strip pinned under the title row) ----
@@ -115,7 +133,45 @@ export function renderToday() {
     h('span.ws-bar', { style: { '--p': p.total ? p.pct : 0 }, 'data-empty': p.total ? null : '' })));
   }
   onSwipe(strip, { left: () => ctx.setDate(addDays(k, 7)), right: () => ctx.setDate(addDays(k, -7)) });
-  root.append(appHeader({
+
+  // ---- Pull-down month calendar (v1.18): the strip opens into the full month; scrolling or tapping a day closes it ----
+  const calPanel = h('div.cal-panel', { id: 'cal-panel' });
+  const grab = h('button.cal-grab', { type: 'button', 'aria-controls': 'cal-panel', onclick: () => setCal(!ctx.ui.calOpen) }, h('span.cal-grab-bar'));
+  const fillCal = () => {
+    const m = ctx.ui.calMonth || monthStart(k);
+    const shift = (n) => { ctx.ui.calMonth = addMonths(m, n); fillCal(); };
+    calPanel.replaceChildren(
+      monthNav(m, { onMonth: shift, onToday: () => { ctx.ui.calMonth = monthStart(today); fillCal(); } }),
+      // A tapped day closes the calendar; the strip then shows that day's week with the day selected.
+      monthGrid(st, m, { selected: k, onPick: (d) => { ctx.ui.calOpen = false; ctx.setDate(d); }, onMonth: shift }));
+  };
+  const applyCal = () => {
+    const open = !!ctx.ui.calOpen;
+    head.classList.toggle('cal-open', open);
+    grab.setAttribute('aria-expanded', String(open));
+    grab.setAttribute('aria-label', open ? 'Hide month calendar' : 'Show month calendar');
+    watchCal(open ? () => setCal(false) : null);
+  };
+  const setCal = (open) => {
+    if (!!ctx.ui.calOpen === open) return;
+    ctx.ui.calOpen = open;
+    if (open) { ctx.ui.calMonth = monthStart(k); fillCal(); }
+    applyCal();
+  };
+  // Pull down on the strip (or its handle) to open; pull up on the calendar to close.
+  const pull = (el, onPull) => {
+    let y0 = null, x0 = 0;
+    el.addEventListener('touchstart', (e) => { if (e.touches.length === 1) { y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; } else y0 = null; }, { passive: true });
+    el.addEventListener('touchmove', (e) => {
+      if (y0 === null) return;
+      const t = e.touches[0], dy = t.clientY - y0, dx = t.clientX - x0;
+      if (Math.abs(dy) > 24 && Math.abs(dy) > Math.abs(dx) * 1.2) { const down = dy > 0; y0 = null; onPull(down); }
+    }, { passive: true });
+  };
+  pull(strip, (down) => { if (down) setCal(true); });
+  pull(grab, (down) => { if (down) setCal(true); });
+  pull(calPanel, (down) => { if (!down) setCal(false); });
+  const head = appHeader({
     cls: 'today-head', onAvatar: () => markTipSeen(),
     // With the "Today" chip showing, narrow screens get a short date (swapped in CSS).
     title: [h('span.title-long', fmtDateLong(k)), !isToday ? h('span.title-short', fmtDate(k, { weekday: 'short', month: 'short', day: 'numeric' })) : null],
@@ -124,25 +180,14 @@ export function renderToday() {
       iconBtn('chevronLeft', 'Previous day', () => ctx.setDate(addDays(k, -1))),
       iconBtn('chevronRight', 'Next day', () => ctx.setDate(addDays(k, 1))),
     ],
-    below: [strip],
-  }));
+    below: [strip, calPanel, grab],
+  });
+  root.append(head);
+  if (ctx.ui.calOpen) fillCal();
+  applyCal();
   const tip = settingsTip();
   if (tip) root.append(tip);
   root.append(weatherSlot(k));
-
-  // ---- Progress card ----
-  const pctLabel = Math.round(prog.pct * 100) + '%';
-  const ringAnim = ctx.anim.has('ring');
-  const ringFrom = lastRing.date === k && lastRing.pct !== prog.pct ? lastRing.pct : null;
-  lastRing = { date: k, pct: prog.pct };
-  root.append(h(`section.card.progress-card${ringAnim ? '.celebrate' : ''}`, { 'aria-label': 'Day progress' },
-    ring(prog.pct, { size: 84, stroke: 9, label: pctLabel, cls: 'day-ring', from: ringFrom }),
-    h('div.progress-text',
-      h('p.progress-greet', isToday ? greeting() : eyebrowLabel(k, today)),
-      h('p.progress-big', prog.total ? `${prog.done} of ${prog.total} done` : 'A clear day'),
-      prog.total ? h('p.progress-break',
-        h('span', icon('check', { size: 13 }), `${prog.tasks.done}/${prog.tasks.total} tasks`),
-        h('span', icon('habits', { size: 13 }), `${prog.habits.done}/${prog.habits.total} habits`)) : null)));
 
   // ---- Overdue (rollover) ----
   if (isToday) {
@@ -150,7 +195,7 @@ export function renderToday() {
     if (overdue.length) {
       const list = h('ul.tasks.compact');
       for (const t of overdue) {
-        const row = typeBar(taskRow(t, t.date, { showDate: true }), 'Task');
+        const row = attachRowSwipe(typeBar(taskRow(t, t.date, { showDate: true }), 'Task'), 'task', t.id, t.date);
         row.querySelector('.check').before(h('button.btn.small.secondary.move-btn', { type: 'button', onclick: () => moveToToday([t.id]), 'aria-label': `Move “${t.title}” to today` }, icon('arrowRight', { size: 16 }), h('span.hide-xs', 'Today')));
         list.append(row);
       }
@@ -184,7 +229,7 @@ export function renderToday() {
   // Schedule: timed tasks and habits with a "complete by" time, in time order (tasks before habits at the same time).
   const entries = [
     ...timed.map((t) => ({ kind: 'task', t, min: timeToMin(t.time) })),
-    ...habits.filter((hb) => hb.target).sort((a, b) => a.order - b.order).map((hb) => ({ kind: 'habit', hb, min: timeToMin(hb.target) })),
+    ...habits.filter((hb) => hb.target).sort((a, b) => a.order - b.order).map((hb) => ({ kind: 'habit', hb, min: timeToMin(habitShownTime(hb, habitVal(st, hb, k), isToday ? nowMin() : k < today ? 1440 : null)) })),
   ].sort((a, b) => a.min - b.min || (a.kind === b.kind ? 0 : a.kind === 'task' ? -1 : 1));
   if (entries.length) {
     const now = isToday ? nowMin() : null;
@@ -196,7 +241,7 @@ export function renderToday() {
       if (!nowPlaced && e.min > now) { list.append(nowLine()); nowPlaced = true; }
       if (e.kind === 'habit') { list.append(habitRow(st, e.hb, k, today, { timed: true })); continue; }
       const t = e.t;
-      const row = typeBar(taskRow(t, k, { nowMin: now }), 'Task');
+      const row = attachRowSwipe(typeBar(taskRow(t, k, { nowMin: now }), 'Task'), 'task', t.id, k);
       row.classList.add('timed');
       row.querySelector('.type-bar').after(h('span.task-time', h('span', fmtTime(t.time, fmt)), t.duration ? h('small', timeRange(t, fmt).split(' – ')[1] || '') : null));
       list.append(row);
@@ -214,7 +259,7 @@ export function renderToday() {
   if (anyItems.length) {
     const list = h('ul.tasks');
     const drag = anyItems.length > 1;
-    for (const x of anyItems) list.append(x.kind === 'task' ? typeBar(taskRow(x.item, k, { draggable: drag }), 'Task') : habitRow(st, x.item, k, today, { draggable: drag }));
+    for (const x of anyItems) list.append(x.kind === 'task' ? attachRowSwipe(typeBar(taskRow(x.item, k, { draggable: drag }), 'Task'), 'task', x.item.id, k) : habitRow(st, x.item, k, today, { draggable: drag }));
     makeSortable(list, { onReorder: (ids) => reorderToday(ids) });
     const doneCount = anyItems.filter((x) => (x.kind === 'task' ? isTaskDone(x.item, k) : habitDone(st, x.item, k))).length;
     root.append(h('section.section', sectionHead('Anytime', h('span.muted.small', `${doneCount}/${anyItems.length}`), 'list'), list));

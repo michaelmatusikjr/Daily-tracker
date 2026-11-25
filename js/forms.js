@@ -635,14 +635,36 @@ export function openHabitForm(habit) {
   const target = h('input.input.narrow', { type: 'number', min: 1, max: 999, value: d.goal.target, inputmode: 'numeric', 'aria-label': 'Daily target' });
   const unit = h('input.input', { type: 'text', value: d.goal.unit || '', placeholder: 'unit (glasses, pages…)', maxlength: 24, 'aria-label': 'Unit' });
   const countRow = h('div.recur-extra.inline', h('span', 'Target'), target, unit);
-  const syncGoal = () => { countRow.hidden = d.goal.type !== 'count'; };
+  const syncGoal = () => { countRow.hidden = d.goal.type !== 'count'; syncEach(); };
   const goal = segmented([
     { value: 'check', label: 'Check off' }, { value: 'count', label: 'Count' },
   ], d.goal.type, (v) => { d.goal.type = v; syncGoal(); }, { label: 'Goal' });
 
   // Complete by: Anytime, or a target time. A target enables the "N minutes left" warning.
   const byTime = h('input.input', { type: 'time', value: d.target || '', 'aria-label': 'Complete by' });
-  const byRow = h('div.recur-extra.inline', h('span', 'Complete by'), byTime);
+  const byLabel = h('span', 'Complete by');
+  const byRow = h('div.recur-extra.inline', byLabel, byTime);
+  // A count habit above 1 can have a time per instance: "Complete each by a time" shows one field per instance.
+  const eachBox = h('input', { type: 'checkbox', checked: Array.isArray(d.targets) && d.targets.length > 1, 'aria-label': 'Complete each by a time' });
+  const eachFields = h('div.each-times');
+  const eachRow = h('div.recur-extra', h('label.check-row', eachBox, h('span', 'Complete each by a time')), eachFields);
+  const countN = () => (d.goal.type === 'count' ? Math.max(1, Math.min(999, parseInt(target.value, 10) || 1)) : 1);
+  const syncEach = () => {
+    const n = countN();
+    const can = !!d.target && n > 1;
+    eachRow.hidden = !can;
+    byLabel.textContent = d.goal.type === 'count' && n > 1 ? 'Complete all by' : 'Complete by';
+    const on = can && eachBox.checked;
+    byRow.hidden = !d.target || on;
+    if (!on) { d.targets = undefined; eachFields.replaceChildren(); return; }
+    // The target went down: the extra times are dropped. It went up (or "each" was just ticked): new ones copy the last time.
+    const ts = (d.targets || []).slice(0, n);
+    while (ts.length < n) ts.push(ts[ts.length - 1] || (/^\d{2}:\d{2}$/.test(byTime.value) ? byTime.value : '09:00'));
+    d.targets = ts;
+    eachFields.replaceChildren(...ts.map((t, i) => h('div.recur-extra.inline', h('span', 'Complete by', h('small', ` ${i + 1} of ${n}`)),
+      h('input.input', { type: 'time', value: t, 'aria-label': `Complete by, ${i + 1} of ${n}`, onchange: (e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) d.targets[i] = e.target.value; habitNotice.refresh(); }, oninput: (e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) d.targets[i] = e.target.value; } }))));
+  };
+  eachBox.addEventListener('change', () => { syncEach(); habitNotice.refresh(); });
   const defWarn = getState().settings.habitWarnDefault;
   const WARNS = [5, 10, 15, 30, 60, 120];
   const warnOptions = [['default', defWarn > 0 ? `Default (${fmtWarnShort(defWarn)})` : 'Default (none)'],
@@ -651,13 +673,14 @@ export function openHabitForm(habit) {
   // Stored: warn undefined = follow the default; a number of minutes; 0 = explicitly none.
   const warn = select(warnOptions, Number.isInteger(d.warn) ? (d.warn > 0 ? String(d.warn) : 'none') : 'default');
   const warnField = field('Warn me before', warn, 'Alerts you “N minutes left” if it isn’t done yet.');
-  const syncBy = () => { byRow.hidden = !d.target; warnField.hidden = !d.target; };
+  const syncBy = () => { warnField.hidden = !d.target; syncEach(); };
   const by = segmented([{ value: 'anytime', label: 'Anytime' }, { value: 'by', label: 'By a time' }],
     d.target ? 'by' : 'anytime', (v) => {
       if (v === 'by') { if (!/^\d{2}:\d{2}$/.test(byTime.value)) byTime.value = '09:00'; d.target = byTime.value; } else d.target = null;
       syncBy(); habitNotice.refresh();
     }, { label: 'Complete by', small: true });
   byTime.addEventListener('input', () => { if (/^\d{2}:\d{2}$/.test(byTime.value)) d.target = byTime.value; habitNotice.refresh(); });
+  target.addEventListener('input', () => syncEach());
   const warnActive = () => d.target && warn.value !== 'none' && (warn.value !== 'default' || defWarn > 0);
 
   const habitNotice = reminderNotice(() => !!warnActive());
@@ -673,7 +696,7 @@ export function openHabitForm(habit) {
     groupField('Color', colors),
     groupField('Schedule', h('div', sched, daysRow, timesRow)),
     groupField('Goal', h('div', goal, countRow), 'Count goals: tap to add one, tap − to remove one.'),
-    groupField('Complete by', h('div', by, byRow)),
+    groupField('Complete by', h('div', by, byRow, eachRow)),
     warnField,
     habitNotice.el,
     err);
@@ -687,10 +710,14 @@ export function openHabitForm(habit) {
       schedule: scheduleFor(habit?.schedule, d.schedule),
       goal: { type: d.goal.type, target: d.goal.type === 'count' ? Math.max(1, Math.min(999, parseInt(target.value, 10) || 1)) : 1, unit: unit.value.trim() },
       target: d.target || null,
+      targets: undefined,
       // undefined = follow the profile default, 0 = none, else minutes (only with a target).
       warn: d.target && warn.value !== 'default' ? (warn.value === 'none' ? 0 : Number(warn.value)) : undefined,
       reminder: null, // habits no longer have a time-of-day reminder (only the "N minutes left" warning)
     };
+    if (d.target && d.goal.type === 'count' && countN() > 1 && eachBox.checked && d.targets?.length === countN()) {
+      data.targets = [...d.targets].sort(); data.target = data.targets[0]; // `target` = the earliest time
+    }
     if ((data.target && warnActive()) && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
     if (!isNew) data.id = habit.id;
     saveHabit(data);

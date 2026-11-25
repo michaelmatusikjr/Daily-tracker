@@ -6,10 +6,10 @@ import { takeover } from './takeover.js';
 import { icon } from './icons.js';
 import { applyTheme } from './theme.js';
 import { todayKey, monthStart, isValidKey } from './dates.js';
-import { renderToday } from './views/today.js';
+import { renderToday, resetCalendar } from './views/today.js';
 import { renderHabits } from './views/habits.js';
 import { renderHabitDetail } from './views/habitDetail.js';
-import { renderCalendar } from './views/calendar.js';
+import { renderStats } from './views/allStats.js';
 import { renderJournal } from './views/journal.js';
 import { renderSettings } from './views/settings.js';
 import { openQuickAdd, openHabitForm } from './forms.js';
@@ -29,6 +29,7 @@ import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
 import { goToStorage } from './clearCompleted.js';
 import { initNoZoom } from './noZoom.js';
+import { initKeyboard } from './keyboard.js';
 import { initSync, onSyncChange, profileReset, syncState, forgetKept, hasAccount, accountsAvailable } from './sync.js';
 import { refreshWeather } from './weather.js';
 
@@ -36,13 +37,12 @@ const TABS = [
   { id: 'today', label: 'Today', icon: 'today' },
   { id: 'habits', label: 'Habits', icon: 'habits' },
   { id: 'workouts', label: 'Workouts', icon: 'dumbbell' },
-  { id: 'calendar', label: 'Calendar', icon: 'calendar' },
   { id: 'journal', label: 'Journal', icon: 'book' },
   { id: 'settings', label: 'Settings', icon: 'settings', desktopOnly: true },
 ];
 // On phones Settings has no tab: it opens from the profile menu (avatar on Today) or #settings.
 // The wide-screen side nav also lists it.
-const TITLES = { completed: 'Completed', today: 'Today', habits: 'Habits', habit: 'Habit', workouts: 'Workouts', exercise: 'Exercise', calendar: 'Calendar', journal: 'Journal', settings: 'Settings' };
+const TITLES = { completed: 'Completed', today: 'Today', habits: 'Habits', habit: 'Habit', workouts: 'Workouts', exercise: 'Exercise', stats: 'Stats', journal: 'Journal', settings: 'Settings' };
 
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
@@ -53,6 +53,8 @@ let lastToday = todayKey();
 
 function parseRoute() {
   const [name, arg] = location.hash.replace(/^#\/?/, '').split('/');
+  // The Calendar tab is gone: an old "#calendar" link opens Today with the month calendar pulled down.
+  if (name === 'calendar') return { name: 'today', arg: null, legacyCalendar: true };
   return { name: TITLES[name] ? name : 'today', arg: arg ? decodeURIComponent(arg) : null };
 }
 
@@ -159,7 +161,8 @@ function findByIdentity(id, sel) {
 
 function render() {
   if (location.hash.startsWith('#open/')) { openDeepLink(); return; }
-  let { name, arg } = parseRoute();
+  let { name, arg, legacyCalendar } = parseRoute();
+  if (legacyCalendar) { ctx.ui.calOpen = true; ctx.ui.calMonth = monthStart(ctx.ui.date); try { history.replaceState(null, '', '#today'); } catch { /* ignore */ } }
   // "#today/2026-11-20" (from a reminder notification) opens that day, then the URL tidies up.
   if (name === 'today' && arg && /^\d{4}-\d{2}-\d{2}$/.test(arg)) {
     ctx.ui.date = arg;
@@ -182,7 +185,7 @@ function render() {
   switch (name) {
     case 'habits': view = renderHabits(); break;
     case 'habit': view = renderHabitDetail(arg); break;
-    case 'calendar': view = renderCalendar(); break;
+    case 'stats': view = renderStats(); break;
     case 'journal': view = renderJournal(); break;
     case 'completed': view = renderCompleted(); break;
     case 'settings': view = renderSettings(); break;
@@ -217,7 +220,8 @@ function render() {
     } else a.removeAttribute('aria-current');
   });
   document.title = `${TITLES[name]} · Daily Tracker`;
-  fab.hidden = name === 'settings';
+  fab.hidden = name === 'settings' || name === 'stats';
+  if (name !== 'today') { ctx.ui.calOpen = false; resetCalendar(); }
   fab.setAttribute('aria-label', name === 'habits' || name === 'habit' ? 'New habit' : name === 'workouts' || name === 'exercise' ? 'Log workout' : name === 'journal' ? 'New journal entry' : 'Quick add');
   if (changedRoute) {
     window.scrollTo(0, 0);
@@ -319,6 +323,7 @@ ctx.go = (route) => {
 
 function init() {
   initNoZoom();
+  initKeyboard();
   const invite = captureInviteFromUrl(); // "#invite=CODE" is read and removed from the address before anything else
   load();
   applyTheme(getState().settings);
@@ -339,7 +344,7 @@ function init() {
     if (info.profileSwitched) {
       // Fresh view state for the other person.
       closeAllSheets();
-      Object.assign(ctx.ui, { date: todayKey(), calMonth: monthStart(todayKey()), detailMonth: null, habitsReorder: false, showArchived: false, habitsTab: 'active', workoutsTab: 'workouts', journalQuery: '', workoutFilter: 'all', workoutDays: 30 });
+      Object.assign(ctx.ui, { date: todayKey(), calMonth: monthStart(todayKey()), calOpen: false, statsMonth: null, statsRange: 'month', detailMonth: null, habitsReorder: false, showArchived: false, habitsTab: 'active', workoutsTab: 'workouts', journalQuery: '', workoutFilter: 'all', workoutDays: 30 });
       applyTheme(st.settings); lastSettingsSig = sNow;
     }
     render();

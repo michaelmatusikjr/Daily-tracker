@@ -140,6 +140,44 @@ export function habitWarnAt(state, h) {
   return at >= 0 ? at : null;
 }
 
+/**
+ * Count habits with a "complete by" time can have one time per instance (`targets`, length = goal target,
+ * ascending; `target` is then the first of them). Absent = one "complete all by" time (`target`).
+ */
+export const habitEach = (h) => !!(h.target && h.goal?.type === 'count' && habitTarget(h) > 1 && Array.isArray(h.targets) && h.targets.length === habitTarget(h));
+
+/**
+ * The "complete by" time a habit row shows: for per-instance times, the earliest instance that is still
+ * active. Instance i (1-based) is active until the count reaches i or its time passes. `now` = minutes
+ * after midnight (null = nothing has passed yet, e.g. a future day; 1440 = a past day: all passed).
+ * When every open instance's time has passed (or all are done) the last time shows.
+ */
+export function habitShownTime(h, count, now = null) {
+  if (!h.target) return null;
+  if (!habitEach(h)) return h.target;
+  const ts = h.targets;
+  for (let i = Math.max(0, count); i < ts.length; i++) if (now === null || timeToMin(ts[i]) >= now) return ts[i];
+  return ts[ts.length - 1];
+}
+
+/**
+ * Warnings for a habit: [{ time, need, idx, left, at }]. A warning fires `left` minutes before `time`
+ * (`at` = minutes after midnight) only while the day's count is below `need`. One for a habit with a single
+ * time (need = its goal target, idx null); with per-instance times one per instance (need = i, idx = i), where
+ * instances sharing a time are merged into the one with the largest need. Warnings before 00:00 are dropped.
+ */
+export function habitWarns(state, h) {
+  const w = habitWarnMinutes(state, h);
+  if (!w) return [];
+  let items;
+  if (habitEach(h)) {
+    const byTime = new Map();
+    h.targets.forEach((t, i) => byTime.set(t, { time: t, need: i + 1, idx: i + 1 }));
+    items = [...byTime.values()];
+  } else items = [{ time: h.target, need: habitTarget(h), idx: null }];
+  return items.map((x) => ({ ...x, left: w, at: timeToMin(x.time) - w })).filter((x) => x.at >= 0);
+}
+
 export function overdueTasks(state, today = todayKey()) {
   return state.tasks
     .filter((t) => !isRecurring(t) && !t.done && t.date < today && !t.missedDates?.[t.date])

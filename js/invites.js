@@ -7,6 +7,7 @@ import { icon } from './icons.js';
 import { registerKeyMeta } from './push.js';
 import { fmtDateShort, toKey } from './dates.js';
 import * as S from './sync.js';
+import { makeSwipeable } from './rowSwipe.js';
 
 // ---------- codes and the link ----------
 /** "7k3q x9pm" → "7K3QX9PM"; '' when it can't be a code (8 symbols, no 0/O/1/I). */
@@ -83,6 +84,7 @@ function ownerError(e) {
 }
 export const createInvite = (name) => call('POST', '/api/invites', { name: String(name || '').trim() }, { key: ownerKey() });
 export const listInvites = async () => (await call('GET', '/api/invites', undefined, { key: ownerKey() })).invites || [];
+export const purgeInvite = (id) => call('DELETE', '/api/invites/' + encodeURIComponent(id) + '?purge=1', undefined, { key: ownerKey() });
 export const revokeInvite = (id) => call('DELETE', '/api/invites/' + encodeURIComponent(id), undefined, { key: ownerKey() });
 
 // ---------- owner UI ----------
@@ -102,7 +104,7 @@ export function inviteRow() {
 
 function describe(inv) {
   if (inv.status === 'used') return `Used by ${inv.username || 'a friend'}${inv.usedAt ? ` on ${dateOf(inv.usedAt)}` : ''}`;
-  if (inv.status === 'revoked') return 'Revoked';
+  if (inv.status === 'revoked') return inv.usedAt ? `Revoked · used by ${inv.username || 'a friend'}${inv.usedAt ? ` on ${dateOf(inv.usedAt)}` : ''}` : 'Revoked';
   if (inv.status === 'expired') return `Expired ${dateOf(inv.expiresAt)}`;
   return `Unused · expires ${dateOf(inv.expiresAt)}`;
 }
@@ -131,19 +133,35 @@ export function openInviteSheet() {
     result.replaceChildren(...kids);
   };
 
+  // Revoked invites can be swiped left to delete them for good. The delete waits for the Undo toast to run out
+  // (codes are only stored as hashes, so a deleted invite can't be re-created).
+  const hidden = new Set();
+  const rowFor = (li, inv) => {
+    if (inv.status !== 'revoked') return li;
+    return makeSwipeable(li, (side) => (side === 'left' ? [{ name: 'delete', label: 'Delete', icon: 'trash', run: () => {
+      hidden.add(inv.id);
+      li.remove();
+      if (!list.children.length) listNote.textContent = 'No invites yet.';
+      const timer = setTimeout(async () => {
+        try { await purgeInvite(inv.id); } catch (x) { hidden.delete(inv.id); toast(`Couldn’t delete the invite: ${ownerError(x)}`, { force: true }); }
+        refresh();
+      }, 6500);
+      toast('Invite deleted', { force: true, duration: 6000, action: 'Undo', onAction: () => { clearTimeout(timer); hidden.delete(inv.id); refresh(); } });
+    } }] : []));
+  };
   const refresh = async () => {
     try {
       const invs = await listInvites();
       listNote.textContent = invs.length ? '' : 'No invites yet.';
-      list.replaceChildren(...invs.map((inv) => h('li',
+      list.replaceChildren(...invs.filter((inv) => !hidden.has(inv.id)).map((inv) => rowFor(h('li',
         h('div.set-text', h('span', inv.name || 'Invite'), h('span.set-desc', describe(inv))),
-        inv.status === 'unused' ? h('button.btn.ghost.small', { type: 'button', 'aria-label': `Revoke invite${inv.name ? ' for ' + inv.name : ''}`, onclick: async (e) => {
+        inv.status !== 'revoked' ? h('button.btn.ghost.small', { type: 'button', 'aria-label': `Revoke invite${inv.name ? ' for ' + inv.name : ''}`, onclick: async (e) => {
           const btn = e.currentTarget;
-          if (!(await confirmDialog('Revoke this invite?', 'The code stops working. Anyone who hasn’t used it yet can’t create an account with it.', { ok: 'Revoke', danger: true }))) return;
+          if (!(await confirmDialog('Revoke this invite?', inv.status === 'used' ? 'This only marks the invite as revoked in your list. The friend’s account stays as it is.' : 'The code stops working. Anyone who hasn’t used it yet can’t create an account with it.', { ok: 'Revoke', danger: true }))) return;
           btn.disabled = true;
           try { await revokeInvite(inv.id); toast('Invite revoked', { force: true }); } catch (x) { toast(ownerError(x), { force: true }); }
           refresh();
-        } }, 'Revoke') : null)));
+        } }, 'Revoke') : null), inv)));
     } catch (e) { listNote.textContent = `Couldn’t load your invites: ${ownerError(e)}`; }
   };
 

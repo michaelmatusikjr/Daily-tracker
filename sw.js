@@ -1,6 +1,6 @@
 // Daily Tracker service worker: cache-first app shell, versioned cache.
 // Bump VERSION whenever any app file changes so clients get the update.
-const VERSION = '1.17.0';
+const VERSION = '1.18.0';
 const CACHE = `daily-tracker-${VERSION}`;
 const SHELL = [
   './',
@@ -27,7 +27,12 @@ const SHELL = [
   './js/theme.js',
   './js/ui.js',
   './js/header.js',
-  './js/views/calendar.js',
+  './js/views/allStats.js',
+  './js/monthGrid.js',
+  './js/rowSwipe.js',
+  './js/counterPad.js',
+  './js/keyboard.js',
+  './js/pushKey.js',
   './js/views/habitDetail.js',
   './js/views/habits.js',
   './js/views/settings.js',
@@ -128,13 +133,52 @@ function appUrl(url) {
   } catch { return self.registration.scope; }
 }
 
-/** A reminder sent by the push server (see server/): { title, body, url, tag }. */
-function onPush(event) {
+// The reminder's text arrives encrypted ({ enc, id, url, tag }): js/pushKey.js explains the key. This is a small copy of
+// its reading side (a classic service worker can't import the module).
+function pushDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('dailyTracker-push', 1);
+    req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains('kv')) req.result.createObjectStore('kv'); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function pushKv(mode, fn) {
+  const db = await pushDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('kv', mode);
+      const r = fn(tx.objectStore('kv'));
+      tx.oncomplete = () => resolve(r.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally { db.close(); }
+}
+const unb64 = (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)), (c) => c.charCodeAt(0));
+async function decryptReminder(enc, id) {
+  const rec = await pushKv('readonly', (s) => s.get('reminder'));
+  if (!rec || !rec.key) throw new Error('no key');
+  const raw = unb64(enc);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(String(id)) }, rec.key, raw.slice(12));
+  const o = JSON.parse(new TextDecoder().decode(pt));
+  return { title: String(o.title || ''), body: String(o.body || '') };
+}
+
+/** A reminder sent by the push server (see server/): { enc, id, url, tag }; enc = the encrypted { title, body }. */
+async function onPush(event) {
   let d = {};
-  try { d = event.data ? event.data.json() : {}; } catch { d = { body: event.data ? event.data.text() : '' }; }
-  const opts = { body: String(d.body || ''), data: { url: appUrl(d.url) }, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' };
+  try { d = event.data ? event.data.json() : {}; } catch { d = {}; }
+  // iOS requires every push to show a notification: when the text can't be read, a generic one (the app then makes a new key).
+  let title = 'Reminder', body = 'Open Daily Tracker to see it';
+  if (d.enc) {
+    try { const t = await decryptReminder(d.enc, d.id); title = t.title || title; body = t.body; } catch {
+      try { await pushKv('readwrite', (s) => s.put(Date.now(), 'decryptFailed')); } catch { /* storage unavailable */ }
+    }
+  }
+  const opts = { body, data: { url: appUrl(d.url) }, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' };
   if (d.tag) opts.tag = String(d.tag); // same tag as an in-app reminder for the same occurrence: no duplicates
-  return self.registration.showNotification(String(d.title || 'Daily Tracker'), opts);
+  return self.registration.showNotification(title, opts);
 }
 self.addEventListener('push', (event) => { event.waitUntil(onPush(event)); });
 

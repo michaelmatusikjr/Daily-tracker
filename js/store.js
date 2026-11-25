@@ -2,8 +2,8 @@
 // Several profiles: an index key plus one data key per profile.
 import { todayKey, isValidKey } from './dates.js';
 
-export const APP_VERSION = '1.17.0';
-export const SCHEMA_VERSION = 7;
+export const APP_VERSION = '1.18.0';
+export const SCHEMA_VERSION = 8;
 const LEGACY_KEY = 'dailyTracker:data'; // single-profile data before 1.3.0
 const PROFILES_KEY = 'dailyTracker:profiles';
 // Copy of the pre-1.3 data as it was when it was moved, so a later merge can tell what an
@@ -49,7 +49,24 @@ export function defaultSettings() {
     taskDefaults: { on: true, anytimeReminderTime: '06:00' },
     // Weather line on Today: units, which location is shown ('current' or a saved location's id) and saved cities.
     weather: defaultWeather(),
+    // Row swipe actions on Today and Habits: swiping partway shows `inner` and `outer`; swiping all the way runs `outer`.
+    swipe: defaultSwipe(),
   };
+}
+
+export const SWIPE_ACTIONS = ['details', 'missed', 'complete', 'edit', 'delete', 'off'];
+export function defaultSwipe() {
+  return { right: { inner: 'complete', outer: 'details' }, left: { inner: 'edit', outer: 'missed' } };
+}
+/** Row swipe settings: each side's inner/outer action must be a known one, else the default. */
+export function normSwipe(v) {
+  const def = defaultSwipe();
+  if (!isObj(v)) return def;
+  for (const side of ['right', 'left']) for (const pos of ['inner', 'outer']) {
+    const a = isObj(v[side]) ? v[side][pos] : null;
+    if (SWIPE_ACTIONS.includes(a)) def[side][pos] = a;
+  }
+  return def;
 }
 
 export function defaultWeather() {
@@ -93,6 +110,10 @@ const migrations = {
   // v6 → v7: optional task `clearedBefore` (repeating task history cleared before that day). The bump makes older apps
   // (which would drop the field and bring the days back as missed) pause syncing instead of re-uploading the task.
   6: (data) => data,
+  // v7 → v8: optional habit `targets` (a "complete by" time per instance of a count habit) and the profile setting
+  // `swipe` (row swipe actions). Nothing to convert; the bump makes older apps (which would drop `targets` and
+  // re-upload the habit with a single time) pause syncing instead.
+  7: (data) => data,
 };
 const TOD_TARGET = { morning: '12:00', afternoon: '17:00', evening: '21:00' };
 
@@ -166,6 +187,16 @@ function normTask(t, i) {
   };
 }
 
+/** The per-instance "complete by" times of a count habit (sorted, exactly `goal.target` long), or null. */
+function habitTimes(hb, goal) {
+  const n = goal.type === 'count' && Number.isInteger(goal.target) ? Math.min(goal.target, 999) : 1;
+  if (n < 2 || !Array.isArray(hb.targets)) return null;
+  const ts = hb.targets.filter((t) => typeof t === 'string' && TIME_RE.test(t)).sort();
+  if (!ts.length) return null;
+  while (ts.length < n) ts.push(ts[ts.length - 1]); // the target went up: new instances copy the last time
+  return ts.slice(0, n); // the target went down: the extra times are dropped
+}
+
 function normHabit(hb, i) {
   if (!isObj(hb) || !str(hb.name).trim()) return null;
   const sc = isObj(hb.schedule) ? hb.schedule : {};
@@ -196,10 +227,14 @@ function normHabit(hb, i) {
     },
     reminder: TIME_RE.test(hb.reminder) ? hb.reminder : null,
     // "Complete by" time ('HH:MM'), or null = Anytime.
-    target: TIME_RE.test(hb.target) ? hb.target : null,
+    // With a count goal above 1, one time per instance (ascending; `target` is the first). See habitEach() in logic.js.
+    ...(() => {
+      const ts = habitTimes(hb, goal);
+      return ts ? { target: ts[0], targets: ts } : { target: TIME_RE.test(hb.target) ? hb.target : null };
+    })(),
     // "Time running out" warning, minutes before the target. Absent = follow the profile default
     // (settings.habitWarnDefault); a positive integer = that many minutes; 0 = explicitly off.
-    ...(TIME_RE.test(hb.target) && Number.isInteger(hb.warn) && hb.warn >= 0 && hb.warn <= 1439 ? { warn: hb.warn } : {}),
+    ...((TIME_RE.test(hb.target) || habitTimes(hb, goal)) && Number.isInteger(hb.warn) && hb.warn >= 0 && hb.warn <= 1439 ? { warn: hb.warn } : {}),
     archived: !!hb.archived,
     order: Number.isFinite(hb.order) ? hb.order : i,
     ...(Number.isFinite(hb.todayOrder) ? { todayOrder: hb.todayOrder } : {}),
@@ -366,6 +401,7 @@ export function normalize(data) {
     anytimeReminderTime: TIME_RE.test(td.anytimeReminderTime) ? td.anytimeReminderTime : def.settings.taskDefaults.anytimeReminderTime,
   };
   out.settings.weather = normWeather(out.settings.weather);
+  out.settings.swipe = normSwipe(out.settings.swipe);
   out.categories = Array.isArray(data.categories)
     ? data.categories.filter((c) => isObj(c) && str(c.name).trim()).map((c) => ({
         id: str(c.id, 40) || uid(), name: str(c.name, 40).trim(), color: /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : '#64748b',

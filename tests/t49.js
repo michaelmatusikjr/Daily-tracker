@@ -149,6 +149,28 @@ let passkeyOffers = 0;
   await O.p.click('.sheet.dialog button.danger');
   await waitFor(async () => (await O.p.locator('.invite-list li', { hasText: '<img' }).textContent()).includes('Revoked'), 8000);
   assert(await O.p.locator('.invite-list li', { hasText: '<img' }).locator('button').count() === 0, 'O10 a revoked invite shows Revoked, with no button');
+  // #45: swipe a revoked invite left to delete it (Undo; the server delete waits for the toast); other rows have no delete swipe
+  {
+    const swipeLeft = (text, dx = -100) => O.p.evaluate(({ text, dx }) => {
+      const li = [...document.querySelectorAll('.invite-list li')].find((x) => x.textContent.includes(text));
+      const el = li.querySelector('.set-text'); const r = el.getBoundingClientRect();
+      const mk = (x) => new Touch({ identifier: 5, target: el, clientX: x, clientY: r.top + r.height / 2 });
+      const f = (t, x, end) => el.dispatchEvent(new TouchEvent(t, { bubbles: true, cancelable: true, touches: end ? [] : [mk(x)], changedTouches: [mk(x)] }));
+      const x0 = r.left + r.width / 2; f('touchstart', x0); for (let i = 1; i <= 5; i++) f('touchmove', x0 + (dx * i) / 5); f('touchend', x0 + dx, true);
+    }, { text, dx });
+    await swipeLeft('Sam'); await O.p.waitForTimeout(400);
+    assert(await count(O.p, '.invite-list .swipe-under') === 0, 'X1 an unused/used invite has no delete swipe');
+    await swipeLeft('<img'); await O.p.waitForTimeout(400);
+    assert(await count(O.p, '.invite-list .swipe-under .sw-delete') === 1, 'X2 swiping a revoked invite left reveals Delete');
+    await O.p.locator('.invite-list .sw-delete').click(); await O.p.waitForTimeout(400);
+    assert(await count(O.p, '.invite-list li') === 1 && (await db.prepare('SELECT COUNT(*) AS n FROM invites').first()).n === 2, 'X3 the row is gone from the list; the server still has it during the Undo window');
+    await O.p.locator('#toasts .toast-action').click(); await O.p.waitForTimeout(1200);
+    assert(await count(O.p, '.invite-list li') === 2 && (await db.prepare('SELECT COUNT(*) AS n FROM invites').first()).n === 2, 'X4 Undo brings it back; nothing was deleted');
+    await swipeLeft('<img', -260); await O.p.waitForTimeout(900);
+    assert(await count(O.p, '.invite-list li') === 1, 'X5 a full swipe deletes too');
+    await waitFor(async () => (await db.prepare('SELECT COUNT(*) AS n FROM invites').first()).n === 1, 12000);
+    assert((await db.prepare("SELECT COUNT(*) AS n FROM invites WHERE name LIKE '<img%'").first()).n === 0, 'X6 after the toast the server deleted it for good');
+  }
   await closeSheet(O.p);
 
   // ===== L: the link on a desktop/Android browser: wizard right away, fragment removed =====
@@ -219,7 +241,7 @@ let passkeyOffers = 0;
   await O.p.click('#acct-invite');
   await waitFor(async () => (await O.p.locator('.invite-list li').count()) === 2);
   const samRow = await O.p.locator('.invite-list li', { hasText: 'Sam' }).textContent();
-  assert(/Used by sam/.test(samRow) && await O.p.locator('.invite-list li', { hasText: 'Sam' }).locator('button').count() === 0, 'O11 the list: "Used by sam", nothing to revoke');
+  assert(/Used by sam/.test(samRow) && await O.p.locator('.invite-list li', { hasText: 'Sam' }).locator('button:has-text("Revoke")').count() === 1, 'O11 the list: "Used by sam", and it can still be revoked (list only)');
   await closeSheet(O.p);
 
   // ===== R: a used code does nothing =====

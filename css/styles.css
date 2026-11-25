@@ -324,7 +324,6 @@ p { margin: 0; }
 .ws-day.selected .ws-bar::after { background: var(--on-accent); }
 
 /* ---------- Progress ---------- */
-.progress-card { display: flex; align-items: center; gap: var(--s5); padding: var(--s5); }
 .ring-wrap { position: relative; flex: none; }
 .ring { display: block; }
 .ring-fg { transition: stroke-dashoffset .5s var(--ease); }
@@ -338,12 +337,6 @@ p { margin: 0; }
 .progress-sub { color: var(--text-2); font-size: 14.5px; margin-top: 2px; }
 .progress-break { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s2); font-size: 13px; color: var(--text-3); }
 .progress-break span { display: inline-flex; align-items: center; gap: 4px; }
-.celebrate .day-ring { animation: celebrate .9s var(--ease); }
-@keyframes celebrate {
-  0% { transform: scale(1); }
-  35% { transform: scale(1.12) rotate(-4deg); filter: drop-shadow(0 0 12px var(--accent)); }
-  100% { transform: scale(1); }
-}
 
 /* ---------- Tasks ---------- */
 .tasks, .timeline, .habit-rows, .habit-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s2); }
@@ -1551,7 +1544,6 @@ input, textarea, [contenteditable], [contenteditable] * { -webkit-user-select: t
 .coach-tip { margin: 0 0 var(--s3); }
 .coach-tip::before { display: none; }
 .detail-sub { margin: -4px 0 var(--s3); color: var(--c, var(--text-2)); font-size: 14px; font-weight: 650; }
-.progress-greet { font-size: 13px; font-weight: 650; color: var(--text-2); margin-bottom: 2px; }
 html { scroll-padding-top: var(--head-h, 72px); }
 .view > section, .view > .section { scroll-margin-top: var(--head-h, 72px); }
 @media (min-width: 900px) {
@@ -1640,3 +1632,71 @@ html { scroll-padding-top: var(--head-h, 72px); }
 .completed-clear { text-align: center; margin: var(--s5) 0 var(--s3); }
 .save-banner .link-btn { color: #fff; min-height: 0; font-weight: 700; }
 .clear-sheet .sheet-foot .btn.danger { min-width: 120px; }
+
+/* ---------- 1.18.0: keyboard-aware overlays (js/keyboard.js) ---------- */
+/* While the on-screen keyboard is up, fixed overlays use only the visible area above it. */
+html.kb-open .sheet-root, html.kb-open .onboarding { inset: auto; left: 0; right: 0; top: var(--vv-top, 0px); height: var(--vv-h, 100%); }
+html.kb-open .sheet { max-height: calc(var(--vv-h, 100dvh) - 12px); padding-bottom: 0; }
+html.kb-open .sheet::after { display: none; }
+html.kb-open .ob-panel { max-height: var(--vv-h, 100dvh); min-height: 0; }
+
+/* ---------- 1.18.0: count badge, counter pad, swipe actions, pull-down calendar ---------- */
+.over-badge {
+  position: absolute; top: -4px; right: -6px; z-index: 1; min-width: 20px; padding: 1px 5px; border-radius: 999px;
+  background: var(--text); color: var(--bg); font-size: 11px; font-weight: 800; line-height: 15px; text-align: center;
+  font-variant-numeric: tabular-nums; box-shadow: 0 0 0 2px var(--surface); pointer-events: none;
+}
+.wd-dot { position: relative; }
+.over-badge.tiny { top: -9px; right: -12px; min-width: 16px; padding: 0 4px; font-size: 9.5px; line-height: 13px; }
+.counter-pad {
+  position: fixed; z-index: 70; display: flex; align-items: center; gap: 4px; padding: 6px 8px;
+  background: var(--surface); border-radius: 18px; border: 1px solid var(--border); box-shadow: var(--shadow-lg);
+  animation: calDrop .18s var(--ease);
+}
+.cp-btn {
+  width: 44px; height: 44px; border-radius: 50%; border: none; display: grid; place-items: center; font-size: 20px;
+  background: color-mix(in srgb, var(--c, var(--accent)) 16%, transparent); color: var(--text);
+}
+.cp-btn:disabled { opacity: .35; }
+.cp-value { min-width: 48px; text-align: center; font-weight: 760; font-variant-numeric: tabular-nums; font-size: 17px; }
+.cp-done { height: 44px; padding: 0 14px; border: none; border-radius: 14px; background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: 15px; margin-left: 4px; }
+
+/* Swipe actions (js/rowSwipe.js): the row slides; the buttons sit in the space it leaves. */
+.main { overflow-x: clip; }
+.swipe-row { touch-action: pan-y; }
+.swipe-row.swiping { z-index: 2; }
+.swipe-under {
+  position: absolute; top: 0; bottom: 0; width: 0; display: flex; overflow: hidden; border-radius: 16px;
+}
+.swipe-under.side-left { left: 100%; justify-content: flex-start; margin-left: 4px; }
+.swipe-under.side-right { right: 100%; justify-content: flex-end; margin-right: 4px; }
+.sw-btn {
+  flex: 0 0 76px; border: none; padding: 0 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  color: #fff; font-size: 12px; font-weight: 700; background: #64748b; white-space: nowrap;
+}
+.sw-btn.sw-outer { flex: 1 0 76px; }
+.sw-details { background: var(--accent); color: var(--on-accent); }
+.sw-complete { background: #12924a; }
+.sw-missed { background: #64748b; }
+.sw-edit { background: #d97706; }
+.sw-delete { background: #d92d20; }
+.swipe-select { width: auto; min-width: 150px; }
+
+/* Pull-down month calendar in Today's header */
+.cal-panel { display: none; }
+.cal-open .cal-panel { display: block; animation: calDrop .26s var(--ease); }
+.cal-open .week-strip { display: none; }
+.cal-open { max-height: calc(100dvh - 8px); overflow-y: auto; overscroll-behavior: contain; }
+@keyframes calDrop { from { opacity: 0; transform: translateY(-10px) scale(.98); } to { opacity: 1; transform: none; } }
+.cal-grab { display: flex; justify-content: center; align-items: center; width: 100%; height: 22px; margin: 0 0 2px; padding: 0; border: none; background: none; touch-action: manipulation; }
+.cal-grab-bar { width: 38px; height: 5px; border-radius: 3px; background: var(--surface-3); }
+.cal-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin: 0 0 var(--s2); }
+.cal-nav-title { flex: 1; text-align: center; font-weight: 720; font-size: 16px; }
+.cal-nav .chip-btn { min-height: 34px; padding: 0 12px; }
+.app-head .cal-card { padding: 4px 0; }
+.app-head .cal-day { min-height: 44px; aspect-ratio: 1 / .9; padding: 3px 2px 4px; }
+.app-head .cal-legend { margin: var(--s2) 0 var(--s1); }
+.stats-range { padding-bottom: var(--s2); }
+.each-times { display: grid; gap: var(--s2); margin-top: var(--s2); }
+.each-times small { color: var(--text-3); font-weight: 500; }
+.invite-list li.swipe-row { position: relative; background: var(--surface); }

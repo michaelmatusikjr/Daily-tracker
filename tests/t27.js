@@ -58,20 +58,19 @@ const isRed = (c) => c.r > 200 && c.b < 60, isBlue = (c) => c.b > 200 && c.r < 6
   {
     const data = base({ tasks: [task('t1', 'One', { done: true, doneDates: { [TODAY]: 1 } }), task('t2', 'Two', { done: true, doneDates: { [TODAY]: 1 } }), task('t3', 'Three')] });
     const { ctx, p } = await open(browser, { data });
-    assert(await p.locator('.progress-card .progress-big').textContent() === '2 of 3 done', 'N1 progress card still shows counts');
-    assert(await p.locator('.progress-card .progress-sub').count() === 0 && !/halfway|keep going|nice start|fresh start|plan something|enjoy/i.test(await p.textContent('.progress-card')), 'N1 no encouragement text on Today’s progress card (2 of 3 done)');
-    assert(await p.locator('.progress-card .completed-link, a[href="#completed"]').count() === 0, 'N2 no “Completed ›” link on Today');
+    assert(await p.locator('.progress-card').count() === 0 && !/halfway|keep going|nice start|fresh start|plan something|enjoy/i.test(await p.textContent('.view-today')), 'N1 v1.18: no progress card and no encouragement text on Today (2 of 3 done)');
+    assert(await p.locator('a[href="#completed"]').count() === 0, 'N2 no “Completed ›” link on Today');
     await go(p, '#calendar');
     assert(await p.locator('.cal-completed-btn').count() === 0, 'N3 Calendar no longer has a “Completed tasks” button (v1.14: it lives in the avatar menu)');
     await p.click('.avatar-btn'); await p.waitForTimeout(300); await p.click('.menu-item:has-text("Completed tasks")'); await p.waitForTimeout(400);
     assert(await p.evaluate(() => location.hash) === '#completed' && (await p.textContent('.page-title')).includes('Completed'), 'N3 avatar-menu entry opens the Completed view');
-    await go(p, '#stats');
+    await go(p, '#statistics');
     assert(await p.locator('.completed-link').count() === 0 && await p.locator('a[href="#stats"]').count() === 0 && (await p.textContent('.page-title')).includes('Nov'), 'N4 Stats tab is gone (old #stats falls back to Today, no Completed link there)');
     // ---- #15 no zoom / no selecting UI ----
     await go(p, '#today');
     const css = await p.evaluate(() => {
       const cs = (el) => getComputedStyle(el);
-      const btn = document.querySelector('button'); const lab = document.querySelector('.progress-big'); const li = document.querySelector('.task');
+      const btn = document.querySelector('button'); const lab = document.querySelector('.task-title'); const li = document.querySelector('.task');
       const inp = document.createElement('input'); document.body.append(inp); const ta = document.createElement('textarea'); document.body.append(ta);
       const ce = document.createElement('div'); ce.contentEditable = 'true'; ce.textContent = 'x'; document.body.append(ce);
       const sel = (e) => cs(e).userSelect || cs(e).webkitUserSelect;
@@ -108,10 +107,10 @@ const isRed = (c) => c.r > 200 && c.b < 60, isBlue = (c) => c.b > 200 && c.r < 6
   for (const [done, label] of [[0, 'none done'], [3, 'all done']]) {
     const tasks = [1, 2, 3].map((i) => task('t' + i, 'T' + i, i <= done ? { done: true, doneDates: { [TODAY]: 1 } } : {}));
     const { ctx, p } = await open(browser, { data: base({ tasks }) });
-    assert(await p.locator('.progress-card .progress-sub').count() === 0, `N1 no encouragement text (${label})`);
+    assert(await p.locator('.progress-card, .progress-sub').count() === 0, `N1 no encouragement text (${label})`);
     await ctx.close();
   }
-  { const { ctx, p } = await open(browser); assert(await p.locator('.progress-card .progress-sub').count() === 0, 'N1 no text on an empty day'); await ctx.close(); }
+  { const { ctx, p } = await open(browser); assert(await p.locator('.progress-card, .progress-sub').count() === 0, 'N1 no text on an empty day'); await ctx.close(); }
 
   // ===== #10 notification → switch profile + theme =====
   {

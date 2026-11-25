@@ -42,7 +42,7 @@ const go = async (p, tab) => { await p.evaluate((t) => { location.hash = '#' + t
   const browser = await chromium.launch();
   for (const theme of ['light', 'dark']) {
     const { ctx, p } = await open(browser, theme);
-    for (const tab of ['today', 'calendar', 'habits', 'workouts', 'journal', 'completed']) {
+    for (const tab of ['today', 'habits', 'workouts', 'journal', 'completed']) {
       await go(p, tab);
       const L = `${theme} ${tab}`;
       const head = p.locator('.app-head');
@@ -72,15 +72,15 @@ const go = async (p, tab) => { await p.evaluate((t) => { location.hash = '#' + t
     await go(p, 'today');
     assert(await p.locator('.app-head .week-strip').count() === 1, `${theme}: week strip pinned in the header`);
     assert(/Nov|Dec|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct/.test(await p.locator('.app-title').innerText()), `${theme}: Today title is the date`);
-    assert(await p.locator('.progress-card .progress-greet').count() === 1 && /Good (morning|afternoon|evening|night)/.test(await p.locator('.progress-card .progress-greet').innerText()), `${theme}: greeting is in the top progress card`);
+    assert(await p.locator('.progress-card').count() === 0, `${theme}: no progress card on Today (v1.18)`);
     assert(await p.locator('.app-head [aria-label="Previous day"]').count() === 1 && await p.locator('.app-head [aria-label="Next day"]').count() === 1, `${theme}: Today has arrows in the header`);
     await p.locator('.app-head [aria-label="Next day"]').click(); await p.waitForTimeout(300);
     assert(await p.locator('.app-head .chip-btn', { hasText: 'Today' }).count() === 1, `${theme}: "Today" chip appears on another day`);
     await p.locator('.app-head .chip-btn', { hasText: 'Today' }).click(); await p.waitForTimeout(300);
-    // Calendar: month + arrows, no Completed button
+    // Calendar: opens from Today's strip (v1.18); month + arrows live in its panel
     await go(p, 'calendar');
-    assert(/^[A-Z][a-z]{2} \d{4}$/.test((await p.locator('.app-title').innerText()).trim()), `${theme}: Calendar title is the month (short name)`);
-    assert(await p.locator('.app-head [aria-label="Previous month"]').count() === 1 && await p.locator('.app-head [aria-label="Next month"]').count() === 1, `${theme}: Calendar arrows in header`);
+    assert(/^[A-Z][a-z]{2} \d{4}$/.test((await p.locator('.cal-nav-title').innerText()).trim()), `${theme}: Calendar title is the month (short name)`);
+    assert(await p.locator('.cal-nav [aria-label="Previous month"]').count() === 1 && await p.locator('.cal-nav [aria-label="Next month"]').count() === 1, `${theme}: Calendar arrows`);
     assert(await p.locator('.cal-completed-btn, a[href="#completed"]').count() === 0, `${theme}: Calendar has no Completed button`);
     // Sub-tabs pinned
     await go(p, 'habits');
@@ -97,7 +97,7 @@ const go = async (p, tab) => { await p.evaluate((t) => { location.hash = '#' + t
     const { ctx, p } = await open(browser, 'light');
     assert(await p.locator('.avatar-chevron').count() === 0, 'avatar has no dropdown arrow');
     assert(await p.locator('.avatar-btn svg:not(.device-badge svg)').count() === 0, 'avatar button holds no icon (apart from the "On this device only" badge)');
-    for (const tab of ['habits', 'workouts', 'calendar', 'journal']) {
+    for (const tab of ['habits', 'workouts', 'journal']) {
       await go(p, tab);
       assert(await p.locator('.app-head .avatar-btn').count() === 1, `avatar on ${tab}`);
     }

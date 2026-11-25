@@ -168,7 +168,8 @@ The same Worker also holds **sync accounts** (`/api/account/*`, `/api/passkey/*`
   |---|---|---|---|
   | `POST /api/invites` | `X-Register-Key` | `{name?}` (up to 40 characters) | `201 {id, code, name, createdAt, expiresAt, status}` |
   | `GET /api/invites` | `X-Register-Key` | — | `{invites:[{id, name, createdAt, expiresAt, usedAt, username, status}]}`, newest first. `status` is `unused`, `used`, `expired` or `revoked`. |
-  | `DELETE /api/invites/<id>` | `X-Register-Key` | — | Revokes an unused code. 409 if it was already used, 404 if unknown. |
+  | `DELETE /api/invites/<id>` | `X-Register-Key` | — | Revokes an invite of any status (idempotent; 404 if unknown). A used invite is only marked revoked in the list: the friend's account and devices are untouched. |
+  | `DELETE /api/invites/<id>?purge=1` | `X-Register-Key` | — | Deletes a revoked invite for good. 409 if it isn't revoked, 404 if unknown. |
   | `POST /api/invites/check` | none | `{code}` | `{valid: true\|false}` only (nothing else is revealed). 20 calls/hour per IP. |
   | `POST /api/account/create` | `X-Invite-Code: <code>` instead of `X-Register-Key` | as in SYNC.md | The code is spent in the same atomic D1 batch that inserts the account and its session (a conditional `UPDATE … WHERE used_at IS NULL AND revoked = 0 AND expires_at > now`), so two simultaneous uses give one account, and a failed creation never leaves a spent code. One 403 "Invalid or expired invite code" covers unknown, used, revoked and expired. |
 
@@ -187,3 +188,10 @@ npm run dev      # local Worker; trigger the cron with: curl "http://localhost:8
 `test/recur.test.mjs` loads the app's `js/logic.js` and checks that the server's recurrence rules give the same answers. Keep the two in step when changing repeat rules.
 
 **Real delivery can't be tested here.** The tests check the encryption byte-for-byte against the reference implementation and run the whole flow against a fake push service. Actual delivery through Google, Mozilla or Apple push services only happens after you deploy.
+
+
+## Encrypted reminder text (release 1.18.0)
+
+Reminder text (task/habit names, times) never reaches the server in plaintext. Each device makes its own AES-256-GCM key (non-extractable, kept in the app's IndexedDB, never synced) and sends every rule's text as `enc` (base64url of a random 12-byte IV followed by the ciphertext of `{title, body}`, AAD = the rule id). The server validates only the size and alphabet of `enc` (24 to 2048 characters), stores it with the schedule fields, and forwards `{ enc, id, url, tag }` in the Web Push payload; the app's service worker decrypts it. Requests that still carry plaintext `title` / `body` (an app older than 1.18.0) are refused with a 400 telling the person to reload the app.
+
+Upgrading an existing database: run `npm run db:migrate:0003` once (removes the stored plaintext from every rule; safe to repeat), deploy the Worker, then publish the app. Devices send their rules again, encrypted, the next time the app opens; until then their rules send a generic "Reminder" notification.

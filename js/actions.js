@@ -12,7 +12,6 @@ import { syncHabitLink, computeRecords, exerciseById, recordToast } from './work
 function celebrateIfDone(k, before, undo = null) {
   const after = dayProgress(getState(), k);
   if (before.pct < 1 && after.pct === 1 && after.total > 0) {
-    ctx.anim.add('ring');
     const message = k === todayKey() ? 'Everything done for today. Nice work!' : 'Everything done for that day';
     // The takeover replaces any toast, so an Undo that toast offered moves onto it.
     setTimeout(() => takeover({ emoji: '🎉', message, confetti: true, ...(undo ? { action: 'Undo', onAction: undo } : {}) }), 50);
@@ -402,9 +401,11 @@ export function saveHabit(data) {
     if (existing) {
       Object.assign(existing, data, { updatedAt: Date.now() });
       if (data.warn === undefined) delete existing.warn; // "follow the default"
+      if (data.targets === undefined) delete existing.targets; // one time for the whole habit
     } else {
       id = uid();
       if (data.warn === undefined) delete data.warn;
+      if (data.targets === undefined) delete data.targets;
       const maxOrder = s.habits.reduce((m, x) => Math.max(m, x.order || 0), 0);
       s.habits.push({ archived: false, createdAt: todayKey(), ...data, id, order: maxOrder + 1 });
     }

@@ -13,6 +13,7 @@ import { nextFire, isDateKey, isValidTimeZone, localToUTC, addDays } from './rec
 
 export const LIMITS = {
   maxRules: 500,
+  maxEnc: 2048,               // base64url characters of one rule's encrypted text (12-byte IV + AES-GCM ciphertext of {title, body})
   maxDates: 400,              // exceptions / skipDates per rule
   newRuleGraceMs: 60000,      // a brand-new rule may fire for a time up to 1 min ago
   lateWindowMs: 15 * 60000,   // the cron sends reminders up to 15 min late (missed runs), never later
@@ -89,8 +90,10 @@ export function validateSchedule(body) {
     if (seen.has(it.id)) throw bad('duplicate id');
     seen.add(it.id);
     if (!['task', 'habit'].includes(it.kind)) throw bad('kind must be task or habit');
-    if (!isStr(it.title, 120, 1)) throw bad('title must be 1–120 characters');
-    if (!isStr(it.body ?? '', 240)) throw bad('body must be at most 240 characters');
+    // The reminder's text (names, times) is encrypted on the device with a key only that device holds: the server stores
+    // and forwards `enc` without being able to read it. Plaintext title/body from old clients is refused.
+    if (it.title !== undefined || it.body !== undefined) throw bad('Reminder text must be encrypted (title/body are no longer accepted). Reload the app to update it.');
+    if (!isStr(it.enc, LIMITS.maxEnc, 24) || !/^[A-Za-z0-9_-]+$/.test(it.enc)) throw bad(`enc must be base64url text (24–${LIMITS.maxEnc} characters)`);
     const url = it.url ?? './';
     // Only same-app relative URLs (no other origins, no javascript:).
     if (!isStr(url, 300) || !/^(\.\/|\/(?!\/)|#)[^\s\\]*$/.test(url)) throw bad('url must be a relative app URL');
@@ -118,7 +121,7 @@ export function validateSchedule(body) {
     }
     if (it.until !== undefined && it.until !== null && !isDateKey(it.until)) throw bad('until must be YYYY-MM-DD');
     return {
-      id: it.id, kind: it.kind, title: it.title, body: it.body ?? '', url, tag: it.tag || it.id, time: it.time, offsetDays,
+      id: it.id, kind: it.kind, enc: it.enc, url, tag: it.tag || it.id, time: it.time, offsetDays,
       recur, date: r.type === 'none' ? it.date : null, exceptions: dateList(it.exceptions, bad, 'exceptions'),
       skipDates: dateList(it.skipDates, bad, 'skipDates'), until: it.until || null,
     };
@@ -342,7 +345,7 @@ async function cronRun(env, now, { fetchImpl = fetch } = {}) {
           try {
             const res = await sendPush({ endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth },
               // url/tag are templates: "{date}" becomes the occurrence's local date (deep link to that day's item).
-              { title: rule.title, body: rule.body, url: fill(rule.url, r.next_date), tag: fill(rule.tag, r.next_date) }, { vapid, subject, authCache, fetchImpl });
+              { ...(rule.enc ? { enc: rule.enc, id: rule.id } : {}), url: fill(rule.url, r.next_date), tag: fill(rule.tag, r.next_date) }, { vapid, subject, authCache, fetchImpl });
             if (res.gone) { deadDevices.add(r.device_id); stats.gone++; } else if (res.ok) stats.sent++; else stats.failed++;
           } catch (e) { stats.failed++; console.error('push failed', e?.message); }
         }

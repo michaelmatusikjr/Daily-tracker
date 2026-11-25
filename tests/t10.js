@@ -77,7 +77,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     assert(i && i.profiles.length === 1 && i.profiles[0].introPending === true, 'P1 legacy data became the first profile');
     assert(await S(p, () => localStorage.getItem('dailyTracker:data')) === null, 'P1 legacy key moved (removed)');
     const st = await stored(p);
-    assert(st.version === 7 && Array.isArray(st.workouts) && st.tasks[0].title === 'Old task' && st.logs.h1['2026-11-11'] === 1 && st.journal['2026-11-11'].note === 'ok', 'P1 v3→v4 migration keeps everything');
+    assert(st.version === 8 && Array.isArray(st.workouts) && st.tasks[0].title === 'Old task' && st.logs.h1['2026-11-11'] === 1 && st.journal['2026-11-11'].note === 'ok', 'P1 v3→v4 migration keeps everything');
     assert(await S(p, () => document.documentElement.dataset.theme) === 'dark', 'P1 theme kept');
     assert((await p.textContent('.sheet-title')) === 'Who’s this?', 'P1 friendly intro sheet on first open');
     await p.screenshot({ path: SP + '/p-intro.png' });
@@ -113,7 +113,7 @@ async function logWorkout(p, { name, isNew = false, type = null, lines = null, t
     await p.click('.sheet-foot .btn.primary'); await p.waitForTimeout(200); // intro → "Me" (empty name)
     await p.evaluate(async () => (await import('./js/store.js')).updateProfile((await import('./js/store.js')).getActiveProfile().id, { name: 'Sam' }));
     const tabs = await p.$$eval('.nav-item', (e) => e.filter((x) => x.offsetParent !== null).map((x) => x.querySelector('.nav-label').textContent));
-    assert(JSON.stringify(tabs) === '["Today","Habits","Workouts","Calendar","Journal"]', 'N tabs: Today, Habits, Workouts, Calendar, Journal');
+    assert(JSON.stringify(tabs) === '["Today","Habits","Workouts","Journal"]', 'N tabs: Today, Habits, Workouts, Journal');
     assert(await p.locator('.avatar-btn').count() === 1, 'N avatar on Today');
     await go(p, '#habits');
     assert(await p.locator('.avatar-btn').count() === 1, 'N avatar on every tab (v1.14 fixed header)');

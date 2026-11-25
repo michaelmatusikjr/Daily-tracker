@@ -57,7 +57,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   const cnt = p.locator('.habit-count').first();
   await cnt.click(); await cnt.click(); await cnt.click(); await p.waitForTimeout(300);
   assert(await p.locator('.habit-count.done').count() === 1, 'count habit reached target');
-  await p.locator('.habit-count').first().click({ button: 'right' }); await p.waitForTimeout(300);
+  await p.locator('.habit-open').first().click({ button: 'right' }); await p.waitForTimeout(300); // v1.18: right-click on the counter itself opens the − / + pad
   await p.click('.sheet.action-menu .menu-item:has-text("Remove one")'); await p.waitForTimeout(300);
   assert(await p.locator('.habit-count.done').count() === 0, 'right-click menu › Remove one decrements (1.5.0)');
   // toggle past day dot
@@ -79,7 +79,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   await p.click('.sheet .mood >> nth=3'); await p.waitForTimeout(200);
   await p.fill('.sheet .journal-note', 'Productive day'); await p.click('.sheet .btn.primary:has-text("Save")'); await p.waitForTimeout(500);
   await p.screenshot({ path: SP + '/d-today.png', fullPage: true });
-  await p.click('a[href="#calendar"]'); await p.waitForTimeout(300);
+  await p.evaluate(() => { location.hash = '#calendar'; }); await p.waitForTimeout(300);
   await p.screenshot({ path: SP + '/d-calendar.png' });
   await p.click('a[href="#journal"]'); await p.waitForTimeout(300);
   await p.screenshot({ path: SP + '/d-journal.png', fullPage: true });

@@ -53,6 +53,32 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-25
 - **Decided (2026-11-25):** the day's % ring disappears completely; it doesn't move anywhere else.
 
+### 43. The focused text box always stays above the on-screen keyboard
+- **What:** whenever the on-device keyboard opens, the text box being typed into must be pushed up / scrolled so it sits fully above the keyboard and anything attached to it (iOS accessory/autofill bar), everywhere in the app. Known failing place: entering an invitee's name (Settings › Account › Invite someone). Expected: more places.
+- **Added:** 2026-11-25
+
+### 44. Reminder text encrypted so only the phone can read it
+- **What:** closed-app reminder text (task/habit names, times) is no longer stored on the push server in plaintext: each device encrypts it with its own key and only that device can read the notification. Applies to everyone.
+- **Added:** 2026-11-25
+
+### 45. Swipe to delete revoked invites
+- **What:** in Settings › Account › Invite someone, a revoked invite can be swiped left to delete it for good (Undo for a few seconds). Only revoked invites.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** invites of any status (unused, expired, used) can be revoked; Delete only once revoked. Revoking a used invite only marks the list entry ("Revoked · used by <username>"); the friend's account and devices are untouched.
+
+### 46. Owner can see friends' activity and delete their accounts
+- **What:** in Settings › Account's invite list, each **used** invite shows the friend's username, last sync, and storage used. Accounts with no sync for **60 days** are marked "inactive". The owner can **delete any friend's account** with a "Delete account" button: it removes the account, its encrypted records, photos, sessions, passkeys, push devices and reminder rules from the server and cuts off access. The confirm lists exactly what goes; for an account that is still active it shows an extra warning ("<name> synced <n> days ago – they're still using it"). The owner's own account can never be deleted this way.
+- **Revoking a used invite** does not delete or lock the account (replaces the earlier "revoke locks the friend out" idea); deleting the account is the separate, explicit action.
+- **Unused/expired/revoked invites:** revoke first, then swipe to delete (#45).
+- **Decided (user, 2026-11-25):**
+  - **Manual only:** no automatic deletion; the owner deletes accounts by hand.
+  - **Any account can be deleted**, with the extra warning for active ones.
+  - **After the account is deleted (user, 2026-11-25):** the next time the friend opens the app, it tells them once: their account was removed from this server; their data stays on this device (kept as device-only profiles, never wiped); closed-app reminders and sync are off. To get sign-in, sync and closed-app reminders back they need to **connect their own free server**, with a link to step-by-step instructions (friend-friendly self-hosting guide: free Cloudflare account, deploy the Worker + D1, VAPID keys, then enter the server URL/public key/register key in the app; needs a "use my own server" setting in Settings › Reminders › Advanced / Account if one doesn't exist).
+  - **Sign-in stays available (user, 2026-11-25).** Anyone without an account on this server – a deleted friend, or someone who never had an invite – who tries to sign in is pointed to **connecting their own free server**, so they can sign in to their own server and run the app that way. To avoid revealing which usernames exist, every failed sign-in shows the same "wrong username or password" error plus: "No account here? You need an invite from this server's owner, or connect your own free server" with a link to the guide. Creating an account on this server still needs an invite code (or the register key).
+  - **Running your own server must actually work end to end:** a "Use my own server" setting (server URL + public VAPID key; register key entered as today) that switches reminders, account and sync to that server, per device, with a clear way back; plus a friend-friendly step-by-step guide (in the app or a page in the repo, linked from the app): create a free Cloudflare account, deploy the Worker + D1 (ideally a one-click/copy-paste path), generate VAPID keys, set the secrets, enter the values in the app, create the first account. Test the guide end to end before shipping.
+- **Size:** medium–large (server delete endpoint + owner UI + friend-side messaging + self-hosting guide/custom server setting). Needs QA (security/data).
+- **Added:** 2026-11-25
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"

@@ -130,7 +130,7 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
     await esc(p);
     // swipe still changes day
     {
-      const { x, y } = await center(p, '.progress-card');
+      const { x, y } = await center(p, '.section-title');
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x + 80, y }] });
       for (let i = 1; i <= 4; i++) { await p.waitForTimeout(20); await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 80 - i * 40, y }] }); }
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await p.waitForTimeout(400);
@@ -147,8 +147,8 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
     assert(JSON.stringify(items) === JSON.stringify(['Edit', 'View details', 'Add one', 'Remove one', 'Mark done today', 'Reset today', 'Mark as missed', 'Archive', 'Delete']), 'H1 count habit menu: ' + items.join(' | '));
     await pick(p, 'Add one');
     assert((await stored(p)).logs.h1[TODAY] === 4, 'H2 +1');
-    await hold(p, cdp, '.habit-row:has-text("Drink water") .habit-count'); await pick(p, 'Remove one');
-    assert((await stored(p)).logs.h1[TODAY] === 3, 'H2 −1 (long-press on the counter opens the menu instead of decrementing)');
+    await hold(p, cdp, '.habit-row:has-text("Drink water") .habit-row-main'); await pick(p, 'Remove one');
+    assert((await stored(p)).logs.h1[TODAY] === 3, 'H2 −1 via the item menu (v1.18: long-press on the counter itself opens the − / + pad instead)');
     await hold(p, cdp, '.habit-row:has-text("Drink water") .habit-row-main'); await pick(p, 'Reset today');
     assert(!(await stored(p)).logs.h1?.[TODAY], 'H3 Reset today');
     await undo(p);
@@ -259,7 +259,8 @@ const esc = async (p) => { await p.keyboard.press('Escape'); await p.waitForTime
     assert((await menuItems(p)).includes('Add one'), 'K4 ContextMenu key opens the habit menu');
     await esc(p);
     await p.click('.habit-row:has-text("Drink water") .habit-count', { button: 'right' }); await p.waitForTimeout(300);
-    assert(await menuOpen(p) && (await stored(p)).logs.h1[TODAY] === 3, 'K5 ' + (await menuOpen(p)) + ' ' + (await stored(p)).logs.h1[TODAY] + '  right-click on a counter opens the menu (no decrement)');
+    assert(!(await menuOpen(p)) && (await p.locator('.counter-pad').count()) === 1 && (await stored(p)).logs.h1[TODAY] === 3, 'K5 right-click on a counter opens the − / + pad (v1.18), no decrement');
+    await p.locator('.counter-pad .cp-done').click(); await p.waitForTimeout(200);
     await esc(p);
     await go(p, '#workouts');
     await p.click('.wo-entry .wo-main', { button: 'right' }); await p.waitForTimeout(300);

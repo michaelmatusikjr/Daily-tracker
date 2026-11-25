@@ -31,7 +31,7 @@ const SP = __dirname;
   await p.screenshot({ path: SP + '/m-habits.png', fullPage: true });
   await p.click('.habit-open'); await p.waitForTimeout(400);
   await p.screenshot({ path: SP + '/m-detail.png', fullPage: true });
-  await p.click('a[href="#calendar"]'); await p.waitForTimeout(400);
+  await p.evaluate(() => { location.hash = '#calendar'; }); await p.waitForTimeout(400);
   await p.screenshot({ path: SP + '/m-calendar.png', fullPage: true });
   await p.click('a[href="#journal"]'); await p.waitForTimeout(400);
   await p.screenshot({ path: SP + '/m-journal.png', fullPage: true });

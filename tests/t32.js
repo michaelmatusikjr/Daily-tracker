@@ -93,7 +93,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const { ctx, p, net } = await open(browser);
     let t = await line(p);
     assert(t && t.includes('Springfield') && t.includes('⛅') && t.includes('72° / 51°') && t.includes('💧 20%'), 'A1 today: pill + "⛅ 72° / 51° · 💧 20%": ' + t);
-    assert(await p.locator('.weather-slot + .progress-card, .week-strip + .weather-slot').count() >= 1, 'A2 the line sits directly under the week strip');
+    assert(await p.locator('.app-head + .weather-slot').count() >= 1, 'A2 the line sits directly under the week strip');
     assert(await p.locator('.weather-line button').count() === 1 && await p.locator('.wx-temps button, .wx-pop button').count() === 0, 'A3 only the location pill is interactive');
     assert(net.forecast.length === 1 && /latitude=39\.78&/.test(net.forecast[0]) && /longitude=-89\.65&/.test(net.forecast[0]), 'A4 forecast request uses coordinates rounded to 2 decimals: ' + net.forecast[0]);
     assert(/timezone=auto/.test(net.forecast[0]) && /forecast_days=8/.test(net.forecast[0]) && /precipitation_probability_max/.test(net.forecast[0]) && /weather_code/.test(net.forecast[0]), 'A5 request asks for daily max/min/precip/code, timezone=auto, 8 days');
@@ -223,14 +223,14 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const t = await line(p);
     assert(t && t.includes('72° / 51°') && !/updated/i.test(t), 'F1 offline: cached forecast shown without an "updated …" note: ' + t);
     assert(await p.locator('.weather-line.stale').count() === 1, 'F2 and marked stale (dimmed)');
-    assert(await p.locator('.progress-card').count() === 1, 'F3 Today still renders');
+    assert(await p.locator('.week-strip').count() === 1, 'F3 Today still renders');
     await ctx.close();
   }
   {
     // Offline with nothing cached: just the pill, nothing else
     const { ctx, p } = await open(browser, { forecast: 'abort' });
     await p.waitForTimeout(400);
-    assert(await p.locator('.wx-pill').count() === 1 && await p.locator('.wx-temps:not(.wx-status)').count() === 0 && await p.locator('.progress-card').count() === 1, 'F4 no cache + offline: no forecast text, Today fine');
+    assert(await p.locator('.wx-pill').count() === 1 && await p.locator('.wx-temps:not(.wx-status)').count() === 0 && await p.locator('.week-strip').count() === 1, 'F4 no cache + offline: no forecast text, Today fine');
     await ctx.close();
   }
 
@@ -238,7 +238,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
   for (const mode of ['fail', 'hang']) {
     const { ctx, p } = await open(browser, { forecast: mode });
     if (mode === 'hang') { await p.clock.runFor(9000); await p.waitForTimeout(300); }
-    assert(await p.locator('.progress-card').count() === 1 && await p.locator('.wx-temps:not(.wx-status)').count() === 0, `G1 forecast ${mode}: Today renders, no forecast text`);
+    assert(await p.locator('.week-strip').count() === 1 && await p.locator('.wx-temps:not(.wx-status)').count() === 0, `G1 forecast ${mode}: Today renders, no forecast text`);
     await p.click('button[aria-label="Next day"]'); await p.waitForTimeout(300);
     assert(await p.locator('.view-today').count() === 1, `G2 forecast ${mode}: navigating still works`);
     await ctx.close();
@@ -252,7 +252,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     await c2.addInitScript((d) => { if (!localStorage.getItem('dailyTracker:profiles')) { localStorage.setItem('dailyTracker:profiles', JSON.stringify({ version: 1, activeId: 'p', profiles: [{ id: 'p', name: 'Me', avatar: { type: 'emoji', emoji: '', color: '#6366f1' } }] })); localStorage.setItem('dailyTracker:data:p', d); } }, JSON.stringify(base()));
     const p2 = await c2.newPage(); p2.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
     await p2.clock.install({ time: NOW }); await p2.goto(APP); await p2.waitForTimeout(600);
-    assert(await p2.locator('.progress-card').count() === 1 && await p2.locator('.wx-temps:not(.wx-status)').count() === 0, 'G3 malformed forecast JSON is ignored');
+    assert(await p2.locator('.week-strip').count() === 1 && await p2.locator('.wx-temps:not(.wx-status)').count() === 0, 'G3 malformed forecast JSON is ignored');
     await c2.close();
   }
 
@@ -269,7 +269,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
       }
       const multi = m.validateImport({ app: 'daily-tracker', format: 'profiles', activeId: 'a', profiles: [{ id: 'a', name: 'A', avatar: { type: 'emoji', emoji: '', color: '#6366f1' }, data: { version: 5, settings: { onboarded: true }, tasks: [], habits: [] } }] });
       out.multi = multi.profiles[0].data.settings.weather;
-      try { m.validateImport({ version: 8, settings: {}, tasks: [], habits: [] }); out.newer = 'accepted'; } catch (e) { out.newer = e.message; }
+      try { m.validateImport({ version: 9, settings: {}, tasks: [], habits: [] }); out.newer = 'accepted'; } catch (e) { out.newer = e.message; }
       const locs = Array.from({ length: 14 }, (_, i) => ({ id: 'x' + i, name: 'N' + i, lat: 10 + i, lon: 20 }));
       const dirty = m.validateImport({ version: 6, settings: { weather: { units: 'K', selected: 'nope', locations: [
         ...locs,
@@ -285,8 +285,8 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
       return out;
     });
     const def = { units: 'F', selected: 'current', locations: [] };
-    assert(res.version === 7, 'H1 SCHEMA_VERSION is 7');
-    for (const v of [1, 2, 3, 4, 5]) assert(JSON.stringify(res['v' + v].weather) === JSON.stringify(def) && res['v' + v].version === 7 && res['v' + v].task === 'Old', `H2 v${v} backup imports with default weather settings`);
+    assert(res.version === 8, 'H1 SCHEMA_VERSION is 8');
+    for (const v of [1, 2, 3, 4, 5]) assert(JSON.stringify(res['v' + v].weather) === JSON.stringify(def) && res['v' + v].version === 8 && res['v' + v].task === 'Old', `H2 v${v} backup imports with default weather settings`);
     assert(JSON.stringify(res.multi) === JSON.stringify(def), 'H3 multi-profile backup of v5 data gets the default');
     assert(/newer version/.test(res.newer), 'H4 newer-than-supported backups are still rejected: ' + res.newer);
     assert(res.dirty.units === 'F' && res.dirty.selected === 'current' && res.dirty.n === 10, 'H5 bad units/selected sanitised, locations capped at 10: ' + JSON.stringify(res.dirty));
@@ -303,7 +303,7 @@ const saved = (id, name, lat, lon) => ({ id, name, lat, lon });
     const v5 = { version: 5, settings: { onboarded: true, theme: 'light' }, categories: [], tasks: [], habits: [], logs: {}, journal: {}, exercises: [], workouts: [] };
     const { ctx, p } = await open(browser, { data: v5, geo: false });
     const s = await stored(p);
-    assert(s.version === 7 && JSON.stringify(s.settings.weather) === JSON.stringify({ units: 'F', selected: 'current', locations: [] }), 'H11 stored v5 profile migrates to v7 with default weather');
+    assert(s.version === 8 && JSON.stringify(s.settings.weather) === JSON.stringify({ units: 'F', selected: 'current', locations: [] }), 'H11 stored v5 profile migrates to v8 with default weather');
     await ctx.close();
   }
 

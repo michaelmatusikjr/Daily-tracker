@@ -126,7 +126,7 @@ const undo = async (p) => { await p.click('#toasts .toast-action'); await p.wait
   {
     const { ctx, p, cdp } = await open(browser);
     const nav = await p.$$eval('#nav .nav-item', (a) => a.map((x) => x.textContent.trim() + ':' + getComputedStyle(x).display));
-    assert(nav.filter((x) => !x.endsWith('none')).map((x) => x.split(':')[0]).join(',') === 'Today,Habits,Workouts,Calendar,Journal', 'C1 tab bar order: ' + nav.join(','));
+    assert(nav.filter((x) => !x.endsWith('none')).map((x) => x.split(':')[0]).join(',') === 'Today,Habits,Workouts,Journal', 'C1 tab bar order: ' + nav.join(','));
     assert(await p.locator('a[href="#stats"]').count() === 0, 'C2 no Stats tab / link');
     await p.click('#nav a[href="#journal"]'); await p.waitForTimeout(350);
     assert((await p.textContent('h1.page-title')) === 'Journal', 'C3 Journal tab opens');
@@ -158,8 +158,8 @@ const undo = async (p) => { await p.click('#toasts .toast-action'); await p.wait
     await p.fill('.sheet textarea', 'From the tab'); await p.click('.sheet .btn.primary:has-text("Save")'); await p.waitForTimeout(350);
     assert((await p.textContent('.journal-item')).includes('From the tab'), 'C15 new entry listed first');
     // Old #stats bookmarks fall back to Today
-    await go(p, '#stats');
-    assert((await p.textContent('h1.page-title')).includes('Nov') && await p.locator('.progress-card').count() === 1, 'C16 #stats falls back to Today');
+    await go(p, '#statistics');
+    assert((await p.textContent('h1.page-title')).includes('Nov') && await p.locator('.week-strip').count() === 1, 'C16 unknown routes fall back to Today');
     await ctx.close();
   }
   {

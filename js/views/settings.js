@@ -13,6 +13,7 @@ import { ensureCategory } from '../forms.js';
 import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '../reminders.js';
 import { setWorkoutHabit, setWeatherUnits } from '../actions.js';
 import { habitText } from '../habitIcon.js';
+import { SWIPE_LABELS } from '../rowSwipe.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
 import { accountSection, profilesSection } from '../account.js';
 import { storageSection, goToStorage } from '../clearCompleted.js';
@@ -59,6 +60,19 @@ export function renderSettings() {
   root.append(group('Preferences',
     row('Week starts on', null, segmented([{ value: 1, label: 'Monday' }, { value: 0, label: 'Sunday' }], set.weekStart, (v) => setSetting('weekStart', v), { label: 'Week starts on', small: true })),
     row('Time format', null, segmented([{ value: '12', label: '12h' }, { value: '24', label: '24h' }], set.timeFormat, (v) => setSetting('timeFormat', v), { label: 'Time format', small: true }))));
+
+  // Swipe actions on Today and Habits rows (v1.18): two per side, like iOS Mail.
+  const swipeSel = (side, pos, label) => h('select.input.swipe-select', {
+    'aria-label': label, dataset: { side, pos },
+    onchange: (e) => update((s) => { s.settings.swipe = { ...s.settings.swipe, [side]: { ...s.settings.swipe[side], [pos]: e.target.value } }; }),
+  }, ['details', 'missed', 'complete', 'edit', 'delete', 'off'].map((a) => h('option', { value: a, selected: set.swipe[side][pos] === a }, SWIPE_LABELS[a])));
+  root.append(group('Swipe actions',
+    h('p.set-desc.pad', 'Swipe a task or habit row partway to show two buttons; swipe all the way to run the outer one. On Habits, they apply to today. Swiping anywhere else still changes the day.'),
+    row('Swipe right: outer', 'Runs when you swipe all the way', swipeSel('right', 'outer', 'Swipe right, outer action (full swipe)')),
+    row('Swipe right: inner', null, swipeSel('right', 'inner', 'Swipe right, inner action')),
+    row('Swipe left: outer', 'Runs when you swipe all the way', swipeSel('left', 'outer', 'Swipe left, outer action (full swipe)')),
+    row('Swipe left: inner', null, swipeSel('left', 'inner', 'Swipe left, inner action')),
+    h('p.set-desc.pad', 'Delete can be undone from the message that appears.')));
 
   // Weather line on Today
   root.append(group('Weather',

@@ -295,7 +295,7 @@ export async function confirmDialog(title, message, { ok = 'Confirm', danger = f
  * that ends a long-press is swallowed so it doesn't also run the item's normal action.
  */
 export function onItemMenu(el, open, { delay = 500 } = {}) {
-  const skip = '.drag-handle, input, textarea, select';
+  const skip = '.drag-handle, input, textarea, select, [data-lp-own]';
   let timer = null, sx = 0, sy = 0, suppress = false, lastOpen = 0, lastMode = null, lastType = 'mouse', lastDown = 0;
   const fire = (mode, info) => { lastOpen = Date.now(); lastMode = mode; open(mode, info); };
   // Hold feedback: after a short pause (so taps and scrolls don't flicker) the item sinks and a glow grows
@@ -364,9 +364,13 @@ export function onItemMenu(el, open, { delay = 500 } = {}) {
 }
 
 /** Horizontal swipe detection (touch). */
+// A swipe that started on a row with swipe actions (js/rowSwipe.js) belongs to that row: it never also changes the day.
+let rowClaimed = false;
+export function claimSwipe() { rowClaimed = true; }
 export function onSwipe(el, { left, right, threshold = 60 }) {
   let sx = null, sy = 0, st = 0;
   el.addEventListener('touchstart', (e) => {
+    rowClaimed = false;
     // Ignore gestures that start inside form fields, drag handles, or a nested
     // .no-swipe region that has its own swipe handling (but not `el` itself).
     const blocker = e.target.closest('.no-swipe, input, textarea, select, .drag-handle');
@@ -378,12 +382,11 @@ export function onSwipe(el, { left, right, threshold = 60 }) {
     const t = e.changedTouches[0];
     const dx = t.clientX - sx, dy = t.clientY - sy;
     sx = null;
+    if (rowClaimed) return;
     if (Date.now() - st > 700 || Math.abs(dx) < threshold || Math.abs(dx) < Math.abs(dy) * 1.6) return;
     if (dx < 0) left?.(); else right?.();
   });
 }
-
-/** Pointer-driven drag reordering with a handle, plus keyboard (Arrow Up/Down on the handle). */
 export function makeSortable(list, { onReorder }) {
   const items = () => [...list.children].filter((c) => c.dataset.id);
   list.addEventListener('keydown', (e) => {

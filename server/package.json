@@ -9,6 +9,7 @@
     "gen-vapid": "node scripts/setup-keys.mjs",
     "db:init": "wrangler d1 execute daily-tracker-push --remote --file=schema.sql",
     "db:migrate:0002": "wrangler d1 execute daily-tracker-push --remote --file=migrations/0002_invites_accounts.sql",
+    "db:migrate:0003": "wrangler d1 execute daily-tracker-push --remote --file=migrations/0003_encrypted_reminders.sql",
     "db:init:local": "wrangler d1 execute daily-tracker-push --local --file=schema.sql",
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",

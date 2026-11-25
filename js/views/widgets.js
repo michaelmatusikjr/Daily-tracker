@@ -5,6 +5,7 @@ import { icon } from '../icons.js';
 import { getState } from '../store.js';
 import { ctx } from '../ctx.js';
 import { bumpHabit, toggleHabitDay, toggleTask } from '../actions.js';
+import { onCounterHold } from '../counterPad.js';
 import { habitVal, habitTarget, isScheduled, habitStart, isTaskDone, isRecurring, PRIORITIES, weekCount, recurrenceLabel } from '../logic.js';
 import { addDays, fmtTime, fmtDuration, weekdayNarrow, weekdayLabels, fmtDateShort, todayKey, timeToMin, minToTime } from '../dates.js';
 import { openTaskView } from '../taskView.js';
@@ -16,7 +17,7 @@ export function reminderWarnBadge() {
   return h('span.meta.warn-badge', { title: `Reminder won’t appear: ${why}` }, icon('bellOff', { size: 13 }), h('span.sr-only', `Reminder won’t appear: ${why}`));
 }
 
-/** One-tap habit control: check button, or count button (tap +1; Down/− key −1; long-press opens the item menu). */
+/** One-tap habit control: check button, or count button (tap +1; Down/− key −1; long-press opens the − / + pad). */
 export function habitControl(hb, k, { big = false } = {}) {
   const st = getState();
   const v = habitVal(st, hb, k);
@@ -45,7 +46,10 @@ export function habitControl(hb, k, { big = false } = {}) {
     },
   },
   ring(v / target, { size, stroke: big ? 7 : 4, color: hb.color }),
-  h('span.count-label', done ? icon('check', { size: big ? 26 : 18 }) : h('span', h('b', String(v)), h('small', `/${target}`))));
+  h('span.count-label', done ? icon('check', { size: big ? 26 : 18 }) : h('span', h('b', String(v)), h('small', `/${target}`))),
+  // Above the goal the dot stays filled with its check; a small "+N" says how far over.
+  v > target ? h('span.over-badge', { title: `${v - target} over the goal` }, `+${v - target}`) : null);
+  if (!future) onCounterHold(btn, hb.id, k);
   return btn;
 }
 
@@ -64,11 +68,16 @@ export function weekDots(hb, end = todayKey()) {
     const sched = hb.schedule.type === 'perWeek' || isScheduled(hb, k);
     const future = k > today;
     const cls = ['wd', done && 'done', partial && 'partial', !sched && 'off', k === today && 'today', k < start && !v && 'pre'].filter(Boolean).join('.');
-    wrap.append(h(`button.${cls}`, {
+    const count = hb.goal.type === 'count';
+    const dot = h(`button.${cls}`, {
       type: 'button', style: { '--c': hb.color, '--p': partial ? v / target : 0 }, disabled: future,
-      'aria-pressed': String(done), 'aria-label': `${fmtDateShort(k)}: ${done ? 'done' : partial ? `${v} of ${target}` : sched ? 'not done' : 'not scheduled'}`,
-      onclick: () => toggleHabitDay(hb.id, k),
-    }, h('span.wd-letter', weekdayNarrow(k)), h('span.wd-dot', done ? icon('check', { size: 12 }) : null)));
+      'aria-pressed': String(done),
+      'aria-label': `${fmtDateShort(k)}: ${done ? (v > target ? `${v} of ${target}, ${v - target} over` : 'done') : partial ? `${v} of ${target}` : sched ? 'not done' : 'not scheduled'}${count ? '. Tap to add one; press and hold for − / +.' : ''}`,
+      // A count habit's dot adds one per tap (past days too, and past the target); a check habit's toggles the day.
+      onclick: () => (count ? bumpHabit(hb.id, k, 1) : toggleHabitDay(hb.id, k)),
+    }, h('span.wd-letter', weekdayNarrow(k)), h('span.wd-dot', done ? icon('check', { size: 12 }) : null, v > target ? h('span.over-badge.tiny', `+${v - target}`) : null));
+    if (count && !future) onCounterHold(dot, hb.id, k);
+    wrap.append(dot);
   }
   return wrap;
 }

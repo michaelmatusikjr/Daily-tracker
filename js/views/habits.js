@@ -4,15 +4,16 @@ import { appHeader } from '../header.js';
 import { getState } from '../store.js';
 import { ctx } from '../ctx.js';
 import { activeHabits, streaks, scheduleLabel, habitVal, habitTarget } from '../logic.js';
-import { todayKey, weekdayLabels, fmtTime } from '../dates.js';
+import { todayKey, weekdayLabels, fmtTime, nowMin } from '../dates.js';
 import { habitControl, weekDots, streakBadge, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
-import { habitWarnAt } from '../logic.js';
+import { habitWarnAt, habitShownTime } from '../logic.js';
 import { reorderHabits, setArchived, seedExamples, bumpHabit } from '../actions.js';
 import { openHabitForm } from '../forms.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
 import { habitIcon } from '../habitIcon.js';
 import { habitStatsPanel } from './habitStats.js';
+import { attachRowSwipe } from '../rowSwipe.js';
 
 
 const withMenu = (hb, li) => { attachMenu(li, () => habitMenu(hb.id), li.querySelector('.habit-open')); return li; };
@@ -52,7 +53,7 @@ export function renderHabits() {
     const v = habitVal(st, hb, today);
     const target = habitTarget(hb);
     const sub = [scheduleLabel(hb, dayNames)];
-    if (hb.target) sub.push(`by ${fmtTime(hb.target, st.settings.timeFormat)}`);
+    if (hb.target) sub.push(`by ${fmtTime(habitShownTime(hb, v, nowMin()), st.settings.timeFormat)}`);
     if (hb.goal.type === 'count') sub.push(`${target}${hb.goal.unit ? ' ' + hb.goal.unit : ''} a day`);
     const li = h('li.habit-card', { dataset: { id: hb.id }, style: { '--c': hb.color } },
       h('div.habit-card-top',
@@ -67,6 +68,7 @@ export function renderHabits() {
             hb.goal.type === 'count' && v > 0 ? iconBtn('minus', `Remove one from ${hb.name}`, () => bumpHabit(hb.id, today, -1), 'minus-btn') : null,
             habitControl(hb, today))));
     if (!reorder) {
+      attachRowSwipe(li, 'habit', hb.id, today); // swipe actions apply to today
       attachMenu(li, () => habitMenu(hb.id, today), li.querySelector('.habit-open'));
       li.append(h('div.habit-card-bottom',
         weekDots(hb, today),

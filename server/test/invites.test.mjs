@@ -68,7 +68,11 @@ test('owner: list shows status and username, never the code; revoke only unused'
   assert.deepEqual([la.status, la.username, typeof la.usedAt], ['used', u.username, 'number']);
   assert.deepEqual([lb.status, lb.username, lb.name], ['unused', null, 'B']);
   assert.equal((await send('DELETE', '/api/invites/' + a.id)).status, 403, 'needs key');
-  assert.equal((await send('DELETE', '/api/invites/' + a.id, { key: KEY })).status, 409, 'used codes stay');
+  assert.equal((await send('DELETE', '/api/invites/' + a.id, { key: KEY })).status, 200, 'a used invite can be revoked (list only)');
+  const la2 = (await send('GET', '/api/invites', { key: KEY })).body.invites.find((x) => x.id === a.id);
+  assert.deepEqual([la2.status, la2.username, typeof la2.usedAt], ['revoked', u.username, 'number'], 'still shows who used it');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM accounts WHERE username = ?').bind(u.username).first()).n, 1, 'the friend\'s account is untouched');
+  assert.equal((await send('DELETE', '/api/invites/' + a.id, { key: KEY })).status, 200, 'revoking again is fine (idempotent)');
   assert.equal((await send('DELETE', '/api/invites/nosuchid', { key: KEY })).status, 404);
   assert.equal((await send('DELETE', '/api/invites/' + b.id, { key: KEY })).status, 200);
   assert.equal((await send('GET', '/api/invites', { key: KEY })).body.invites.find((x) => x.id === b.id).status, 'revoked');
@@ -224,4 +228,24 @@ test('daily purge survives a database without the invites table', async () => {
   for (const s of SCHEMA.filter((q) => !/invites/.test(q))) await db2.prepare(s).run();
   await purge({ DB: db2 }, Date.now());
   await mf2.dispose();
+});
+
+test('owner: purge deletes a revoked invite for good; anything not revoked is refused', async () => {
+  const unused = await mk('U'), used = await mk('Used'), gone = await mk('Gone');
+  assert.equal((await create(newUser(), used.code)).status, 201);
+  assert.equal((await send('DELETE', '/api/invites/' + gone.id + '?purge=1')).status, 403, 'needs the register key');
+  assert.equal((await send('DELETE', '/api/invites/' + unused.id + '?purge=1', { key: KEY })).status, 409, 'unused: revoke it first');
+  assert.equal((await send('DELETE', '/api/invites/' + used.id + '?purge=1', { key: KEY })).status, 409, 'used but not revoked: revoke it first');
+  const exp = await mk('Exp'); await db.prepare('UPDATE invites SET expires_at = 1 WHERE id = ?').bind(exp.id).run();
+  assert.equal((await send('DELETE', '/api/invites/' + exp.id + '?purge=1', { key: KEY })).status, 409, 'expired but not revoked: revoke it first');
+  assert.equal((await send('DELETE', '/api/invites/' + exp.id, { key: KEY })).status, 200, 'an expired invite can be revoked');
+  assert.equal((await send('DELETE', '/api/invites/' + used.id, { key: KEY })).status, 200, 'a used invite can be revoked');
+  assert.equal((await send('DELETE', '/api/invites/' + used.id + '?purge=1', { key: KEY })).status, 200, 'once revoked, a used invite can be deleted from the list');
+  assert.equal((await send('DELETE', '/api/invites/nosuchid?purge=1', { key: KEY })).status, 404);
+  assert.equal((await send('DELETE', '/api/invites/' + gone.id, { key: KEY })).status, 200, 'revoke');
+  assert.equal((await send('DELETE', '/api/invites/' + gone.id + '?purge=1', { key: KEY })).status, 200, 'purge');
+  const ids = (await send('GET', '/api/invites', { key: KEY })).body.invites.map((x) => x.id);
+  assert.ok(!ids.includes(gone.id) && ids.includes(unused.id) && !ids.includes(used.id), 'revoked rows are gone, the unused one stays');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM invites WHERE id = ?').bind(gone.id).first()).n, 0, 'removed from the database');
+  assert.equal((await send('DELETE', '/api/invites/' + gone.id + '?purge=1', { key: KEY })).status, 404, 'already gone');
 });

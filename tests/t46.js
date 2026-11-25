@@ -185,7 +185,7 @@ const pickSeg = async (p, name) => { await p.locator('.clear-sheet [role=radio],
         const v7 = S.validateImport({ ...v6, version: 7, tasks: [{ ...v6.tasks[0], clearedBefore: '2026-05-05' }, { id: 'y', title: 'Bad', date: '2026-01-01', recur: { type: 'daily' }, clearedBefore: 'soon' }] });
         return { v: a.data.version, title: a.data.tasks[0].title, cb: v7.data.tasks[0].clearedBefore, bad: v7.data.tasks[1].clearedBefore, sv: S.SCHEMA_VERSION };
       });
-      assert(r.v === 7 && r.title === 'Old' && r.cb === '2026-05-05' && r.bad === undefined && r.sv === 7, 'v6 backup imports; clearedBefore validated and kept: ' + JSON.stringify(r));
+      assert(r.v === 8 && r.title === 'Old' && r.cb === '2026-05-05' && r.bad === undefined && r.sv === 8, 'v6 backup imports; clearedBefore validated and kept: ' + JSON.stringify(r));
       await ctx.close();
     }
 

@@ -136,7 +136,7 @@ const openMissed = async (p) => { if ((await p.getAttribute('.missed-section .co
     const snap = async (data) => {
       const { ctx: c, p: q } = await open(browser, { data });
       const out = {};
-      out.ring = await q.textContent('.progress-card');
+      out.ring = await q.evaluate(() => document.querySelector('.week-strip').innerHTML);
       out.numbers = await q.evaluate(async () => {
         const L = await import('./js/logic.js'); const S = await import('./js/store.js'); const st = S.getState();
         return JSON.stringify(['2026-11-18', '2026-11-12', '2026-11-15'].map((k) => L.dayProgress(st, k)).concat(st.habits.map((h) => [L.streaks(st, h), L.completionRate(st, h, 30), L.completionRate(st, h)])));

@@ -3,7 +3,7 @@
 // push server (js/push.js) the same occurrences are sent from the server instead.
 import { getProfiles, readProfileState } from './store.js';
 import { todayKey, addDays, dateAt, fmtTime, timeToMin, minToTime } from './dates.js';
-import { tasksOn, isTaskDone, activeHabits, isDueOn, habitDone, habitWarnAt, reminderText } from './logic.js';
+import { tasksOn, isTaskDone, activeHabits, isDueOn, habitVal, habitWarns, reminderText } from './logic.js';
 import { habitText } from './habitIcon.js';
 import { pushCoversReminders, deepLink, hideTextOn, HIDDEN_TITLE, HIDDEN_BODY } from './push.js';
 
@@ -71,13 +71,13 @@ export function reminderOccurrences(from, until, { profiles = getProfiles() } = 
           (s2) => { const x = s2.tasks.find((y) => y.id === t.id); return x && !isTaskDone(x, k) && !x.missedDates?.[k]; });
       }
       for (const hb of activeHabits(st)) {
-        if (!isDueOn(st, hb, k) || habitDone(st, hb, k) || hb.missed?.[k]) continue;
-        const stillDue = (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && !habitDone(s2, x, k) && !x.missed?.[k]; };
-        // "N minutes left": at target minus the warning, only while it isn't done.
-        const wa = habitWarnAt(st, hb);
-        if (wa !== null) {
-          const left = timeToMin(hb.target) - wa;
-          add(`hw:${hb.id}:${k}`, dateAt(k, minToTime(wa)).getTime(), reminderText({ kind: 'habit', name: hb.name, profile: pname, left, time: hb.target, fmt }), k, stillDue);
+        if (!isDueOn(st, hb, k) || hb.missed?.[k]) continue;
+        // "N minutes left": at each time minus the warning, only while that instance isn't done
+        // (one time for the whole habit: until the goal is met; per-instance times: instance i is done at count ≥ i).
+        for (const w of habitWarns(st, hb)) {
+          if (habitVal(st, hb, k) >= w.need) continue;
+          const stillDue = (s2) => { const x = s2.habits.find((y) => y.id === hb.id); return x && !x.archived && habitVal(s2, x, k) < w.need && !x.missed?.[k]; };
+          add(`hw:${hb.id}:${k}${w.idx ? ':' + w.idx : ''}`, dateAt(k, minToTime(w.at)).getTime(), reminderText({ kind: 'habit', name: hb.name, profile: pname, left: w.left, time: w.time, fmt }), k, stillDue);
         }
       }
     }

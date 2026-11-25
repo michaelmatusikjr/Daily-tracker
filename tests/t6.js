@@ -23,10 +23,7 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
     assert(t === 'Wed, Nov 11' && lines === 1, `N4 ${width}px non-today title short, one line ("${t}", ${lines} line)`);
     await p.screenshot({ path: `${SP}/n4-${width}.png` });
     await p.evaluate(async () => (await import('./js/ctx.js')).ctx.setDate('2026-12-11'));
-    const eb = await p.locator('.progress-greet').textContent();
-    assert(eb === 'In 31 days' && (await p.locator('.title-short').textContent()) === 'Fri, Dec 11', `3a ${width}px eyebrow differs from title (${eb})`);
-    await p.evaluate(async () => (await import('./js/ctx.js')).ctx.setDate('2027-01-20'));
-    assert((await p.locator('.progress-greet').textContent()) === 'In 71 days · 2027', '3a year shown when it differs');
+    assert((await p.locator('.title-short').textContent()) === 'Fri, Dec 11', `3a ${width}px short title for another day`); // (v1.18: the progress card's eyebrow is gone)
     await p.setViewportSize({ width: 800, height: 700 }); await p.waitForTimeout(100);
     assert(await p.locator('.title-long').isVisible() && !(await p.locator('.title-short').isVisible()), '3c title swaps on resize (CSS)');
     await p.setViewportSize({ width, height: 700 });

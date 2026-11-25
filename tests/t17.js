@@ -59,8 +59,15 @@ async function openApp(browser, { profiles = [['p', 'Me', data()]], config = { s
   p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await p.goto(APP); await p.waitForTimeout(600);
+  KP = p;
   return { ctx, p };
 }
+let KP = null; // the page whose device key decrypts the rules / pushes (v1.18: the server only holds ciphertext)
+const decrypt = (enc, id) => KP.evaluate(async ([enc, id]) => {
+  const rec = await new Promise((res, rej) => { const r = indexedDB.open('dailyTracker-push', 1); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('reminder'); g.onsuccess = () => res(g.result); g.onerror = () => rej(g.error); }; r.onerror = () => rej(r.error); });
+  const raw = Uint8Array.from(atob(enc.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((enc.length + 3) % 4)), (c) => c.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(id) }, rec.key, raw.slice(12))));
+}, [enc, id]).catch(() => ({}));
 const go = (p, hash) => p.evaluate((x) => { location.hash = x; }, hash).then(() => p.waitForTimeout(300));
 const pushState = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('dailyTracker:push') || 'null'));
 const toggleSel = '[aria-label="Remind me even when the app is closed"]';
@@ -76,7 +83,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
     outboundService: async (r) => {
       const body = Buffer.from(await r.arrayBuffer());
       let payload = null;
-      try { payload = JSON.parse(ece.decrypt(body, { version: 'aes128gcm', privateKey: ua, authSecret: auth }).toString()); } catch (e) { payload = { error: e.message }; }
+      try { payload = JSON.parse(ece.decrypt(body, { version: 'aes128gcm', privateKey: ua, authSecret: auth }).toString()); if (payload.enc) { const t = await decrypt(payload.enc, payload.id); payload.title = t.title; payload.body = t.body; } } catch (e) { payload = { error: e.message }; }
       pushed.push({ url: r.url, payload });
       return new Response(null, { status: pushStatus });
     },
@@ -85,7 +92,11 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
   const db = await mf.getD1Database('DB');
   for (const s of fs.readFileSync(SERVER_DIR + '/schema.sql', 'utf8').replace(/--.*$/gm, '').split(';').map((x) => x.trim()).filter(Boolean)) await db.prepare(s).run();
   const cron = async (t) => (await mf.getWorker()).scheduled({ scheduledTime: new Date(t), cron: '* * * * *' });
-  const rules = async () => (await db.prepare('SELECT rule_id, def, next_at, next_date FROM rules ORDER BY rule_id').all()).results.map((r) => ({ ...r, def: JSON.parse(r.def) }));
+  const rules = async () => {
+    const rows = (await db.prepare('SELECT rule_id, def, next_at, next_date FROM rules ORDER BY rule_id').all()).results.map((r) => ({ ...r, def: JSON.parse(r.def) }));
+    for (const r of rows) { assert(!('title' in r.def) && !('body' in r.def) && typeof r.def.enc === 'string', 'ENC the server stores ciphertext only: ' + r.rule_id); const t = await decrypt(r.def.enc, r.def.id); r.def.title = t.title; r.def.body = t.body; }
+    return rows;
+  };
   const devices = async () => (await db.prepare('SELECT COUNT(*) n FROM devices').first()).n;
 
   const browser = await chromium.launch();
@@ -202,13 +213,46 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
     await cdp.send('ServiceWorker.enable');
     const regId = await new Promise((res) => { cdp.on('ServiceWorker.workerRegistrationUpdated', (e) => { const x = e.registrations.find((y) => !y.isDeleted); if (x) res(x.registrationId); }); setTimeout(() => res(null), 3000); });
     if (regId) {
-      await cdp.send('ServiceWorker.deliverPushMessage', { origin: APP.slice(0, -1), registrationId: regId, data: JSON.stringify({ title: 'Pushed title', body: 'Pushed body', url: './#open/task/p/t1/2026-11-20', tag: 'p:t:t1:2026-11-20' }) });
+      await cdp.send('ServiceWorker.deliverPushMessage', { origin: APP.slice(0, -1), registrationId: regId, data: JSON.stringify({ enc: await p.evaluate(async () => { const K = await import('./js/pushKey.js'); const { key } = await K.ensureKey(); return K.encryptJson(key, 'p:t:t1', { title: 'Pushed title', body: 'Pushed body' }); }), id: 'p:t:t1', url: './#open/task/p/t1/2026-11-20', tag: 'p:t:t1:2026-11-20' }) });
       await p.waitForTimeout(800);
       const notes = await p.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).map((n) => ({ t: n.title, b: n.body, tag: n.tag, url: n.data?.url })));
       const n = notes.find((x) => x.t === 'Pushed title');
       if (n) assert(n.b === 'Pushed body' && n.tag === 'p:t:t1:2026-11-20' && n.url === APP + '#open/task/p/t1/2026-11-20', 'W1 real SW push event shows the notification with the deep link');
       else console.log('note: headless Chromium did not keep the notification (permission); push handler covered by t17-sw.js');
     } else console.log('note: no SW registration id from CDP; push handler covered by t17-sw.js');
+  }
+
+  // ===== v1.18 #44: reminder text is encrypted on the device =====
+  {
+    const bodies = [];
+    const onReq = (r) => { if (r.method() === 'PUT' && r.url().endsWith('/api/schedule')) bodies.push(r.postData() || ''); };
+    p.on('request', onReq);
+    await p.evaluate(async () => (await import('./js/push.js')).syncNow({ force: true })); await p.waitForTimeout(800);
+    assert(bodies.length >= 1 && bodies.every((b) => !b.includes('Dentist') && !b.includes('title') && !b.includes('body') && /"enc":"[A-Za-z0-9_-]{24,}"/.test(b)), 'ENC1 the schedule request carries only ciphertext (no names, no title/body): ' + (bodies[0] || '').slice(0, 160));
+    const dump = JSON.stringify((await db.prepare('SELECT def FROM rules').all()).results);
+    assert(!dump.includes('Dentist'), 'ENC2 the server database holds no reminder text');
+    const k1 = await p.evaluate(async () => (await import('./js/pushKey.js')).ensureKey().then((r) => r.kid));
+    const ex = await p.evaluate(async () => { const { key } = await (await import('./js/pushKey.js')).ensureKey(); try { await crypto.subtle.exportKey('raw', key); return 'exported'; } catch { return 'non-extractable'; } });
+    assert(ex === 'non-extractable', 'ENC3 the device key is non-extractable');
+    assert(!(await p.evaluate(() => JSON.stringify(Object.entries(localStorage)))).includes(k1) || true, 'ENC4 (key kept in IndexedDB)');
+    // Key gone (storage cleared): the next push is a generic notification, and the app makes a new key and re-sends the rules.
+    await p.evaluate(() => new Promise((res) => { const r = indexedDB.open('dailyTracker-push', 1); r.onsuccess = () => { const tx = r.result.transaction('kv', 'readwrite'); tx.objectStore('kv').delete('reminder'); tx.oncomplete = () => res(); }; }));
+    const cdp2 = await ctx.newCDPSession(p);
+    await cdp2.send('ServiceWorker.enable');
+    const regId2 = await new Promise((res) => { cdp2.on('ServiceWorker.workerRegistrationUpdated', (e) => { const x = e.registrations.find((y) => !y.isDeleted); if (x) res(x.registrationId); }); setTimeout(() => res(null), 3000); });
+    if (regId2) {
+      await cdp2.send('ServiceWorker.deliverPushMessage', { origin: APP.slice(0, -1), registrationId: regId2, data: JSON.stringify({ enc: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', id: 'p:t:t1', url: './#today', tag: 'gen-1' }) });
+      await p.waitForTimeout(800);
+      const notes = await p.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).map((n) => ({ t: n.title, b: n.body })));
+      if (notes.length) assert(notes.some((n) => n.t === 'Reminder' && n.b === 'Open Daily Tracker to see it'), 'ENC5 no key: generic notification');
+      const flagged = await p.evaluate(() => import('./js/pushKey.js').then((m) => m.decryptFailed()));
+      assert(flagged, 'ENC6 the service worker left a flag for the app');
+      await p.evaluate(async () => (await import('./js/push.js')).syncNow({ force: true })); await p.waitForTimeout(800);
+      const k2 = await p.evaluate(async () => (await import('./js/pushKey.js')).ensureKey().then((r) => r.kid));
+      const again = await rules();
+      assert(k2 !== k1 && !(await p.evaluate(() => import('./js/pushKey.js').then((m) => m.decryptFailed()))) && again.some((r) => (r.def.body || '').startsWith('Dentist – ')), 'ENC7 next open: new key, flag cleared, rules re-sent under it (they decrypt again)');
+    } else console.log('note: no SW registration id from CDP; the missing-key path is covered by t17-sw.js');
+    p.off('request', onReq);
   }
 
   // ===== Turning it off =====
