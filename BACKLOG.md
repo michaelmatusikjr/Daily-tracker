@@ -60,6 +60,12 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Type:** bug. **Size:** small.
 - **Added:** 2026-11-24
 - **Shipped:** v1.15.1 (2026-11-25): scroll is kept only after the user's own tap; background refreshes never scroll
+- **Still flickered (user, 2026-11-25, signed in):** the real cause was Settings › Account: every re-render rebuilt the passkeys/devices block as a one-line "Loading…" until the server answered, so everything below jumped up for a moment. **Fixed in v1.16.1:** the last answer is cached and shown at once; the background refresh only touches the block when something changed (t48).
+
+### 34. Profile editing moves into Settings › Account
+- **What:** remove the Settings › Profile group (and its Switch button – switching profiles is only done from the avatar menu); each profile row in the Account section gets its own Edit button on the same line. The active profile is marked "current".
+- **Added:** 2026-11-25
+- **Shipped:** v1.16.1 (2026-11-25). Signed out, the Account section lists the profiles too; with no account server set up, a plain Profiles group shows the same list.
 
 ### 33. Register key syncs with the account
 - **What:** the reminders register key (Settings › Reminders › Advanced) travels with the account, end-to-end encrypted like the rest of the data, so a newly signed-in device gets closed-app reminders without typing it again.

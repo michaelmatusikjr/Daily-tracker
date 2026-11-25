@@ -2,11 +2,11 @@
 // picker, devices, password, sign out and delete. All text goes through h() (never innerHTML).
 import { h, openSheet, toast, confirmDialog, choose } from './ui.js';
 import { icon } from './icons.js';
-import { getProfiles, updateProfile, readProfileForSync, removePlaceholderProfile } from './store.js';
+import { getProfiles, getActiveProfile, updateProfile, readProfileForSync, removePlaceholderProfile } from './store.js';
 import { pushConfig } from './push.js';
 import { fmtDateShort, toKey } from './dates.js';
 import * as S from './sync.js';
-import { avatarEl, performDeleteProfile } from './profiles.js';
+import { avatarEl, performDeleteProfile, openProfileEditor } from './profiles.js';
 import { photosOfProfiles } from './attachments.js';
 import { ctx } from './ctx.js';
 
@@ -65,18 +65,13 @@ function accountPanel({ onNavigate = null } = {}) {
   return root;
 }
 
-function deviceOnlyCount() {
-  return getProfiles().filter((p) => S.isDeviceOnly(p.id)).length;
-}
-
 function signedOutView() {
-  const n = deviceOnlyCount();
   return [
+    h('div.set-row.col.acct-block', h('span.set-label', 'Profiles'), profileList(() => ctx.rerender(), { signedIn: false })),
     h('div.set-row.col',
       h('div.set-text',
         h('span.set-label', 'Sync across your devices'),
-        h('span.set-desc', 'One account for your household holds your profiles and keeps them the same on every device. It’s end-to-end encrypted: only your devices can read it.'),
-        n ? h('span.set-desc.acct-warn', icon('phone', { size: 14 }), ` ${n === 1 ? 'Your profile is' : `${n} profiles are`} on this device only.`) : null),
+        h('span.set-desc', 'One account for your household holds your profiles and keeps them the same on every device. It’s end-to-end encrypted: only your devices can read it.')),
       h('div.set-actions.acct-actions',
         h('button.btn.primary', { type: 'button', onclick: () => openCreate() }, 'Create account'),
         h('button.btn.secondary', { type: 'button', onclick: () => openSignIn() }, 'Sign in'),
@@ -126,18 +121,31 @@ function signedInView(rerender) {
 }
 
 /** Each profile with "Synced" or "On this device only" + "Sync to account". */
-function profilesBlock(rerender) {
-  const list = h('ul.acct-profiles', { role: 'list' }, getProfiles().map((p) => {
-    const synced = S.isSynced(p.id);
+function profileList(rerender, { signedIn = true } = {}) {
+  const active = getActiveProfile();
+  return h('ul.acct-profiles', { role: 'list' }, getProfiles().map((p) => {
+    const synced = signedIn && S.isSynced(p.id);
     const readable = !!readProfileForSync(p.id);
     const li = h('li.acct-prof');
     const err = h('p.form-error', { role: 'alert' });
     const syncBtn = h('button.btn.secondary.small', { type: 'button', onclick: () => syncOne(p, li, err, rerender) }, icon('cloud', { size: 16 }), 'Sync to account');
-    li.append(...[avatarEl(p, 32), h('div.acct-prof-text', h('span.acct-prof-name', p.name),
-      synced ? h('span.badge.ok.small-badge', icon('cloud', { size: 13 }), 'Synced') : h('span.device-only-tag', icon('phone', { size: 13 }), 'On this device only')),
-    !synced && readable && S.canSyncProfiles() ? syncBtn : null, err].filter(Boolean));
+    const tag = !S.accountsAvailable() ? null : synced ? h('span.badge.ok.small-badge', icon('cloud', { size: 13 }), 'Synced') : h('span.device-only-tag', icon('phone', { size: 13 }), 'On this device only');
+    li.append(...[avatarEl(p, 32), h('div.acct-prof-text',
+      h('span.acct-prof-name', p.name, p.id === active?.id ? h('span.acct-prof-current', ' · current') : null), tag),
+    signedIn && !synced && readable && S.canSyncProfiles() ? syncBtn : null,
+    h('button.btn.ghost.small.acct-prof-edit', { type: 'button', 'aria-label': `Edit ${p.name}`, onclick: () => openProfileEditor(p) }, icon('edit', { size: 16 }), 'Edit'),
+    err].filter(Boolean));
     return li;
   }));
+}
+
+/** Profiles (no account server set up): the same list, without sync labels. */
+export function profilesSection() {
+  return h('section.set-group', h('h2.set-title', 'Profiles'), h('div.card.set-card', h('div.set-row.col.acct-block', profileList(() => ctx.rerender(), { signedIn: false }))));
+}
+
+function profilesBlock(rerender) {
+  const list = profileList(rerender);
   const waiting = S.isSignedIn() && !S.syncState().locked && !S.syncState().pulled && getProfiles().some((p) => !S.isSynced(p.id));
   return h('div.set-row.col.acct-block', h('span.set-label', 'Profiles'), list,
     waiting ? h('p.set-desc', 'Your account hasn’t finished downloading to this device yet. Once it has, you can add this device’s profiles to it.') : null);
@@ -168,9 +176,14 @@ async function syncOne(p, li, err, rerender) {
 }
 
 /** Passkeys and signed-in devices (loaded from the server). */
+// Last passkeys/devices answer, per account: every Settings re-render (any toggle) rebuilds this block,
+// and showing "Loading…" until the server answers made everything below it jump (flicker on iOS).
+let infoCache = null; // { user, json, info }
 function detailsBlock(rerender) {
-  const box = h('div.acct-details', h('p.set-desc.pad', 'Loading passkeys and devices…'));
-  S.accountInfo().then((info) => {
+  const user = S.syncState().username;
+  const cached = infoCache && infoCache.user === user ? infoCache : null;
+  const box = h('div.acct-details');
+  const fill = (info) => {
     const pk = h('div.set-row.col.acct-block',
       h('span.set-label', 'Passkeys'),
       h('span.set-desc', 'Sign in with Face ID, Touch ID or your device’s screen lock.'),
@@ -193,7 +206,15 @@ function detailsBlock(rerender) {
           rerender();
         } }, 'Sign out')))));
     box.replaceChildren(pk, dv);
-  }).catch((e) => { box.replaceChildren(h('p.set-desc.pad', `Couldn’t load passkeys and devices: ${e.message}`)); });
+  };
+  if (cached) fill(cached.info); else box.append(h('p.set-desc.pad', 'Loading passkeys and devices…'));
+  // Always refresh in the background, but only touch the DOM when something changed.
+  S.accountInfo().then((info) => {
+    const json = JSON.stringify(info);
+    const same = infoCache && infoCache.user === user && infoCache.json === json;
+    infoCache = { user, json, info };
+    if (!same || !cached) fill(info);
+  }).catch((e) => { if (!cached) box.replaceChildren(h('p.set-desc.pad', `Couldn’t load passkeys and devices: ${e.message}`)); });
   return box;
 }
 

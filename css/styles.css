@@ -1553,6 +1553,8 @@ html { scroll-padding-top: var(--head-h, 72px); }
 .acct-prof:first-child { border-top: none; }
 .acct-prof-text { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 .acct-prof-name { font-weight: 620; overflow-wrap: anywhere; }
+.acct-prof-current { font-weight: 500; color: var(--text-2); font-size: 13px; }
+.acct-prof-edit { flex: none; }
 .acct-prof .form-error { flex-basis: 100%; margin: 0; font-size: 13px; }
 .acct-rename { flex-basis: 100%; padding: 0; }
 .acct-rename .input { flex: 1; min-width: 0; }

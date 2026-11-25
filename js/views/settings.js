@@ -2,7 +2,6 @@ import { appHeader } from '../header.js';
 import { h, segmented, toast, confirmDialog, iconBtn, choose } from '../ui.js';
 import { icon } from '../icons.js';
 import { getState, update, replaceState, exportPayload, validateImport, defaultState, APP_VERSION, isStorageOk, getActiveProfile, getProfiles, addProfile, replaceAllProfiles, unreadableProfiles, mutateProfileData, uid } from '../store.js';
-import { avatarEl, openProfileEditor, openProfileMenu } from '../profiles.js';
 import { pruneWeatherCache } from '../weather.js';
 import { ctx } from '../ctx.js';
 import { ACCENTS } from '../theme.js';
@@ -15,7 +14,7 @@ import { reminderStatus, reminderProblem, activeReminders, blockedHelp } from '.
 import { setWorkoutHabit, setWeatherUnits } from '../actions.js';
 import { habitText } from '../habitIcon.js';
 import { pushCoversReminders, pushConfigured, pushConfig, setPushConfig, pushEnabled, pushStatus, enablePush, disablePush, hideTextOn, setHideText, afterDataRemoved } from '../push.js';
-import { accountSection } from '../account.js';
+import { accountSection, profilesSection } from '../account.js';
 import { storageSection, goToStorage } from '../clearCompleted.js';
 import { hasAccount, isSynced, syncedIds, forgetKept } from '../sync.js';
 import { profileUsage, fmtBytes, storageMessage, exportSize, exportFiles, importFiles, deleteFiles, deleteProfileFiles, reIdPhotos } from '../attachments.js';
@@ -37,17 +36,8 @@ export function renderSettings() {
   const profile = getActiveProfile();
   root.append(appHeader({ cls: 'detail', back: { label: 'Back to Today', onclick: () => ctx.go('today') }, title: 'Settings' }));
 
-  // Account (sync across devices) – only when a server is set up.
-  const acct = accountSection();
-  if (acct) root.append(acct);
-
-  // Profile
-  root.append(group('Profile',
-    h('div.set-row',
-      h('div.profile-row', avatarEl(profile, 44), h('div.set-text', h('span.set-label', profile.name), h('span.set-desc', getProfiles().length > 1 ? `${getProfiles().length} profiles on this device. Settings below are ${profile.name}’s.` : 'Settings below belong to this profile.'))),
-      h('div.set-actions.tight',
-        h('button.btn.secondary.small', { type: 'button', onclick: () => openProfileEditor(profile) }, icon('edit', { size: 16 }), 'Edit'),
-        h('button.btn.ghost.small', { type: 'button', onclick: () => openProfileMenu() }, 'Switch')))));
+  // Account (sync across devices) with the profiles list – only when a server is set up.
+  root.append(accountSection() || profilesSection());
 
   if (!isStorageOk()) {
     root.append(h('div.card.warn-card', icon('alert', { size: 18 }), 'Your browser is blocking storage, so changes may not be saved. Try leaving private browsing mode.'));
