@@ -4,108 +4,31 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 
 ## Open
 
-### 2. Accounts and sync across devices
-- **Scheduled:** Fri Dec 4, 8:00 AM (US Central)
-- **What:** sign in, and see the same tasks, habits, workouts, journal and settings on every device (e.g. iPhone + iPad + computer).
-- **Feasible:** yes. It builds on the push server already running on Cloudflare (Worker + D1).
-- **Things to decide or build:**
-  - **Sign-in method:** passkeys (Face ID / Touch ID, no password; works in Home Screen web apps on iOS 16+), or an emailed sign-in link (needs an email-sending service).
-  - **Profiles:** how they map to accounts. One account holding all profiles, or one account per person.
-  - **Conflicts:** edits made offline on two devices need merging. The app already has per-item timestamps from the old-tab merge work, which helps.
-  - **Privacy:** the data would live on your Cloudflare server. End-to-end encryption, where only your devices can read it, is possible but makes recovery harder if you lose every device.
-  - **Storage limits:** photos and Genmoji icons count against free-tier limits. These are fine for one household.
-- **Size:** large (the biggest item here).
-- **Added:** 2026-11-16
-- **Decided (2026-11-17):**
-  - **Sign-in:** a **passkey** (Face ID / Touch ID), with a **username + password as backup** sign-in. Store passwords only as a strong salted hash (e.g. PBKDF2 via WebCrypto on the Worker) and rate-limit attempts.
-  - **One account holds all profiles** (a household account).
-  - **End-to-end encryption on:** only the user's devices can read the data. The password can unlock the encryption key, plus a one-time **recovery key** to save, so the data isn't lost if every device is lost.
-  - **Photos sync too:** task photos and habit image icons.
-  - **Devices:** all of them (iPhone, iPad, computers), so test across Safari, Chrome and Firefox.
-- **Decided (2026-11-24):**
-  - **Conflicts:** the latest edit wins (per item, by its timestamp).
-  - **First sign-in on a device:** ask which profiles to sync to the account; the user can pick one or more, or none.
-  - **Device-only profiles:** profiles not synced stay on the device, untouched. While signed in, each one shows a persistent "on this device only" indicator wherever it makes sense (e.g. the profile menu and avatar). The indicator stays until that profile is synced to the account.
-  - **Adding a profile while signed in:** the user chooses where it's saved: this device only, or the account.
-  - **Signing in on another device that has its own profiles:** offer to migrate those profiles into the account.
-  - **Unique names:** every profile name in an account must be unique. If a device profile has the same name as an account profile, the app asks the user to rename the device profile before merging it into the account.
-  - **The "On this device only" mark shows before sign-in too** (decided 2026-11-24).
-  - **Phased release:**
-    - **Phase 1 – shipped in v1.15.0 (2026-11-24):** account and sign-in (password **and passkeys**, with rate limiting), end-to-end encryption plus a recovery key, and sync of profile data (tasks, habits, workouts, journal, settings), including the profile-selection, device-only and migration rules above. Design: `SYNC.md`.
-    - **Phase 2 – shipped in v1.16.0 (2026-11-25):** task photos sync (habit image icons already sync inside the habit record since phase 1).
-  - **Follow-ups decided during phase 1 QA:** profile order is per device (only names/avatars sync); deleting a whole kept copy only removes it from that device; a kept copy deleted from the account elsewhere stays on the device as device-only.
-  - **Defaults chosen for phase 1 (change if wanted):** creating an account needs the server's register key (the reminders one), so strangers can't use the server; signing out asks "keep copies on this device" (default) or "remove"; deleting a synced profile deletes it everywhere (the confirm says so); Settings › Account offers change password, sign out other devices, and delete account.
-
-### 30. Sign in first on a new install; picker options; device-only tag layout
-- **What:**
-  - On a brand-new install (no profiles yet), offer "Sign in to your account" before a default profile is created; otherwise "Get started on this device" as today.
-  - After signing in, each device profile gets a choice: sync to the account, keep on this device only, or delete from this device.
-  - Fix the "On this device only" tag in the profile menu, which overflows its row.
-- **Added:** 2026-11-24
-- **Shipped:** v1.15.1 (2026-11-25), with a fix that rebuilds a damaged profile list instead of starting over
-
-### 31. Clear out completed tasks in bulk by date
-- **What:** an easy place to delete completed tasks in bulk by date, for when storage gets low.
-- **Defaults (change if wanted):**
-  - **Where:** a new **Storage** section in Settings showing how much space is used (data and photos), with **Clear completed tasks**. The Completed tasks screen gets a shortcut to it. When storage is nearly full, the existing "storage full" messages link there.
-  - **By date:** "Completed before" with quick picks (older than 1 month, 3 months, 1 year) or a custom date. Before deleting it shows how many tasks and photos, and how much space that frees.
-  - **Repeating tasks (decided 2026-11-24):** old completions of running repeating tasks can be cleared too. The task keeps repeating; occurrences before the date no longer exist (not shown, not missed). Stored as `clearedBefore` on the task (schema v7). A finished series is cleared like a one-off.
-  - **Safety:** a confirm, then Undo on the result. For a synced profile it also deletes them from the account and other devices (the confirm says so). Habits, workouts and the journal are never touched.
-- **Added:** 2026-11-24
-- **Shipped:** v1.16.0 (2026-11-25)
-
-### 32. Bug: Settings jumps (scrolls) when a setting changes
-- **What:** changing the accent colour, the week's start day, the theme, etc. makes the Settings screen scroll. It must stay exactly where it was.
-- **Likely cause:** every change re-renders the whole screen (`render()` in `js/app.js` replaces the view); the scroll position and the tapped control's focus aren't kept.
-- **Type:** bug. **Size:** small.
-- **Added:** 2026-11-24
-- **Shipped:** v1.15.1 (2026-11-25): scroll is kept only after the user's own tap; background refreshes never scroll
-- **Still flickered (user, 2026-11-25, signed in):** the real cause was Settings › Account: every re-render rebuilt the passkeys/devices block as a one-line "Loading…" until the server answered, so everything below jumped up for a moment. **Fixed in v1.16.1:** the last answer is cached and shown at once; the background refresh only touches the block when something changed (t48).
-
-### 34. Profile editing moves into Settings › Account
-- **What:** remove the Settings › Profile group (and its Switch button – switching profiles is only done from the avatar menu); each profile row in the Account section gets its own Edit button on the same line. The active profile is marked "current".
-- **Added:** 2026-11-25
-- **Shipped:** v1.16.1 (2026-11-25). Signed out, the Account section lists the profiles too; with no account server set up, a plain Profiles group shows the same list.
-
-### 33. Register key syncs with the account
-- **What:** the reminders register key (Settings › Reminders › Advanced) travels with the account, end-to-end encrypted like the rest of the data, so a newly signed-in device gets closed-app reminders without typing it again.
-- **Rules:** it's an account-level secret (not per profile); never shown in plain text in logs or exports; a key typed on a device updates the account's copy (latest wins); signing out leaves the device's copy as it is.
-- **Added:** 2026-11-24
-- **Shipped:** v1.16.0 (2026-11-25)
-
-### 35. Invite friends: invite codes + setup wizard
-- **What:** the owner can send the GitHub Pages link to friends; a wizard gets each friend to closed-app reminders and sync with as little typing as possible, without ever sharing the owner's register key.
-- **Decisions (user, 2026-11-25):** per-friend invite codes (not the shared register key, not open sign-up); limits raised to **25 accounts / 60 devices** (`MAX_ACCOUNTS`, `MAX_DEVICES` in `server/wrangler.toml`).
-- **Invite codes (server):** table `invites` (code hash, name/label, created, expires, used_at, account_id, revoked). Created/listed/revoked by the owner with `X-Register-Key` (`POST/GET/DELETE /api/invites`). A code is short, typeable, unambiguous (e.g. `7K3-QX9`, no 0/O/1/I), stored only as a hash, single-use, expires after 30 days unused; rate-limited like the register key. Account creation accepts either the register key or an unused invite code (the code becomes used by that account, atomically: two simultaneous uses → one wins). Push device sign-up (`/api/register`) also accepts a signed-in account session, so invited friends never need the register key. Revoking an *unused* code makes it unusable; a used one just shows who used it (removing a friend's account is not part of this item).
-- **Owner UI:** Settings › Account (owner = this device has the register key) › **Invite someone**: optional name → shows the code, a share link (`…/daily-tracker/#invite=CODE`), Copy / Share (Web Share sheet). A list of invites (name, unused/used by username/expired) with Revoke for unused ones.
-- **Friend wizard:**
-  - Opened in a browser tab on iPhone/iPad (not installed): an "Install first" screen with illustrated steps (Share › Add to Home Screen › open from the icon). If the link has `#invite=CODE`, show the code big with a **Copy code** button (Safari and the Home Screen app don't share storage, and `start_url` drops the fragment). Other browsers that support closed-app push without install: go straight on.
-  - In the installed app on a fresh install (or the link's code is present): "Get set up" steps, each skippable and reachable later from Settings: (1) **Invite code** (paste/type, prefilled from the link or clipboard paste button, checked with the server); (2) **Account** (existing create-account flow: username, password, recovery key, profile picker, offer passkey); (3) **Notifications** (one button: permission → device sign-up via the account session → "Send a test notification"). Ends on a done screen summarising what's on.
-  - Existing "Sign in to your account" path stays for the owner's own new devices.
-- **Every platform, one link (user, 2026-11-25):** each person sees only the steps for their own device (no iPhone steps elsewhere, no other-OS steps on iPhone). Detection in one module (feature detection first; user agent only for iOS/iPadOS and in-app browsers). iPhone/iPad tab → install first (Safari: Share › Add to Home Screen; other iOS browsers: open in Safari); iOS < 16.4 → no gate, reminders only while open; Android → no gate, optional one-tap Install (or menu instructions); desktop → no gate, optional Install only where the browser offers it, note that reminders arrive while the browser is running; in-app browsers (Instagram, Gmail, …) → "open in your browser" first; no push support → skip the permission step; permission denied → a re-allow hint for that platform only.
-- **Rules:** the owner's register key never goes to invited accounts (#33 syncs it only within the owner's own account); user text escaped; reminder notes only when reminders *won't* arrive with the app closed.
-- **QA:** server + security change → fresh QA review before release (done: ship after fixes; all 8 findings fixed – per-account cap of 5 notification devices, invited accounts never get the register key, purge hardening, wizard fixes).
-- **Added:** 2026-11-25
-- **Shipped:** v1.17.0 (2026-11-25). Server: D1 migration 0002 + invites table applied, Worker deployed with 25 accounts / 60 devices.
-
 ### 36. Count habits: past-day dots count one at a time
 - **What:** on the Habits tab (active habits), tapping a completion dot for a previous day of a count habit adds one completion per tap, as tapping today does, instead of marking the whole day done.
-- **To decide when building:** what a tap does once the day is at its target. Suggestion: keep counting up (see #37), with #38's minus button to correct.
 - **Added:** 2026-11-25
+- **Decided (2026-11-25):** taps keep counting past the target (+1, +2… per #37). To undo a mistaken tap on a past day, long-press that dot for − / + / Done (as #38).
 
 ### 37. Count habits: "+N" badge when going over the goal
 - **What:** at the goal, the dot is filled with a checkmark (as now). Above the goal, a small badge appears on the dot: **+1** at goal + 1, **+2** at goal + 2, and so on.
 - **Added:** 2026-11-25
+- **Decided (2026-11-25):** the badge shows on both Today's rows and the Habits tab dots.
 
 ### 38. Long-press a counter for quick + / −
 - **What:** long-pressing a count habit's counter shows + and − buttons to add or remove completions quickly, plus a **Done** button to close them.
 - **Note:** a long-press on the row still opens the item menu; only a long-press on the counter itself opens + / −.
 - **Added:** 2026-11-25
+- **Decided (2026-11-25):** + / − on both Today's rows and the Habits tab dots (past days too, see #36).
 
 ### 39. Swipe actions on tasks and habits (Today and Habits tabs)
 - **What:** swipe right on a task or habit row → view details; swipe left → mark as missed. These are defaults: Settings lets you pick the action for each direction.
 - **Note:** today, a horizontal swipe anywhere on Today changes the day. A swipe that starts on a row will do the row action instead; the day can still be changed by swiping elsewhere and with the week strip.
 - **Added:** 2026-11-25
+- **Decided (2026-11-25):**
+  - **Actions to choose from in Settings:** View details, Mark missed, Complete, Edit, Delete (with Undo), Off.
+  - **Swiping a habit on the Habits tab** acts on *today*.
+  - **Two actions per side, like iOS Mail:** swiping partway reveals two action buttons for that side; tap either one. Swiping all the way through commits the outermost action. Settings picks both actions (inner and outer) for each side.
+  - **Defaults (change if wanted):** right: outer View details, inner Complete; left: outer Mark missed, inner Edit.
 
 ### 40. Count habits: complete-by times for all instances or each instance
 - **What:** for a count habit with a target (e.g. 3) and "by a certain time":
@@ -114,6 +37,7 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - The **Warn me before** setting is shared by all instances (no separate value per instance).
 - **On Today:** still one row per habit. It shows the earliest complete-by time that is still active. An instance's time stays active until that instance is completed or its time passes, then the row moves on to the next instance's time. Example: the 1st time passes with no completion and you tap once. That completion counts as the 1st instance, and the row shows the 2nd instance's time until the 2nd completion or until that time passes, and so on.
 - **Added:** 2026-11-25
+- **Decided (2026-11-25):** with per-instance times, the "Warn me before" reminder fires for each instance's own time, only while that instance isn't done yet. If the target goes down (e.g. 3 → 2), the extra times are dropped.
 
 ### 41. Calendar tab → pull-down month calendar on Today; all-time stats → avatar menu
 - **What:**
@@ -122,10 +46,12 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
   - Scrolling, or tapping a date, shrinks it back to the week strip. After scrolling, the strip shows what it showed before; after a tap, it shows the week of the tapped day, with that day selected.
   - The all-time stats move to the avatar menu.
 - **Added:** 2026-11-25
+- **Decided (2026-11-25):** "all-time stats" means the summary on today's Calendar tab; the avatar menu opens it as its own screen.
 
 ### 42. Remove the progress card at the top of Today
 - **What:** remove the progress card from the top of the Today tab entirely.
 - **Added:** 2026-11-25
+- **Decided (2026-11-25):** the day's % ring disappears completely; it doesn't move anywhere else.
 
 ## Done
 
@@ -451,3 +377,87 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-23
 - **Decided (2026-11-23):** go with the layout above.
 - **Shipped:** v1.14.0 (2026-11-23)
+
+### 2. Accounts and sync across devices
+- **Scheduled:** Fri Dec 4, 8:00 AM (US Central)
+- **What:** sign in, and see the same tasks, habits, workouts, journal and settings on every device (e.g. iPhone + iPad + computer).
+- **Feasible:** yes. It builds on the push server already running on Cloudflare (Worker + D1).
+- **Things to decide or build:**
+  - **Sign-in method:** passkeys (Face ID / Touch ID, no password; works in Home Screen web apps on iOS 16+), or an emailed sign-in link (needs an email-sending service).
+  - **Profiles:** how they map to accounts. One account holding all profiles, or one account per person.
+  - **Conflicts:** edits made offline on two devices need merging. The app already has per-item timestamps from the old-tab merge work, which helps.
+  - **Privacy:** the data would live on your Cloudflare server. End-to-end encryption, where only your devices can read it, is possible but makes recovery harder if you lose every device.
+  - **Storage limits:** photos and Genmoji icons count against free-tier limits. These are fine for one household.
+- **Size:** large (the biggest item here).
+- **Added:** 2026-11-16
+- **Decided (2026-11-17):**
+  - **Sign-in:** a **passkey** (Face ID / Touch ID), with a **username + password as backup** sign-in. Store passwords only as a strong salted hash (e.g. PBKDF2 via WebCrypto on the Worker) and rate-limit attempts.
+  - **One account holds all profiles** (a household account).
+  - **End-to-end encryption on:** only the user's devices can read the data. The password can unlock the encryption key, plus a one-time **recovery key** to save, so the data isn't lost if every device is lost.
+  - **Photos sync too:** task photos and habit image icons.
+  - **Devices:** all of them (iPhone, iPad, computers), so test across Safari, Chrome and Firefox.
+- **Decided (2026-11-24):**
+  - **Conflicts:** the latest edit wins (per item, by its timestamp).
+  - **First sign-in on a device:** ask which profiles to sync to the account; the user can pick one or more, or none.
+  - **Device-only profiles:** profiles not synced stay on the device, untouched. While signed in, each one shows a persistent "on this device only" indicator wherever it makes sense (e.g. the profile menu and avatar). The indicator stays until that profile is synced to the account.
+  - **Adding a profile while signed in:** the user chooses where it's saved: this device only, or the account.
+  - **Signing in on another device that has its own profiles:** offer to migrate those profiles into the account.
+  - **Unique names:** every profile name in an account must be unique. If a device profile has the same name as an account profile, the app asks the user to rename the device profile before merging it into the account.
+  - **The "On this device only" mark shows before sign-in too** (decided 2026-11-24).
+  - **Phased release:**
+    - **Phase 1 – shipped in v1.15.0 (2026-11-24):** account and sign-in (password **and passkeys**, with rate limiting), end-to-end encryption plus a recovery key, and sync of profile data (tasks, habits, workouts, journal, settings), including the profile-selection, device-only and migration rules above. Design: `SYNC.md`.
+    - **Phase 2 – shipped in v1.16.0 (2026-11-25):** task photos sync (habit image icons already sync inside the habit record since phase 1).
+  - **Follow-ups decided during phase 1 QA:** profile order is per device (only names/avatars sync); deleting a whole kept copy only removes it from that device; a kept copy deleted from the account elsewhere stays on the device as device-only.
+  - **Defaults chosen for phase 1 (change if wanted):** creating an account needs the server's register key (the reminders one), so strangers can't use the server; signing out asks "keep copies on this device" (default) or "remove"; deleting a synced profile deletes it everywhere (the confirm says so); Settings › Account offers change password, sign out other devices, and delete account.
+
+### 30. Sign in first on a new install; picker options; device-only tag layout
+- **What:**
+  - On a brand-new install (no profiles yet), offer "Sign in to your account" before a default profile is created; otherwise "Get started on this device" as today.
+  - After signing in, each device profile gets a choice: sync to the account, keep on this device only, or delete from this device.
+  - Fix the "On this device only" tag in the profile menu, which overflows its row.
+- **Added:** 2026-11-24
+- **Shipped:** v1.15.1 (2026-11-25), with a fix that rebuilds a damaged profile list instead of starting over
+
+### 31. Clear out completed tasks in bulk by date
+- **What:** an easy place to delete completed tasks in bulk by date, for when storage gets low.
+- **Defaults (change if wanted):**
+  - **Where:** a new **Storage** section in Settings showing how much space is used (data and photos), with **Clear completed tasks**. The Completed tasks screen gets a shortcut to it. When storage is nearly full, the existing "storage full" messages link there.
+  - **By date:** "Completed before" with quick picks (older than 1 month, 3 months, 1 year) or a custom date. Before deleting it shows how many tasks and photos, and how much space that frees.
+  - **Repeating tasks (decided 2026-11-24):** old completions of running repeating tasks can be cleared too. The task keeps repeating; occurrences before the date no longer exist (not shown, not missed). Stored as `clearedBefore` on the task (schema v7). A finished series is cleared like a one-off.
+  - **Safety:** a confirm, then Undo on the result. For a synced profile it also deletes them from the account and other devices (the confirm says so). Habits, workouts and the journal are never touched.
+- **Added:** 2026-11-24
+- **Shipped:** v1.16.0 (2026-11-25)
+
+### 32. Bug: Settings jumps (scrolls) when a setting changes
+- **What:** changing the accent colour, the week's start day, the theme, etc. makes the Settings screen scroll. It must stay exactly where it was.
+- **Likely cause:** every change re-renders the whole screen (`render()` in `js/app.js` replaces the view); the scroll position and the tapped control's focus aren't kept.
+- **Type:** bug. **Size:** small.
+- **Added:** 2026-11-24
+- **Shipped:** v1.15.1 (2026-11-25): scroll is kept only after the user's own tap; background refreshes never scroll
+- **Still flickered (user, 2026-11-25, signed in):** the real cause was Settings › Account: every re-render rebuilt the passkeys/devices block as a one-line "Loading…" until the server answered, so everything below jumped up for a moment. **Fixed in v1.16.1:** the last answer is cached and shown at once; the background refresh only touches the block when something changed (t48).
+
+### 34. Profile editing moves into Settings › Account
+- **What:** remove the Settings › Profile group (and its Switch button – switching profiles is only done from the avatar menu); each profile row in the Account section gets its own Edit button on the same line. The active profile is marked "current".
+- **Added:** 2026-11-25
+- **Shipped:** v1.16.1 (2026-11-25). Signed out, the Account section lists the profiles too; with no account server set up, a plain Profiles group shows the same list.
+
+### 33. Register key syncs with the account
+- **What:** the reminders register key (Settings › Reminders › Advanced) travels with the account, end-to-end encrypted like the rest of the data, so a newly signed-in device gets closed-app reminders without typing it again.
+- **Rules:** it's an account-level secret (not per profile); never shown in plain text in logs or exports; a key typed on a device updates the account's copy (latest wins); signing out leaves the device's copy as it is.
+- **Added:** 2026-11-24
+- **Shipped:** v1.16.0 (2026-11-25)
+
+### 35. Invite friends: invite codes + setup wizard
+- **What:** the owner can send the GitHub Pages link to friends; a wizard gets each friend to closed-app reminders and sync with as little typing as possible, without ever sharing the owner's register key.
+- **Decisions (user, 2026-11-25):** per-friend invite codes (not the shared register key, not open sign-up); limits raised to **25 accounts / 60 devices** (`MAX_ACCOUNTS`, `MAX_DEVICES` in `server/wrangler.toml`).
+- **Invite codes (server):** table `invites` (code hash, name/label, created, expires, used_at, account_id, revoked). Created/listed/revoked by the owner with `X-Register-Key` (`POST/GET/DELETE /api/invites`). A code is short, typeable, unambiguous (e.g. `7K3-QX9`, no 0/O/1/I), stored only as a hash, single-use, expires after 30 days unused; rate-limited like the register key. Account creation accepts either the register key or an unused invite code (the code becomes used by that account, atomically: two simultaneous uses → one wins). Push device sign-up (`/api/register`) also accepts a signed-in account session, so invited friends never need the register key. Revoking an *unused* code makes it unusable; a used one just shows who used it (removing a friend's account is not part of this item).
+- **Owner UI:** Settings › Account (owner = this device has the register key) › **Invite someone**: optional name → shows the code, a share link (`…/daily-tracker/#invite=CODE`), Copy / Share (Web Share sheet). A list of invites (name, unused/used by username/expired) with Revoke for unused ones.
+- **Friend wizard:**
+  - Opened in a browser tab on iPhone/iPad (not installed): an "Install first" screen with illustrated steps (Share › Add to Home Screen › open from the icon). If the link has `#invite=CODE`, show the code big with a **Copy code** button (Safari and the Home Screen app don't share storage, and `start_url` drops the fragment). Other browsers that support closed-app push without install: go straight on.
+  - In the installed app on a fresh install (or the link's code is present): "Get set up" steps, each skippable and reachable later from Settings: (1) **Invite code** (paste/type, prefilled from the link or clipboard paste button, checked with the server); (2) **Account** (existing create-account flow: username, password, recovery key, profile picker, offer passkey); (3) **Notifications** (one button: permission → device sign-up via the account session → "Send a test notification"). Ends on a done screen summarising what's on.
+  - Existing "Sign in to your account" path stays for the owner's own new devices.
+- **Every platform, one link (user, 2026-11-25):** each person sees only the steps for their own device (no iPhone steps elsewhere, no other-OS steps on iPhone). Detection in one module (feature detection first; user agent only for iOS/iPadOS and in-app browsers). iPhone/iPad tab → install first (Safari: Share › Add to Home Screen; other iOS browsers: open in Safari); iOS < 16.4 → no gate, reminders only while open; Android → no gate, optional one-tap Install (or menu instructions); desktop → no gate, optional Install only where the browser offers it, note that reminders arrive while the browser is running; in-app browsers (Instagram, Gmail, …) → "open in your browser" first; no push support → skip the permission step; permission denied → a re-allow hint for that platform only.
+- **Rules:** the owner's register key never goes to invited accounts (#33 syncs it only within the owner's own account); user text escaped; reminder notes only when reminders *won't* arrive with the app closed.
+- **QA:** server + security change → fresh QA review before release (done: ship after fixes; all 8 findings fixed – per-account cap of 5 notification devices, invited accounts never get the register key, purge hardening, wizard fixes).
+- **Added:** 2026-11-25
+- **Shipped:** v1.17.0 (2026-11-25). Server: D1 migration 0002 + invites table applied, Worker deployed with 25 accounts / 60 devices.
