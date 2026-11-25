@@ -65,7 +65,7 @@ async function openApp(browser, { profiles = [['p', 'Me', data()]], config = { s
 let KP = null; // the page whose device key decrypts the rules / pushes (v1.18: the server only holds ciphertext)
 const decrypt = (enc, id) => KP.evaluate(async ([enc, id]) => {
   const rec = await new Promise((res, rej) => { const r = indexedDB.open('dailyTracker-push', 1); r.onsuccess = () => { const g = r.result.transaction('kv').objectStore('kv').get('reminder'); g.onsuccess = () => res(g.result); g.onerror = () => rej(g.error); }; r.onerror = () => rej(r.error); });
-  const raw = Uint8Array.from(atob(enc.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((enc.length + 3) % 4)), (c) => c.charCodeAt(0));
+  const raw = Uint8Array.from(atob(enc.slice(11).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((enc.length - 11 + 3) % 4)), (c) => c.charCodeAt(0));
   return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(id) }, rec.key, raw.slice(12))));
 }, [enc, id]).catch(() => ({}));
 const go = (p, hash) => p.evaluate((x) => { location.hash = x; }, hash).then(() => p.waitForTimeout(300));
@@ -213,7 +213,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
     await cdp.send('ServiceWorker.enable');
     const regId = await new Promise((res) => { cdp.on('ServiceWorker.workerRegistrationUpdated', (e) => { const x = e.registrations.find((y) => !y.isDeleted); if (x) res(x.registrationId); }); setTimeout(() => res(null), 3000); });
     if (regId) {
-      await cdp.send('ServiceWorker.deliverPushMessage', { origin: APP.slice(0, -1), registrationId: regId, data: JSON.stringify({ enc: await p.evaluate(async () => { const K = await import('./js/pushKey.js'); const { key } = await K.ensureKey(); return K.encryptJson(key, 'p:t:t1', { title: 'Pushed title', body: 'Pushed body' }); }), id: 'p:t:t1', url: './#open/task/p/t1/2026-11-20', tag: 'p:t:t1:2026-11-20' }) });
+      await cdp.send('ServiceWorker.deliverPushMessage', { origin: APP.slice(0, -1), registrationId: regId, data: JSON.stringify({ enc: await p.evaluate(async () => { const K = await import('./js/pushKey.js'); return K.encryptJson(await K.ensureKey(), 'p:t:t1', { title: 'Pushed title', body: 'Pushed body' }); }), id: 'p:t:t1', url: './#open/task/p/t1/2026-11-20', tag: 'p:t:t1:2026-11-20' }) });
       await p.waitForTimeout(800);
       const notes = await p.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).map((n) => ({ t: n.title, b: n.body, tag: n.tag, url: n.data?.url })));
       const n = notes.find((x) => x.t === 'Pushed title');
@@ -228,11 +228,11 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
     const onReq = (r) => { if (r.method() === 'PUT' && r.url().endsWith('/api/schedule')) bodies.push(r.postData() || ''); };
     p.on('request', onReq);
     await p.evaluate(async () => (await import('./js/push.js')).syncNow({ force: true })); await p.waitForTimeout(800);
-    assert(bodies.length >= 1 && bodies.every((b) => !b.includes('Dentist') && !b.includes('title') && !b.includes('body') && /"enc":"[A-Za-z0-9_-]{24,}"/.test(b)), 'ENC1 the schedule request carries only ciphertext (no names, no title/body): ' + (bodies[0] || '').slice(0, 160));
+    assert(bodies.length >= 1 && bodies.every((b) => !b.includes('Dentist') && !b.includes('title') && !b.includes('body') && /"enc":"[A-Za-z0-9_-]{40,}"/.test(b)), 'ENC1 the schedule request carries only ciphertext (no names, no title/body): ' + (bodies[0] || '').slice(0, 160));
     const dump = JSON.stringify((await db.prepare('SELECT def FROM rules').all()).results);
     assert(!dump.includes('Dentist'), 'ENC2 the server database holds no reminder text');
-    const k1 = await p.evaluate(async () => (await import('./js/pushKey.js')).ensureKey().then((r) => r.kid));
-    const ex = await p.evaluate(async () => { const { key } = await (await import('./js/pushKey.js')).ensureKey(); try { await crypto.subtle.exportKey('raw', key); return 'exported'; } catch { return 'non-extractable'; } });
+    const k1 = await p.evaluate(async () => (await import('./js/pushKey.js')).ensureKey({ fresh: true }).then((r) => r.kid));
+    const ex = await p.evaluate(async () => { const { key } = await (await import('./js/pushKey.js')).ensureKey({ fresh: true }); try { await crypto.subtle.exportKey('raw', key); return 'exported'; } catch { return 'non-extractable'; } });
     assert(ex === 'non-extractable', 'ENC3 the device key is non-extractable');
     assert(!(await p.evaluate(() => JSON.stringify(Object.entries(localStorage)))).includes(k1) || true, 'ENC4 (key kept in IndexedDB)');
     // Key gone (storage cleared): the next push is a generic notification, and the app makes a new key and re-sends the rules.
@@ -248,7 +248,7 @@ const toggleSel = '[aria-label="Remind me even when the app is closed"]';
       const flagged = await p.evaluate(() => import('./js/pushKey.js').then((m) => m.decryptFailed()));
       assert(flagged, 'ENC6 the service worker left a flag for the app');
       await p.evaluate(async () => (await import('./js/push.js')).syncNow({ force: true })); await p.waitForTimeout(800);
-      const k2 = await p.evaluate(async () => (await import('./js/pushKey.js')).ensureKey().then((r) => r.kid));
+      const k2 = await p.evaluate(async () => (await import('./js/pushKey.js')).ensureKey({ fresh: true }).then((r) => r.kid));
       const again = await rules();
       assert(k2 !== k1 && !(await p.evaluate(() => import('./js/pushKey.js').then((m) => m.decryptFailed()))) && again.some((r) => (r.def.body || '').startsWith('Dentist – ')), 'ENC7 next open: new key, flag cleared, rules re-sent under it (they decrypt again)');
     } else console.log('note: no SW registration id from CDP; the missing-key path is covered by t17-sw.js');

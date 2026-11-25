@@ -7,7 +7,7 @@ import { activeHabits, streaks, scheduleLabel, habitVal, habitTarget } from '../
 import { todayKey, weekdayLabels, fmtTime, nowMin } from '../dates.js';
 import { habitControl, weekDots, streakBadge, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
-import { habitWarnAt, habitShownTime } from '../logic.js';
+import { habitWarns, habitShownTime } from '../logic.js';
 import { reorderHabits, setArchived, seedExamples, bumpHabit } from '../actions.js';
 import { openHabitForm } from '../forms.js';
 import { attachMenu, habitMenu } from '../itemMenu.js';
@@ -61,7 +61,7 @@ export function renderHabits() {
           h('span.emoji-bubble', { 'aria-hidden': 'true' }, habitIcon(hb)),
           h('span.habit-row-text',
             h('span.habit-name', hb.name),
-            h('span.habit-sub', habitWarnAt(st, hb) !== null && !canFire() ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))))),
+            h('span.habit-sub', habitWarns(st, hb).length > 0 && !canFire() ? reminderWarnBadge() : null, h('span.sub-text', sub.join(' · '))))),
         reorder
           ? h('button.drag-handle', { type: 'button', 'data-fk': 'dh-' + hb.id, 'aria-label': `Reorder ${hb.name} (use arrow keys)` }, icon('grip', { size: 20 }))
           : h('div.habit-actions',

@@ -61,11 +61,14 @@ const rowTime = (p, id = 'h1') => p.locator(`.habit-row[data-id="${id}"] .task-t
     assert((await p.locator('.sheet .each-times input[type=time]').count()) === 2 && (await p.locator('.sheet .each-times input[type=time]').nth(1).inputValue()) === '12:00', 'C6 target 3 → 2 drops the extra time');
     await p.locator('input[aria-label="Daily target"]').fill('4'); await p.waitForTimeout(100);
     const vals = await p.locator('.sheet .each-times input[type=time]').evaluateAll((l) => l.map((x) => x.value));
-    assert(vals.join() === '09:00,12:00,12:00,12:00', 'C7 target 2 → 4 adds fields copying the last time: ' + vals);
+    assert(vals.join() === '09:00,12:00,15:00,15:00', 'C7 target 2 → 4: the times are kept while ticked, new fields copy the last: ' + vals);
+    await p.locator('input[aria-label="Daily target"]').fill(''); await p.waitForTimeout(100);
+    await p.locator('input[aria-label="Daily target"]').fill('4'); await p.waitForTimeout(100);
+    assert((await p.locator('.sheet .each-times input[type=time]').evaluateAll((l) => l.map((x) => x.value))).join() === '09:00,12:00,15:00,15:00', 'C7b blanking and retyping the count keeps the times');
     await p.locator('.sheet .each-times input[type=time]').nth(3).fill('18:00');
     await p.locator('.sheet-foot .btn.primary').click(); await p.waitForTimeout(400);
     let hb = (await stored(p)).habits[0];
-    assert(hb.goal.target === 4 && hb.target === '09:00' && JSON.stringify(hb.targets) === '["09:00","12:00","12:00","18:00"]', 'C8 saved: target = earliest, targets per instance: ' + JSON.stringify([hb.target, hb.targets]));
+    assert(hb.goal.target === 4 && hb.target === '09:00' && JSON.stringify(hb.targets) === '["09:00","12:00","15:00","18:00"]', 'C8 saved: target = earliest, targets per instance: ' + JSON.stringify([hb.target, hb.targets]));
     // edit: reopen, untick → single time; check habit has no checkbox
     await p.locator('.habit-card[data-id] .habit-open').click(); await p.waitForTimeout(400);
     await go(p, '#habits');

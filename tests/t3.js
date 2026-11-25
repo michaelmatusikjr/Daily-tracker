@@ -61,8 +61,11 @@ const assert = (c, m) => { if (!c) { console.log('FAIL: ' + m); process.exitCode
   await p.click('.sheet.action-menu .menu-item:has-text("Remove one")'); await p.waitForTimeout(300);
   assert(await p.locator('.habit-count.done').count() === 0, 'right-click menu › Remove one decrements (1.5.0)');
   // toggle past day dot
+  // v1.18 (#36): a count habit's dot adds one per tap (target 3 here), it no longer marks the whole day done
   await p.locator('.wd').nth(4).click(); await p.waitForTimeout(300);
-  assert(await p.locator('.wd.done').count() >= 1, 'past dot toggled');
+  assert(await p.locator('.wd.done').count() === 0 && await p.locator('.wd.partial').count() >= 1, 'past dot of a count habit adds one (partial)');
+  await p.locator('.wd').nth(4).click(); await p.locator('.wd').nth(4).click(); await p.waitForTimeout(300);
+  assert(await p.locator('.wd.done').count() >= 1, 'past dot reaches the target after three taps');
   await p.screenshot({ path: SP + '/d-habits.png' });
   await p.click('.habit-open'); await p.waitForTimeout(400);
   await p.screenshot({ path: SP + '/d-detail.png', fullPage: true });

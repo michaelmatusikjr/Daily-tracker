@@ -156,25 +156,32 @@ async function pushKv(mode, fn) {
   } finally { db.close(); }
 }
 const unb64 = (s) => Uint8Array.from(atob(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4)), (c) => c.charCodeAt(0));
+/** enc = kid (11 chars) + base64url(iv ‖ ciphertext). Returns { text } or { text: null, flag } (flag: tell the app to re-send). */
 async function decryptReminder(enc, id) {
   const rec = await pushKv('readonly', (s) => s.get('reminder'));
-  if (!rec || !rec.key) throw new Error('no key');
-  const raw = unb64(enc);
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(String(id)) }, rec.key, raw.slice(12));
-  const o = JSON.parse(new TextDecoder().decode(pt));
-  return { title: String(o.title || ''), body: String(o.body || '') };
+  if (!rec || !rec.key) return { text: null, flag: true }; // no key at all: the app makes a new one
+  const kid = String(enc).slice(0, 11);
+  if (rec.kid !== kid) return { text: null, flag: false }; // made under an older key: the app has already re-sent its rules under the current one
+  try {
+    const raw = unb64(String(enc).slice(11));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(String(id)) }, rec.key, raw.slice(12));
+    const o = JSON.parse(new TextDecoder().decode(pt));
+    return { text: { title: String(o.title || ''), body: String(o.body || '') } };
+  } catch { return { text: null, flag: true }; } // the current key can't read it
 }
 
 /** A reminder sent by the push server (see server/): { enc, id, url, tag }; enc = the encrypted { title, body }. */
 async function onPush(event) {
   let d = {};
   try { d = event.data ? event.data.json() : {}; } catch { d = {}; }
-  // iOS requires every push to show a notification: when the text can't be read, a generic one (the app then makes a new key).
+  // iOS requires every push to show a notification: when the text can't be read, a generic one (the app then re-sends its rules).
   let title = 'Reminder', body = 'Open Daily Tracker to see it';
   if (d.enc) {
-    try { const t = await decryptReminder(d.enc, d.id); title = t.title || title; body = t.body; } catch {
-      try { await pushKv('readwrite', (s) => s.put(Date.now(), 'decryptFailed')); } catch { /* storage unavailable */ }
-    }
+    try {
+      const r = await decryptReminder(d.enc, d.id);
+      if (r.text) { title = r.text.title || title; body = r.text.body; }
+      else if (r.flag) await pushKv('readwrite', (s) => s.put(Date.now(), 'decryptFailed'));
+    } catch { /* storage unavailable: generic notification */ }
   }
   const opts = { body, data: { url: appUrl(d.url) }, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png' };
   if (d.tag) opts.tag = String(d.tag); // same tag as an in-app reminder for the same occurrence: no duplicates

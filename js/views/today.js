@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { getState, getActiveProfile } from '../store.js';
 import { appHeader } from '../header.js';
 import { ctx } from '../ctx.js';
-import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarnAt, isHabitMissed, missedDaysRun, futureTasks, isWeekly, weekStatus, habitWeekStart, habitDone, habitShownTime } from '../logic.js';
+import { dayProgress, tasksOn, splitTasks, sortAnytime, overdueTasks, activeHabits, isDueOn, habitStart, streaks, habitVal, habitTarget, weekCount, isTaskMissed, isTaskDone, habitWarns, isHabitMissed, missedDaysRun, futureTasks, isWeekly, weekStatus, habitWeekStart, habitDone, habitShownTime } from '../logic.js';
 import { fmt as fmtDate, addDays, todayKey, startOfWeek, fromKey, fmtDateLong, fmtDateShort, nowMin, timeToMin, fmtTime, weekdayNarrow, weekdayLabels } from '../dates.js';
 import { taskRow, habitControl, streakBadge, timeRange, reminderWarnBadge } from './widgets.js';
 import { canFire } from '../reminders.js';
@@ -32,7 +32,7 @@ function habitRow(st, hb, k, today, { timed = false, draggable = false } = {}) {
   if (hb.goal.type === 'count') sub.push(`${v}/${habitTarget(hb)}${hb.goal.unit ? ' ' + hb.goal.unit : ''}`);
   const shown = habitShownTime(hb, v, k === today ? nowMin() : k < today ? 1440 : null);
   if (hb.target) sub.push(`by ${fmtTime(shown, fmt)}`);
-  const warnBadge = habitWarnAt(st, hb) !== null && !canFire();
+  const warnBadge = habitWarns(st, hb).length > 0 && !canFire();
   // A daily habit missed 2+ days in a row (ending yesterday): warning text + colour until it's done.
   const missRun = k === today ? missedDaysRun(st, hb, today) : 0;
   const missWarn = missRun >= 2;

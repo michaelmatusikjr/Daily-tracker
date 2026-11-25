@@ -656,12 +656,12 @@ export function openHabitForm(habit) {
     byLabel.textContent = d.goal.type === 'count' && n > 1 ? 'Complete all by' : 'Complete by';
     const on = can && eachBox.checked;
     byRow.hidden = !d.target || on;
-    if (!on) { d.targets = undefined; eachFields.replaceChildren(); return; }
-    // The target went down: the extra times are dropped. It went up (or "each" was just ticked): new ones copy the last time.
-    const ts = (d.targets || []).slice(0, n);
+    // Hiding the fields (or a count that is briefly 1 or blank while retyping) keeps the times; only saving drops the extras.
+    if (!on) { eachFields.replaceChildren(); return; }
+    // Fields for the first n times; new ones (the target went up, or "each" was just ticked) copy the last time.
+    const ts = d.targets || (d.targets = []);
     while (ts.length < n) ts.push(ts[ts.length - 1] || (/^\d{2}:\d{2}$/.test(byTime.value) ? byTime.value : '09:00'));
-    d.targets = ts;
-    eachFields.replaceChildren(...ts.map((t, i) => h('div.recur-extra.inline', h('span', 'Complete by', h('small', ` ${i + 1} of ${n}`)),
+    eachFields.replaceChildren(...ts.slice(0, n).map((t, i) => h('div.recur-extra.inline', h('span', 'Complete by', h('small', ` ${i + 1} of ${n}`)),
       h('input.input', { type: 'time', value: t, 'aria-label': `Complete by, ${i + 1} of ${n}`, onchange: (e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) d.targets[i] = e.target.value; habitNotice.refresh(); }, oninput: (e) => { if (/^\d{2}:\d{2}$/.test(e.target.value)) d.targets[i] = e.target.value; } }))));
   };
   eachBox.addEventListener('change', () => { syncEach(); habitNotice.refresh(); });
@@ -715,8 +715,10 @@ export function openHabitForm(habit) {
       warn: d.target && warn.value !== 'default' ? (warn.value === 'none' ? 0 : Number(warn.value)) : undefined,
       reminder: null, // habits no longer have a time-of-day reminder (only the "N minutes left" warning)
     };
-    if (d.target && d.goal.type === 'count' && countN() > 1 && eachBox.checked && d.targets?.length === countN()) {
-      data.targets = [...d.targets].sort(); data.target = data.targets[0]; // `target` = the earliest time
+    if (d.target && d.goal.type === 'count' && countN() > 1 && eachBox.checked && d.targets?.length) {
+      const ts = d.targets.slice(0, countN()); // the target went down: the extra times are dropped now
+      while (ts.length < countN()) ts.push(ts[ts.length - 1]);
+      data.targets = ts.sort(); data.target = data.targets[0]; // `target` = the earliest time
     }
     if ((data.target && warnActive()) && ['default', 'off'].includes(reminderStatus())) ensureReminderPermission();
     if (!isNew) data.id = habit.id;

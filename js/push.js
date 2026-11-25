@@ -11,7 +11,7 @@ import { activeHabits, habitVal, weekCount, habitWarns, reminderText } from './l
 import { isIOS, isStandalone } from './pwa.js';
 import { blockedHelp } from './reminders.js';
 import { habitText } from './habitIcon.js';
-import { ensureKey, rotateKey, decryptFailed, encryptJson } from './pushKey.js';
+import { ensureKey, cachedKey, takeDecryptFailure, encryptJson } from './pushKey.js';
 
 const STATE_KEY = 'dailyTracker:push';
 const CONFIG_KEY = 'dailyTracker:pushConfig';
@@ -407,6 +407,18 @@ const hashOf = (items) => {
   return String(h);
 };
 
+const utf8len = (t) => new TextEncoder().encode(t).length;
+/** Cut text to at most `max` UTF-8 bytes (at a character boundary), ending in "…" when shortened. */
+export function capBytes(text, max) {
+  text = String(text ?? '');
+  if (utf8len(text) <= max) return text;
+  let out = '';
+  for (const ch of text) { if (utf8len(out + ch + '…') > max) break; out += ch; }
+  return out + '…';
+}
+// The last sealed schedule, by hash: the hide/pagehide sync reuses it so it never waits on IndexedDB or crypto.
+let sealedCache = null; // { hash, payload }
+
 /** Send the whole schedule now. Queues and retries with backoff when offline or failing. */
 export async function syncNow({ keepalive = false, force = false } = {}) {
   if (!pushEnabled()) return false;
@@ -414,14 +426,28 @@ export async function syncNow({ keepalive = false, force = false } = {}) {
   if (inflight) { await inflight.catch(() => {}); }
   inflight = (async () => {
     const { tz, rules, total } = buildRules();
-    // The key: a push the service worker couldn't decrypt means the old key is gone or wrong: make a new one and re-send everything.
-    let keyRec;
-    try { keyRec = (await decryptFailed()) ? await rotateKey() : await ensureKey(); } catch { keyRec = null; }
+    // The device key. The normal path re-reads IndexedDB (a cleared key is made again: new kid, so everything is re-sent) and notices
+    // the service worker's "couldn't decrypt" flag (re-send everything with the existing key). The hide path just uses the cached key.
+    let keyRec = keepalive ? cachedKey() : null;
+    if (!keyRec) {
+      try { if (await takeDecryptFailure()) force = true; keyRec = await ensureKey({ fresh: true }); } catch { keyRec = null; }
+    }
     if (!keyRec) { saveState({ pending: true, error: 'This browser can’t keep the reminder key' }); changed(); reschedule(); return false; }
     const schedule = { tz, rules };
     const hash = hashOf({ schedule, kid: keyRec.kid });
-    // What goes to the server: every rule's text encrypted (fresh IV, AAD = rule id); no names or times in plaintext.
-    const sealed = async () => ({ tz, rules: await Promise.all(rules.map(async ({ title, body, ...rest }) => ({ ...rest, enc: await encryptJson(keyRec.key, rest.id, { title, body }) }))) });
+    // What goes to the server: each rule's title + body encrypted (fresh IV, AAD = rule id, capped by bytes so it always fits the
+    // server's limit). Stays plaintext: fire times, recurrence, skip/exception dates and ids (in id, url, tag; url and tag are not covered by the AAD).
+    const sealed = async () => {
+      if (sealedCache?.hash === hash) return sealedCache.payload;
+      const payload = { tz, rules: await Promise.all(rules.map(async ({ title, body, ...rest }) => {
+        let t = capBytes(title, 240), b = capBytes(body, 480);
+        while (utf8len(JSON.stringify({ title: t, body: b })) > 1400 && b.length > 1) b = capBytes(b, Math.floor(utf8len(b) / 2));
+        return { ...rest, enc: await encryptJson(keyRec, rest.id, { title: t, body: b }) };
+      })) };
+      sealedCache = { hash, payload };
+      return payload;
+    };
+    if (!keepalive) await sealed(); // seal (and cache) in the normal debounced path, so the page-hide path has it ready
     if ((loadState().overLimit || 0) !== (total > MAX_RULES ? total : 0)) saveState({ overLimit: total > MAX_RULES ? total : 0 });
     let s = loadState();
     // Nothing changed and the server copy is fresh: skip the network.

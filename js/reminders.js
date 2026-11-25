@@ -4,7 +4,7 @@ import { getState, update } from './store.js';
 import { toast } from './ui.js';
 import { isIOS, isStandalone } from './pwa.js';
 import { todayKey } from './dates.js';
-import { isRecurring, habitWarnAt } from './logic.js';
+import { isRecurring, habitWarns } from './logic.js';
 
 const isAndroid = () => /android/i.test(navigator.userAgent);
 
@@ -71,7 +71,7 @@ export async function ensureReminderPermission() {
 export function activeReminders(state = getState()) {
   const today = todayKey();
   const tasks = state.tasks.filter((t) => ((t.reminder !== null && t.time) || (!t.time && t.reminderAt)) && (isRecurring(t) || (!t.done && t.date >= today)));
-  const habits = state.habits.filter((h) => habitWarnAt(state, h) !== null && !h.archived);
+  const habits = state.habits.filter((h) => habitWarns(state, h).length > 0 && !h.archived);
   return { tasks, habits, total: tasks.length + habits.length };
 }
 

@@ -88,6 +88,8 @@ export const purgeInvite = (id) => call('DELETE', '/api/invites/' + encodeURICom
 export const revokeInvite = (id) => call('DELETE', '/api/invites/' + encodeURIComponent(id), undefined, { key: ownerKey() });
 
 // ---------- owner UI ----------
+// Invites deleted from the list whose server delete is still waiting for the Undo window (kept at module level: reopening the sheet must not show them again).
+const hidden = new Set();
 const dateOf = (ms) => (Number.isFinite(ms) ? fmtDateShort(toKey(new Date(ms))) : '');
 export async function copyText(text, done) {
   try { await navigator.clipboard.writeText(text); toast(done, { force: true }); return true; } catch { toast('Couldn’t copy – select the text and copy it', { force: true }); return false; }
@@ -135,7 +137,6 @@ export function openInviteSheet() {
 
   // Revoked invites can be swiped left to delete them for good. The delete waits for the Undo toast to run out
   // (codes are only stored as hashes, so a deleted invite can't be re-created).
-  const hidden = new Set();
   const rowFor = (li, inv) => {
     if (inv.status !== 'revoked') return li;
     return makeSwipeable(li, (side) => (side === 'left' ? [{ name: 'delete', label: 'Delete', icon: 'trash', run: () => {
@@ -143,7 +144,10 @@ export function openInviteSheet() {
       li.remove();
       if (!list.children.length) listNote.textContent = 'No invites yet.';
       const timer = setTimeout(async () => {
-        try { await purgeInvite(inv.id); } catch (x) { hidden.delete(inv.id); toast(`Couldn’t delete the invite: ${ownerError(x)}`, { force: true }); }
+        try { await purgeInvite(inv.id); hidden.delete(inv.id); } catch (x) {
+          hidden.delete(inv.id);
+          if (x?.status !== 404) toast(`Couldn’t delete the invite: ${ownerError(x)}`, { force: true }); // 404: already gone (the daily clean-up may have deleted it)
+        }
         refresh();
       }, 6500);
       toast('Invite deleted', { force: true, duration: 6000, action: 'Undo', onAction: () => { clearTimeout(timer); hidden.delete(inv.id); refresh(); } });

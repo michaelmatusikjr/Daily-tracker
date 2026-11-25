@@ -26,10 +26,11 @@ function fakeIdb(kv) {
 }
 const { webcrypto } = require('crypto');
 const b64u = (u8) => Buffer.from(u8).toString('base64url');
-async function seal(key, id, obj) {
+const KID = 'AAAAAAAAAAA'; // 11-character key label, the first part of `enc`
+async function seal(key, id, obj, kid = KID) {
   const iv = webcrypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await webcrypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(id) }, key, new TextEncoder().encode(JSON.stringify(obj))));
-  return b64u(Buffer.concat([iv, ct]));
+  return kid + b64u(Buffer.concat([iv, ct]));
 }
 
 function load({ windows = [], kv = new Map() } = {}) {
@@ -57,7 +58,7 @@ const clickEvent = (url) => { const n = { closed: false, data: { url }, close() 
   {
     // v1.18: the push carries { enc, id, url, tag }; the SW decrypts with the device key from IndexedDB.
     const key = await webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-    const kv = new Map([['reminder', { key, kid: 'k1' }]]);
+    const kv = new Map([['reminder', { key, kid: KID }]]);
     const { fire, log } = load({ kv });
     const enc = await seal(key, 'p:t:t1', { title: 'Now', body: 'Dentist – 9:00 AM' });
     await fire('push', pushEvent({ enc, id: 'p:t:t1', url: './#open/task/p/t1/2026-11-20', tag: 'p:t:t1:2026-11-20' }));
@@ -67,13 +68,15 @@ const clickEvent = (url) => { const n = { closed: false, data: { url }, close() 
     await fire('push', pushEvent({ enc, id: 'p:t:OTHER', url: './#today' }));
     assert(log.shown[1].title === 'Reminder' && log.shown[1].opts.body === 'Open Daily Tracker to see it' && kv.has('decryptFailed'), 'wrong rule id (AAD) → generic notification + failure flag');
     kv.delete('decryptFailed');
+    await fire('push', pushEvent({ enc: await seal(key, 'p:t:t1', { title: 'Old', body: 'x' }, 'BBBBBBBBBBB'), id: 'p:t:t1', url: './#today' }));
+    assert(log.shown[log.shown.length - 1].title === 'Reminder' && !kv.has('decryptFailed'), 'a push made under an older key label: generic notification, no flag (the app already re-sent its rules)');
     await fire('push', pushEvent({ enc, id: 'p:t:t1', url: 'https://evil.example/#x' }));
-    assert(log.shown[2].opts.data.url === SCOPE, 'foreign URLs are replaced by the app scope');
+    assert(log.shown[log.shown.length - 1].opts.data.url === SCOPE, 'foreign URLs are replaced by the app scope');
     await fire('push', { data: null });
-    assert(log.shown[3].title === 'Reminder', 'empty push still shows a notification (userVisibleOnly)');
+    assert(log.shown[log.shown.length - 1].title === 'Reminder', 'empty push still shows a notification (userVisibleOnly)');
     // plaintext from an old server is never shown as text
     await fire('push', pushEvent({ title: 'Secret name', body: 'x' }));
-    assert(log.shown[4].title === 'Reminder' && !JSON.stringify(log.shown[4]).includes('Secret'), 'a plaintext push is not shown');
+    assert(log.shown[log.shown.length - 1].title === 'Reminder' && !JSON.stringify(log.shown[log.shown.length - 1]).includes('Secret'), 'a plaintext push is not shown');
   }
   {
     // no key at all (storage cleared): generic notification, flag left for the app
