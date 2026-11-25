@@ -73,6 +73,19 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **Added:** 2026-11-24
 - **Shipped:** v1.16.0 (2026-11-25)
 
+### 35. Invite friends: invite codes + setup wizard
+- **What:** the owner can send the GitHub Pages link to friends; a wizard gets each friend to closed-app reminders and sync with as little typing as possible, without ever sharing the owner's register key.
+- **Decisions (user, 2026-11-25):** per-friend invite codes (not the shared register key, not open sign-up); limits raised to **25 accounts / 60 devices** (`MAX_ACCOUNTS`, `MAX_DEVICES` in `server/wrangler.toml`).
+- **Invite codes (server):** table `invites` (code hash, name/label, created, expires, used_at, account_id, revoked). Created/listed/revoked by the owner with `X-Register-Key` (`POST/GET/DELETE /api/invites`). A code is short, typeable, unambiguous (e.g. `7K3-QX9`, no 0/O/1/I), stored only as a hash, single-use, expires after 30 days unused; rate-limited like the register key. Account creation accepts either the register key or an unused invite code (the code becomes used by that account, atomically: two simultaneous uses → one wins). Push device sign-up (`/api/register`) also accepts a signed-in account session, so invited friends never need the register key. Revoking an *unused* code makes it unusable; a used one just shows who used it (removing a friend's account is not part of this item).
+- **Owner UI:** Settings › Account (owner = this device has the register key) › **Invite someone**: optional name → shows the code, a share link (`…/daily-tracker/#invite=CODE`), Copy / Share (Web Share sheet). A list of invites (name, unused/used by username/expired) with Revoke for unused ones.
+- **Friend wizard:**
+  - Opened in a browser tab on iPhone/iPad (not installed): an "Install first" screen with illustrated steps (Share › Add to Home Screen › open from the icon). If the link has `#invite=CODE`, show the code big with a **Copy code** button (Safari and the Home Screen app don't share storage, and `start_url` drops the fragment). Other browsers that support closed-app push without install: go straight on.
+  - In the installed app on a fresh install (or the link's code is present): "Get set up" steps, each skippable and reachable later from Settings: (1) **Invite code** (paste/type, prefilled from the link or clipboard paste button, checked with the server); (2) **Account** (existing create-account flow: username, password, recovery key, profile picker, offer passkey); (3) **Notifications** (one button: permission → device sign-up via the account session → "Send a test notification"). Ends on a done screen summarising what's on.
+  - Existing "Sign in to your account" path stays for the owner's own new devices.
+- **Rules:** the owner's register key never goes to invited accounts (#33 syncs it only within the owner's own account); user text escaped; reminder notes only when reminders *won't* arrive with the app closed.
+- **QA:** server + security change → fresh QA review before release.
+- **Added:** 2026-11-25
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
