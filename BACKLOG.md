@@ -87,6 +87,45 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **QA:** server + security change → fresh QA review before release.
 - **Added:** 2026-11-25
 
+### 36. Count habits: past-day dots count one at a time
+- **What:** on the Habits tab (active habits), tapping a completion dot for a previous day of a count habit adds one completion per tap, as tapping today does, instead of marking the whole day done.
+- **To decide when building:** what a tap does once the day is at its target. Suggestion: keep counting up (see #37), with #38's minus button to correct.
+- **Added:** 2026-11-25
+
+### 37. Count habits: "+N" badge when going over the goal
+- **What:** at the goal, the dot is filled with a checkmark (as now). Above the goal, a small badge appears on the dot: **+1** at goal + 1, **+2** at goal + 2, and so on.
+- **Added:** 2026-11-25
+
+### 38. Long-press a counter for quick + / −
+- **What:** long-pressing a count habit's counter shows + and − buttons to add or remove completions quickly, plus a **Done** button to close them.
+- **Note:** a long-press on the row still opens the item menu; only a long-press on the counter itself opens + / −.
+- **Added:** 2026-11-25
+
+### 39. Swipe actions on tasks and habits (Today and Habits tabs)
+- **What:** swipe right on a task or habit row → view details; swipe left → mark as missed. These are defaults: Settings lets you pick the action for each direction.
+- **Note:** today, a horizontal swipe anywhere on Today changes the day. A swipe that starts on a row will do the row action instead; the day can still be changed by swiping elsewhere and with the week strip.
+- **Added:** 2026-11-25
+
+### 40. Count habits: complete-by times for all instances or each instance
+- **What:** for a count habit with a target (e.g. 3) and "by a certain time":
+  - By default the field reads **Complete all by** with one time.
+  - A checkbox **Complete each by a time** shows one "Complete by" field per instance (3 for a target of 3).
+  - The **Warn me before** setting is shared by all instances (no separate value per instance).
+- **On Today:** still one row per habit. It shows the earliest complete-by time that is still active. An instance's time stays active until that instance is completed or its time passes, then the row moves on to the next instance's time. Example: the 1st time passes with no completion and you tap once. That completion counts as the 1st instance, and the row shows the 2nd instance's time until the 2nd completion or until that time passes, and so on.
+- **Added:** 2026-11-25
+
+### 41. Calendar tab → pull-down month calendar on Today; all-time stats → avatar menu
+- **What:**
+  - Remove the Calendar tab.
+  - On Today, pulling down on the week strip expands it into the full month calendar shown on the Calendar tab today: habit completion shading, task dots, mood, workout and starred days, plus the legend (screenshot, 2026-11-25). The rest of Today moves down.
+  - Scrolling, or tapping a date, shrinks it back to the week strip. After scrolling, the strip shows what it showed before; after a tap, it shows the week of the tapped day, with that day selected.
+  - The all-time stats move to the avatar menu.
+- **Added:** 2026-11-25
+
+### 42. Remove the progress card at the top of Today
+- **What:** remove the progress card from the top of the Today tab entirely.
+- **Added:** 2026-11-25
+
 ## Done
 
 ### 1. Mark a habit or task as "missed"
