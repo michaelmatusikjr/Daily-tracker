@@ -50,7 +50,9 @@ export const ACCT_REGISTER_KEY = 'acct/registerKey';
 //   account delete of one leaves it here as device-only instead of deleting it), rk: [t, dev] (newest
 //   register key record known to be in the account), behind (the last pull didn't apply everything), skipped (a pulled record couldn't be read or
 //   validated: photo clean-up in the account waits) }
-let behindMem = false;
+// Until this page has applied one complete pull, assume it's behind (a reload or another tab must not
+// forget a `behind` that couldn't be written because storage was full).
+let behindMem = true;
 function readState() { try { const s = JSON.parse(localStorage.getItem(STATE_KEY) || 'null'); return s && typeof s === 'object' ? s : {}; } catch { return {}; } }
 function writeState(s) { try { localStorage.setItem(STATE_KEY, JSON.stringify(s)); return true; } catch { return false; } }
 /** Read-modify-write (another tab may have written in between). */
@@ -492,7 +494,9 @@ async function runCycle(my, token, keys, dev) {
     // further full pull is still needed). Cleared only by a pull that applied everything; photo
     // clean-up in the account waits for it (gcReady).
     behindMem = !res.cursorOk || !!res.needFull || !!incoming.skipped; // also in memory: the write fails when storage is full
-    patchState({ behind: behindMem });
+    // If even that write fails (storage full), clear lastOk instead – a smaller write that succeeds –
+    // so gcReady is false in every tab.
+    if (!writeState({ ...readState(), behind: behindMem }) && behindMem) writeState({ ...readState(), lastOk: null });
     for (const pid of res.dropped) await dropShadow(pid);
     for (const pid of res.dirty) await saveShadow(pid, shadows.get(pid));
     for (const pid of res.keptGone) await dropKept(pid);

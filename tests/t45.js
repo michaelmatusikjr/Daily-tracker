@@ -264,6 +264,7 @@ const closeSheets = async (p) => { await p.keyboard.press('Escape'); await p.wai
   const why3 = await S(A.p, 'return S.checkRemove();');
   assert(/storage is full/.test(why3 || ''), 'Q3 Remove explains it: ' + why3);
   await db.prepare('UPDATE accounts SET bytes = 1000').run();
+  await filePass(A.p); await filePass(A.p); // let trailing passes finish before editing their state
   await A.p.evaluate(async () => { const C = await import('./js/syncCrypto.js'); const a = JSON.parse(localStorage.getItem('dailyTracker:sync')).accountId; const st = await C.idb('shadow', 'readonly', (s) => s.get('files:' + a)); st.tries = {}; await C.idb('shadow', 'readwrite', (s) => s.put(st, 'files:' + a)); });
   await filePass(A.p);
   assert((await serverFids()).has(fid4) && !(await note(A.p)), 'Q4 with room again it uploads and the note goes');
@@ -284,6 +285,7 @@ const closeSheets = async (p) => { await p.keyboard.press('Escape'); await p.wai
   await viewText(B.p, 't3');
   assert((await B.p.locator('.tv-photos .photo-elsewhere').allTextContents()).includes('Not enough space on this device'), 'F5 the View sheet says there isn’t enough space');
   await closeSheets(B.p);
+  await filePass(B.p); await filePass(B.p); // let trailing passes finish first
   await B.p.evaluate(() => window.__unfill());
   await sleep(1700);
   await filePass(B.p);

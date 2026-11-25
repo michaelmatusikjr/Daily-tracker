@@ -162,7 +162,8 @@ async function pass(opts) {
     // can't be uploaded yet and the answer is useless), and again at least daily, whenever that record
     // changed, and always before "Remove from this device" – the server may have lost the file, and
     // this device is then the one to upload it again.
-    for (const r of refs) st.seen[r.fid] = 1;
+    // Referenced again: its "unreferenced since" clock stops (a later delete starts a fresh 7 days).
+    for (const r of refs) { st.seen[r.fid] = 1; delete st.unref[r.fid]; }
     const stale = (r) => { const c = st.chk[r.fid]; return opts.uploadOnly || !c || now - c[0] >= RECHECK || c[1] !== r.rec; };
     const recOf = new Map(refs.map((r) => [r.fid, r.rec]));
     const ask = [...new Set(refs.filter((r) => local.has(r.id)
@@ -394,6 +395,8 @@ async function collect(fc, st, call, alive) {
   if (!refs || !(await S.gcReady())) return;
   alive();
   const now = Date.now();
+  // A long gap since the last clean-up: we can't know what happened in between, so every clock restarts.
+  if (st.gcAt && now - st.gcAt > Math.max(timing.gcDelay, 86400000)) st.unref = {};
   for (const fid of Object.keys(st.unref)) if (!server.has(fid) || refs.has(fid)) delete st.unref[fid];
   for (const fid of Object.keys(st.have)) if (!server.has(fid)) { delete st.have[fid]; delete st.chk[fid]; }
   for (const fid of Object.keys(st.seen)) if (!server.has(fid) && !refs.has(fid)) delete st.seen[fid];
