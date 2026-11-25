@@ -3,6 +3,7 @@
 // Wrapped keys are opaque ciphertext to the server.
 import { b64urlDecode } from './b64.js';
 import { HttpError, json, readObject, sha256Hex, timingSafeEqual, randomId, hex, rateLimit, rateBump, rateCheck } from './util.js';
+import { findInvite } from './invites.js';
 import { verifyRegistration, verifyAssertion, WebAuthnError } from './webauthn.js';
 
 export const ACCOUNT_LIMITS = {
@@ -140,11 +141,17 @@ export async function accountRoute(request, env, now, path, ip) {
   const ok = (data, status = 200) => json({ ...data, now }, status);
 
   if (path === '/api/account/create' && M === 'POST') {
-    // Only people who know the register key (the server owner's) can create accounts.
+    // Authorised by the register key (the server owner's) or by a single-use invite code (X-Invite-Code).
     if (!env.REGISTER_KEY) throw new HttpError(503, 'Server not set up: REGISTER_KEY is missing');
     await rateLimit(env, 'acr:' + ip, L.rate.create, now);
-    const given = request.headers.get('X-Register-Key') || '';
-    if (!timingSafeEqual(await sha256Hex(given), await sha256Hex(env.REGISTER_KEY))) throw new HttpError(403, 'Wrong register key');
+    const givenKey = request.headers.get('X-Register-Key') || '';
+    const givenInvite = request.headers.get('X-Invite-Code') || '';
+    let inviteHash = null;
+    if (givenKey || !givenInvite) {
+      if (!timingSafeEqual(await sha256Hex(givenKey), await sha256Hex(env.REGISTER_KEY))) throw new HttpError(403, 'Wrong register key');
+    } else {
+      inviteHash = await findInvite(env, givenInvite, now);
+    }
     const b = await readObject(request, L.smallBody);
     const username = normUsername(b.username);
     const authKey = key32(b.authKey, 'authKey'), recAuth = key32(b.recAuth, 'recAuth');
@@ -157,13 +164,27 @@ export async function accountRoute(request, env, now, path, ip) {
     const auth = await makeVerifier(authKey), rec = await makeVerifier(recAuth);
     const accountId = randomId(16);
     const s = await newSession(env, accountId, deviceName, now);
+    const insertAccount = 'INSERT INTO accounts (id, username, auth_salt, auth_hash, rec_salt, rec_hash, wrapped_pw, wrapped_rec, created_at, updated_at)';
+    const accountArgs = [accountId, username, auth.salt, auth.hash, rec.salt, rec.hash, wrappedPw, wrappedRec, now];
     try {
-      await env.DB.batch([
-        env.DB.prepare(`INSERT INTO accounts (id, username, auth_salt, auth_hash, rec_salt, rec_hash, wrapped_pw, wrapped_rec, created_at, updated_at)
-          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)`).bind(accountId, username, auth.salt, auth.hash, rec.salt, rec.hash, wrappedPw, wrappedRec, now),
-        s.stmt,
-      ]);
+      if (!inviteHash) {
+        await env.DB.batch([env.DB.prepare(`${insertAccount} VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)`).bind(...accountArgs), s.stmt]);
+      } else {
+        // One atomic batch: the conditional UPDATE spends the code (only if still unused, unrevoked and
+        // unexpired); the account and session are only inserted when this request won it. Any failure
+        // (e.g. a username race) rolls the whole batch back, so a code is never used up without an account.
+        const res = await env.DB.batch([
+          env.DB.prepare('UPDATE invites SET used_at = ?2, account_id = ?3 WHERE code_hash = ?1 AND used_at IS NULL AND revoked = 0 AND expires_at > ?2')
+            .bind(inviteHash, now, accountId),
+          env.DB.prepare(`${insertAccount} SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9 WHERE EXISTS (SELECT 1 FROM invites WHERE code_hash = ?10 AND account_id = ?1)`)
+            .bind(...accountArgs, inviteHash),
+          env.DB.prepare('INSERT INTO sessions (token_hash, id, account_id, device_name, created_at, last_seen) SELECT ?1, ?2, ?3, ?4, ?5, ?5 WHERE EXISTS (SELECT 1 FROM accounts WHERE id = ?3)')
+            .bind(await sha256Hex(s.token), s.id, accountId, deviceName, now),
+        ]);
+        if (res[0].meta.changes !== 1) throw new HttpError(403, 'Invalid or expired invite code');
+      }
     } catch (e) {
+      if (e instanceof HttpError) throw e;
       if (/UNIQUE/i.test(String(e?.message))) throw new HttpError(409, 'Username is taken');
       throw e;
     }

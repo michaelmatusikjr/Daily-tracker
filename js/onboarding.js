@@ -6,6 +6,7 @@ import { seedExamples } from './actions.js';
 import { accountsAvailable, hasAccount } from './sync.js';
 import { openFirstSignIn, cancelFirstSignIn, resumeFirstSignIn, offerSyncPicker } from './account.js';
 import { ctx } from './ctx.js';
+import { openSetupWizard, showInstallFirst, needsInstallFirst } from './setup.js';
 
 /**
  * App start with nothing onboarded: a brand-new install (only the untouched placeholder profile) first
@@ -29,20 +30,37 @@ export function startFirstRun() {
     const onDone = ({ offerPicker }) => { close(); finish({ offerPicker }); };
     if (hasAccount()) resumeFirstSignIn({ onDone }); else openFirstSignIn({ onDone });
   } }, 'Sign in to your account');
-  const start = h('button.btn.secondary.ob-choice', { type: 'button', onclick: () => { cancelFirstSignIn(); close(); showOnboarding(); } }, 'Get started on this device');
+  const invite = h('button.btn.secondary.ob-choice', { type: 'button', id: 'ob-invite', onclick: () => { cancelFirstSignIn(); close(); startInviteFlow({}); } }, 'I have an invite');
+  const start = h('button.btn.ghost.ob-choice', { type: 'button', onclick: () => { cancelFirstSignIn(); close(); showOnboarding(); } }, 'Get started on this device');
   const root = h('div.onboarding.ob-first', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Welcome to Daily Tracker' },
     h('div.ob-panel',
       h('div.ob-top', h('span.ob-brand', icon('check', { size: 16 }), 'Daily Tracker')),
       h('div.ob-first-body',
         h('div.ob-art', { 'aria-hidden': 'true' }, '👋'),
         h('h2.ob-title', 'Welcome'),
-        h('p.ob-text', 'Already use Daily Tracker on another device? Sign in to bring your profiles here. Or start fresh on this device.')),
-      h('div.ob-first-actions', signIn, start)));
+        h('p.ob-text', 'Already use Daily Tracker on another device? Sign in to bring your profiles here. Got an invite from a friend? Use it to get set up. Or start fresh on this device.')),
+      h('div.ob-first-actions', signIn, invite, start)));
   behind.forEach((el) => el.setAttribute('inert', ''));
   document.body.append(root);
   requestAnimationFrame(() => { root.classList.add('show'); signIn.focus(); });
 }
 
+/**
+ * An invite (the link's #invite=CODE, the first screen's "I have an invite", or Settings): on an iPhone/iPad
+ * browser tab the "Install first" screen comes before the wizard. When it ends, a device that hasn't had
+ * the welcome tour yet gets it (and then the profile picker for a new account).
+ */
+export function startInviteFlow({ code = '', start = null } = {}) {
+  if (!accountsAvailable() || document.querySelector('.ob-setup')) return;
+  const after = ({ offerPicker = false } = {}) => {
+    ctx.rerender?.();
+    if (!getState().settings.onboarded) showOnboarding({ onFinish: offerPicker ? offerSyncPicker : null });
+    else if (offerPicker) offerSyncPicker();
+  };
+  const go = () => openSetupWizard({ code, start, onDone: after });
+  if (needsInstallFirst() && !start) showInstallFirst({ code, onContinue: go }); else go();
+}
+ctx.startInviteFlow = startInviteFlow;
 
 export function showOnboarding({ onFinish = null } = {}) {
   if (document.querySelector('.onboarding')) return;

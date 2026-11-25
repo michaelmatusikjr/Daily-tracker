@@ -271,11 +271,20 @@ export function buildRules({ hideText = hideTextOn(), today = todayKey() } = {})
 }
 
 // ---------- server calls ----------
+/** The signed-in account's session token (js/sync.js keeps it in its state), or ''. */
+export function accountToken() {
+  const t = (readJSON('dailyTracker:sync') || {}).token;
+  return typeof t === 'string' && /^[A-Za-z0-9_-]{43}$/.test(t) ? t : '';
+}
 class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 async function api(method, path, body, { auth = true, keepalive = false, state = loadState(), cfg = pushConfig() } = {}) {
   const headers = body === undefined ? {} : { 'Content-Type': 'application/json' };
   if (auth) { headers.Authorization = 'Bearer ' + state.token; headers['X-Device'] = state.deviceId; }
-  if (path === '/api/register') headers['X-Register-Key'] = cfg.registerKey;
+  if (path === '/api/register') {
+    // The owner's register key; without one, the signed-in account's session (an invited friend has no key).
+    if (cfg.registerKey) headers['X-Register-Key'] = cfg.registerKey;
+    else { const t = accountToken(); if (t) headers.Authorization = 'Bearer ' + t; }
+  }
   const text = body === undefined ? undefined : JSON.stringify(body);
   let res;
   try {
@@ -320,7 +329,7 @@ async function currentSubscription(cfg, { create = true } = {}) {
 export async function enablePush() {
   const cfg = pushConfig();
   if (!cfg.serverUrl || !cfg.publicKey) return { ok: false, message: 'Set your push server in Advanced first.' };
-  if (!cfg.registerKey) return { ok: false, message: 'Enter your server’s register key in Advanced first.' };
+  if (!cfg.registerKey && !accountToken()) return { ok: false, message: 'Enter your server’s register key in Advanced first, or sign in to your account.' };
   if (isIOS() && !isStandalone()) return { ok: false, message: 'Add Daily Tracker to your Home Screen first (iOS 16.4 or later).' };
   if (!pushSupported()) return { ok: false, message: 'This browser can’t receive push notifications.' };
   let perm = Notification.permission;

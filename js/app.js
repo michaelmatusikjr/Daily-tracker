@@ -13,7 +13,8 @@ import { renderCalendar } from './views/calendar.js';
 import { renderJournal } from './views/journal.js';
 import { renderSettings } from './views/settings.js';
 import { openQuickAdd, openHabitForm } from './forms.js';
-import { showOnboarding, startFirstRun } from './onboarding.js';
+import { showOnboarding, startFirstRun, startInviteFlow } from './onboarding.js';
+import { captureInviteFromUrl, clearPendingInvite } from './invites.js';
 import { registerSW, onInstallChange, safeReload } from './pwa.js';
 import { reschedule } from './notify.js';
 import { initPush, scheduleSync, onPushChange } from './push.js';
@@ -28,7 +29,7 @@ import { renderCompleted } from './views/completed.js';
 import { collectGarbage } from './attachments.js';
 import { goToStorage } from './clearCompleted.js';
 import { initNoZoom } from './noZoom.js';
-import { initSync, onSyncChange, profileReset, syncState, forgetKept } from './sync.js';
+import { initSync, onSyncChange, profileReset, syncState, forgetKept, hasAccount, accountsAvailable } from './sync.js';
 import { refreshWeather } from './weather.js';
 
 const TABS = [
@@ -318,6 +319,7 @@ ctx.go = (route) => {
 
 function init() {
   initNoZoom();
+  const invite = captureInviteFromUrl(); // "#invite=CODE" is read and removed from the address before anything else
   load();
   applyTheme(getState().settings);
   buildNav();
@@ -432,7 +434,9 @@ function init() {
     syncSig = sig;
     if (!isSheetOpen() && !document.activeElement?.matches?.('input, textarea')) render();
   });
-  if (!getState().settings.onboarded) startFirstRun();
+  if ((invite.present || invite.code) && accountsAvailable() && !hasAccount()) startInviteFlow({ code: invite.code });
+  else if (invite.present || invite.code) { clearPendingInvite(); if (!getState().settings.onboarded) startFirstRun(); }
+  else if (!getState().settings.onboarded) startFirstRun();
   else if (getActiveProfile()?.introPending) setTimeout(() => openProfileEditor(getActiveProfile(), { intro: true, onDone: () => offerLegacyMerge() }), 400);
   else setTimeout(() => offerLegacyMerge(), 500);
   registerSW();

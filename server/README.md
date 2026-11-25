@@ -60,7 +60,7 @@ You need a computer with a terminal. These steps also work from a phone with a c
    - `VAPID_PUBLIC_KEY`: the public key from step 5.
    - `VAPID_SUBJECT`: `mailto:` followed by an address push services can contact. It can be any address you read.
    - `ALLOWED_ORIGINS`: the address where your app runs, with no path and no trailing slash, for example `https://yourname.github.io`. Separate several with commas.
-   - `MAX_DEVICES`: how many devices may sign up. The default is 20; raise it if your family has more phones and computers.
+   - `MAX_DEVICES`: how many devices may sign up. The default is 20 (60 in the deployed config); raise it if your family has more phones and computers.
 8. **Deploy:**
    ```sh
    npx wrangler deploy
@@ -129,7 +129,7 @@ All endpoints take and return JSON. CORS is limited to `ALLOWED_ORIGINS`, and re
 | Method & path | Auth | Body | Result |
 |---|---|---|---|
 | `GET /api/health` | — | — | `{ok, time, vapidPublic, vapidPublicKey, vapidPrivate, registerKey, db, lastCronAt, lastCronError}` |
-| `POST /api/register` | `X-Register-Key: <REGISTER_KEY>` | `{subscription}` (from `PushSubscription.toJSON()`) | `201 {deviceId, token}`. Possible errors: 403 for a wrong key, 503 if the key isn't set or the device limit is reached, 400 if the endpoint isn't a known push service. Rate limit: 10/hour per IP. |
+| `POST /api/register` | `X-Register-Key: <REGISTER_KEY>`, **or** (no register key sent) a signed-in account session `Authorization: Bearer <session token>` | `{subscription}` (from `PushSubscription.toJSON()`) | `201 {deviceId, token}`. Possible errors: 401 for a bad session, 403 for a wrong key, 503 if the key isn't set or the device limit is reached, 400 if the endpoint isn't a known push service. Rate limit: 10/hour per IP. |
 | `PUT /api/schedule` | `Authorization: Bearer <token>`, `X-Device: <deviceId>` | `{tz, rules:[…]}` | Replaces the device's rules. Rate limit: 120/hour. |
 | `POST /api/subscription` | same | `{subscription}` | Updates a rotated subscription. Rate limit: 30/hour. |
 | `DELETE /api/device` | same | — | Deletes the device and everything for it. |
@@ -158,10 +158,22 @@ A rule looks like this:
 The same Worker also holds **sync accounts** (`/api/account/*`, `/api/passkey/*`, `/api/sync/*`, `/api/files/*`). The full contract is in [`../SYNC.md`](../SYNC.md). In short:
 
 - Everything is **end-to-end encrypted** on the devices. The server stores ciphertext records (an opaque id, an edit time, a device id and an encrypted blob), wrapped keys it can't open, and a salted HMAC verifier of the key derived from the password. It never sees a password, a recovery key or the data.
-- Creating an account needs the same **register key** as reminders (`X-Register-Key`).
-- **`MAX_ACCOUNTS`** (in `wrangler.toml` `[vars]`, default 10) caps how many accounts can be created.
+- Creating an account needs the same **register key** as reminders (`X-Register-Key`), or a single-use **invite code** (`X-Invite-Code`, see below).
+- **`MAX_ACCOUNTS`** (in `wrangler.toml` `[vars]`, default 10; 25 in the deployed config) caps how many accounts can be created.
 - **Task photos** (sync phase 2) are stored as encrypted files: an opaque file id (an HMAC the app derives), and one AES-GCM ciphertext split into chunks of at most 512 KiB of base64url text (a D1 value is limited to about 2 MB). An upload is all-or-nothing: its chunks only become a file when every one is there and the upload is committed. Files count toward the account's **200 MB** (shared with records; 413 beyond); at most 16 MiB of text per file and 8 uploads in progress per account. The server never decides that a photo is unused – only an app that has downloaded everything deletes one, after a 7-day delay (see SYNC.md).
 - New tables: `accounts`, `sessions`, `passkeys`, `records`, `challenges`, and (photos) `files`, `file_uploads`, `file_chunks`. **After updating, run `npm run db:init` once more** (it only adds missing tables and indexes; existing data is untouched), then `npx wrangler deploy`.
+- **Invite codes** (backlog #35, table `invites`): the owner makes one per friend, so the register key is never shared. A code looks like `7K3Q-X9PM` (8 symbols from a 32-symbol alphabet without 0/O/1/I: 40 bits), is single-use and expires after 30 days. The server stores only `HMAC-SHA-256(REGISTER_KEY, "invite:" + code)`; the code itself is shown once, when it is made (changing the register key voids open codes). At most 50 open codes at once.
+
+  | Method & path | Auth | Body | Result |
+  |---|---|---|---|
+  | `POST /api/invites` | `X-Register-Key` | `{name?}` (up to 40 characters) | `201 {id, code, name, createdAt, expiresAt, status}` |
+  | `GET /api/invites` | `X-Register-Key` | — | `{invites:[{id, name, createdAt, expiresAt, usedAt, username, status}]}`, newest first. `status` is `unused`, `used`, `expired` or `revoked`. |
+  | `DELETE /api/invites/<id>` | `X-Register-Key` | — | Revokes an unused code. 409 if it was already used, 404 if unknown. |
+  | `POST /api/invites/check` | none | `{code}` | `{valid: true\|false}` only (nothing else is revealed). 20 calls/hour per IP. |
+  | `POST /api/account/create` | `X-Invite-Code: <code>` instead of `X-Register-Key` | as in SYNC.md | The code is spent in the same atomic D1 batch that inserts the account and its session (a conditional `UPDATE … WHERE used_at IS NULL AND revoked = 0 AND expires_at > now`), so two simultaneous uses give one account, and a failed creation never leaves a spent code. One 403 "Invalid or expired invite code" covers unknown, used, revoked and expired. |
+
+  Owner calls are rate limited per IP (120/hour; 10 wrong keys/hour). Revoked codes and codes expired for 90 days are removed by the daily purge; used codes stay as the record of who joined.
+- **Upgrading an existing database:** the `invites` table is new, so run `npm run db:init` once (it only adds what is missing), then `npx wrangler deploy`. Without it the invite calls fail with a 500.
 - Sessions unused for 400 days, expired passkey challenges and photo uploads abandoned for a day are removed by the daily purge. Deleting an account removes all of its records, photos, passkeys and sessions.
 
 ## Develop and test

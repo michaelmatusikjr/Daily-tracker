@@ -131,3 +131,18 @@ CREATE TABLE IF NOT EXISTS file_chunks (
   data       TEXT NOT NULL,          -- base64url characters
   PRIMARY KEY (account_id, upload, n)
 );
+
+-- ===== Invite codes (backlog #35). Additive only: safe to re-run on the live database. =====
+-- A friend's single-use code for creating an account without the register key. Only an HMAC of
+-- the code is stored (the code itself is shown once, to the owner, when it is made).
+CREATE TABLE IF NOT EXISTS invites (
+  id         TEXT PRIMARY KEY,       -- random id (base64url), what the owner's list uses to revoke
+  code_hash  TEXT NOT NULL UNIQUE,   -- HMAC-SHA-256(REGISTER_KEY, "invite:" + code), hex
+  name       TEXT NOT NULL DEFAULT '', -- the owner's label ("Sam"), optional
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,       -- created_at + 30 days
+  used_at    INTEGER,                -- set atomically when an account is created with it
+  account_id TEXT,                   -- the account it created
+  revoked    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS invites_created ON invites (created_at);

@@ -1225,7 +1225,7 @@ function startSession(r, username, { created = false } = {}) {
 }
 
 /** Create an account. Returns { recovery } (the recovery key text, shown once). */
-export async function createAccount({ username, password, registerKey }) {
+export async function createAccount({ username, password, registerKey, inviteCode = '' }) {
   const uname = C.normUsername(username);
   if (!uname) throw new Error('Username: 3–40 letters, digits, dots, dashes or underscores.');
   if (String(password).length < 10) throw new Error('The password needs at least 10 characters.');
@@ -1235,9 +1235,9 @@ export async function createAccount({ username, password, registerKey }) {
   const wrappedPw = await C.wrap(kek, dataKey), wrappedRec = await C.wrap(recKek, dataKey);
   let r;
   try {
-    r = await api('POST', '/api/account/create', { username: uname, authKey, wrappedPw, wrappedRec, recAuth, deviceName: deviceName() }, { headers: { 'X-Register-Key': String(registerKey || '').trim() } });
+    r = await api('POST', '/api/account/create', { username: uname, authKey, wrappedPw, wrappedRec, recAuth, deviceName: deviceName() }, { headers: inviteCode ? { 'X-Invite-Code': String(inviteCode).trim() } : { 'X-Register-Key': String(registerKey || '').trim() } });
   } catch (e) {
-    if (e.status === 403) throw new Error('The register key doesn’t match the server’s.');
+    if (e.status === 403) throw new Error(inviteCode ? 'That invite code isn’t valid any more (it may have been used, revoked or expired). Ask for a new one.' : 'The register key doesn’t match the server’s.');
     if (e.status === 409) throw new Error('That username is taken.');
     if (/Account limit/.test(e.message)) throw new Error('The server has its maximum number of accounts.');
     throw new Error(plainError(e));
@@ -1246,7 +1246,8 @@ export async function createAccount({ username, password, registerKey }) {
   await storeKeys(r.accountId, dataKey, wrappedPw);
   startSession(r, uname, { created: true });
   // The register key just typed is this device's (and so the account's) reminders key, unless one is set.
-  if (!registerKeyMeta().key) setRegisterKey(registerKey);
+  // An account made with an invite code never gets one: the owner's key is not shared.
+  if (!inviteCode && !registerKeyMeta().key) setRegisterKey(registerKey);
   const text = C.formatRecovery(rec);
   rec.fill(0);
   return { recovery: text };

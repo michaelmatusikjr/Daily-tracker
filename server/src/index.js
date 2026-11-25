@@ -4,8 +4,9 @@
 // messages, so reminders keep coming even if the app isn't opened for weeks.
 import { b64urlDecode } from './b64.js';
 import { HttpError, json, err, readJson, sha256Hex, timingSafeEqual, randomId, isStr, rateLimit } from './util.js';
-import { accountRoute, purgeAccounts } from './account.js';
+import { accountRoute, authSession, purgeAccounts } from './account.js';
 import { syncRoute } from './sync.js';
+import { invitesRoute } from './invites.js';
 import { filesRoute, purgeFiles } from './files.js';
 import { importVapidKeys, sendPush } from './webpush.js';
 import { nextFire, isDateKey, isValidTimeZone, localToUTC, addDays } from './recur.js';
@@ -33,7 +34,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device, X-Register-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Device, X-Register-Key, X-Invite-Code',
     'Access-Control-Max-Age': '86400',
     Vary: 'Origin',
   };
@@ -141,7 +142,7 @@ async function authDevice(request, env) {
 
 // ---------- Routes ----------
 /** Paths of the account/sync API, whose responses (errors too) include the server time `now`. */
-const isAccountPath = (path) => path === '/api/account' || /^\/api\/(account|passkey|sync|files)\//.test(path);
+const isAccountPath = (path) => path === '/api/account' || path === '/api/invites' || /^\/api\/(account|passkey|sync|files|invites)\//.test(path);
 
 async function route(request, env, now) {
   const url = new URL(request.url);
@@ -154,17 +155,20 @@ async function route(request, env, now) {
   if (isAccountPath(path)) {
     const res = path.startsWith('/api/sync/') ? await syncRoute(request, env, now, path, url)
       : path.startsWith('/api/files/') ? await filesRoute(request, env, now, path, url)
+      : path.startsWith('/api/invites') ? await invitesRoute(request, env, now, path, ip)
       : await accountRoute(request, env, now, path, ip);
     if (res) return res;
     throw new HttpError(404, 'Not found');
   }
 
   if (path === '/api/register' && request.method === 'POST') {
-    // Only people who know the register key (set by the server's owner) can add devices.
+    // Only the server owner's register key, or a signed-in account session (Authorization: Bearer, no
+    // register key sent), can add devices.
     if (!env.REGISTER_KEY) throw new HttpError(503, 'Server not set up: REGISTER_KEY is missing');
     await rateLimit(env, 'reg:' + ip, LIMITS.rate.register, now);
     const given = request.headers.get('X-Register-Key') || '';
-    if (!timingSafeEqual(await sha256Hex(given), await sha256Hex(env.REGISTER_KEY))) throw new HttpError(403, 'Wrong register key');
+    if (!given && request.headers.get('Authorization')) await authSession(request, env, now);
+    else if (!timingSafeEqual(await sha256Hex(given), await sha256Hex(env.REGISTER_KEY))) throw new HttpError(403, 'Wrong register key');
     const max = Number(env.MAX_DEVICES) > 0 ? Number(env.MAX_DEVICES) : LIMITS.maxDevicesDefault;
     const { n } = await env.DB.prepare('SELECT COUNT(*) AS n FROM devices').first();
     if (n >= max) throw new HttpError(503, 'Device limit reached');
@@ -369,6 +373,7 @@ export async function purge(env, now = Date.now()) {
     env.DB.prepare('DELETE FROM rules WHERE device_id IN (SELECT id FROM devices WHERE last_seen < ?1)').bind(stale),
     env.DB.prepare('DELETE FROM fired WHERE device_id IN (SELECT id FROM devices WHERE last_seen < ?1)').bind(stale),
     env.DB.prepare('DELETE FROM devices WHERE last_seen < ?1').bind(stale),
+    env.DB.prepare('DELETE FROM invites WHERE used_at IS NULL AND (revoked = 1 OR expires_at < ?1)').bind(now - 90 * 86400000),
     env.DB.prepare('DELETE FROM rate WHERE win < ?1').bind(Math.floor(now / 3600000) - 2),
   ]);
   await purgeAccounts(env, now); // expired challenges, sessions unused for 400 days

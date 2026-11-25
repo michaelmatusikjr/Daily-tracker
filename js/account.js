@@ -2,8 +2,9 @@
 // picker, devices, password, sign out and delete. All text goes through h() (never innerHTML).
 import { h, openSheet, toast, confirmDialog, choose } from './ui.js';
 import { icon } from './icons.js';
-import { getProfiles, getActiveProfile, updateProfile, readProfileForSync, removePlaceholderProfile } from './store.js';
-import { pushConfig } from './push.js';
+import { getProfiles, getActiveProfile, updateProfile, readProfileForSync, removePlaceholderProfile, isFreshInstall } from './store.js';
+import { pushConfig, pushConfigured, pushEnabled } from './push.js';
+import { isOwner, inviteRow } from './invites.js';
 import { fmtDateShort, toKey } from './dates.js';
 import * as S from './sync.js';
 import { avatarEl, performDeleteProfile, openProfileEditor } from './profiles.js';
@@ -76,8 +77,10 @@ function signedOutView() {
         h('button.btn.primary', { type: 'button', onclick: () => openCreate() }, 'Create account'),
         h('button.btn.secondary', { type: 'button', onclick: () => openSignIn() }, 'Sign in'),
         S.passkeysSupported() ? h('button.btn.secondary', { type: 'button', onclick: (e) => passkeyFlow(e.currentTarget) }, icon('key', { size: 16 }), 'Sign in with passkey') : null),
-      h('button.link-btn.acct-link', { type: 'button', onclick: () => openRecovery() }, 'Forgot password? Use recovery key')),
-  ];
+      h('button.link-btn.acct-link', { type: 'button', onclick: () => openRecovery() }, 'Forgot password? Use recovery key'),
+      h('button.link-btn.acct-link', { type: 'button', id: 'acct-have-invite', onclick: () => ctx.startInviteFlow?.({}) }, 'I have an invite code')),
+    inviteRow(),
+  ].filter(Boolean);
 }
 
 function statusLine() {
@@ -113,6 +116,14 @@ function signedInView(rerender) {
   if (st?.kind === 'locked') { out.push(unlockForm(rerender)); return out; }
   out.push(profilesBlock(rerender));
   out.push(detailsBlock(rerender));
+  if (pushConfigured() && !pushEnabled()) {
+    out.push(h('div.set-row.col.acct-block',
+      h('span.set-label', 'Get set up'),
+      h('span.set-desc', 'Closed-app reminders aren’t on for this device yet. The setup guide turns them on in a few taps and sends a test notification.'),
+      h('div.set-actions', h('button.btn.secondary.small', { type: 'button', id: 'acct-setup', onclick: () => ctx.startInviteFlow?.({ start: 'notify' }) }, icon('bell', { size: 16 }), 'Set up notifications'))));
+  }
+  const inv = inviteRow();
+  if (inv) out.push(inv);
   out.push(h('div.set-actions.pad.acct-bottom',
     h('button.btn.secondary.small', { type: 'button', onclick: () => openChangePassword() }, 'Change password'),
     h('button.btn.secondary.small', { type: 'button', onclick: () => openSignOut() }, icon('logOut', { size: 16 }), 'Sign out'),
@@ -237,19 +248,22 @@ function unlockForm(rerender) {
 }
 
 // ---------------- Flows ----------------
-function openCreate() {
+function openCreate({ inviteCode = '', onCancel = null } = {}) {
   const user = h('input.input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxlength: 40, 'aria-label': 'Username', autofocus: true });
   const pw = pwInput('Password', 'new-password'), pw2 = pwInput('Confirm password', 'new-password');
-  const reg = h('input.input', { type: 'password', autocomplete: 'off', spellcheck: false, 'aria-label': 'Register key', value: pushConfig().registerKey || '' });
+  // With an invite code the server's register key is not needed (and never shared).
+  const reg = inviteCode ? null : h('input.input', { type: 'password', autocomplete: 'off', spellcheck: false, 'aria-label': 'Register key', value: pushConfig().registerKey || '' });
   const err = h('p.form-error', { role: 'alert' });
   const btn = h('button.btn.primary', { type: 'button' }, 'Create account');
+  let created = false;
   const submit = async () => {
     if (!user.value.trim()) { err.textContent = 'Choose a username.'; return; }
     if (pw.value.length < 10) { err.textContent = 'The password needs at least 10 characters.'; return; }
     if (pw.value !== pw2.value) { err.textContent = 'The passwords don’t match.'; return; }
-    if (!reg.value.trim()) { err.textContent = 'Enter the server’s register key.'; return; }
-    const r = await busy(btn, 'Creating…', err, () => S.createAccount({ username: user.value, password: pw.value, registerKey: reg.value }));
+    if (reg && !reg.value.trim()) { err.textContent = 'Enter the server’s register key.'; return; }
+    const r = await busy(btn, 'Creating…', err, () => S.createAccount({ username: user.value, password: pw.value, registerKey: reg ? reg.value : '', inviteCode }));
     if (!r) return;
+    created = true;
     sheet.close();
     showRecovery(r.recovery);
   };
@@ -261,11 +275,25 @@ function openCreate() {
       field('Username', user, '3–40 letters, digits, dots, dashes or underscores.'),
       field('Password', pw, 'At least 10 characters. It never leaves this device.'),
       field('Confirm password', pw2),
-      field('Register key', reg, 'The key of your server (the same one as for reminders).'),
+      reg ? field('Register key', reg, 'The key of your server (the same one as for reminders).') : null,
       err, h('button', { type: 'submit', hidden: true })),
     footer: [h('span'), btn],
+    onClose: () => { if (!created) onCancel?.(); },
   });
 }
+
+// A setup-wizard account step (js/setup.js): create the account with the invite code; `onDone` runs when
+// the whole creation flow (recovery key, profile picker, passkey offer) is finished.
+let createdHook = null;
+/** onDone({ offerPicker }) runs when the flow ends; onCancel() when the sheet is closed without creating. */
+export function openCreateWithInvite({ code, onDone, onCancel }) {
+  const fresh = isFreshInstall();
+  // A brand-new install continues like the first screen's sign-in: the tour comes first, then the picker.
+  if (fresh) { firstFlow = { onDone: (r) => onDone(r) }; createdHook = null; } else { firstFlow = null; createdHook = () => onDone({ offerPicker: false }); }
+  openCreate({ inviteCode: code, onCancel: () => { firstFlow = null; createdHook = null; onCancel?.(); } });
+}
+/** Plain sign-in sheet (the wizard's "I already have an account"). */
+export const openSignInSheet = () => openSignIn();
 
 /** The recovery key, shown once. Continuing needs the "I've saved it" box. */
 function showRecovery(text) {
@@ -404,10 +432,17 @@ function afterSignIn({ created, error = null }) {
   // First screen of a new install: the account's profiles replace the untouched placeholder.
   const first = firstFlow;
   firstFlow = null;
+  const hook = createdHook;
+  createdHook = null;
   const removed = first ? removePlaceholderProfile() : false;
   if (first && !removed && getProfiles().length <= 1) { first.onDone({ offerPicker: true }); return; } // empty account: tour first
   const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
-  const then = () => { if (first) first.onDone({ offerPicker: false }); else if (created && S.passkeysSupported()) offerPasskey(); else ctx.rerender?.(); };
+  const then = async () => {
+    if (first) first.onDone({ offerPicker: false });
+    else if (created && S.passkeysSupported()) await offerPasskey();
+    else ctx.rerender?.();
+    if (!first) hook?.();
+  };
   if (!candidates.length) { then(); return; }
   openPicker(candidates, { preselect: created, onDone: then });
 }

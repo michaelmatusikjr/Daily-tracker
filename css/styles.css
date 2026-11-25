@@ -859,6 +859,35 @@ input[type="date"].input, input[type="time"].input { min-width: 0; }
 .ob-first-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: var(--s6) var(--s8); }
 .ob-first-actions { display: flex; flex-direction: column; gap: var(--s3); padding: var(--s4) var(--s5) calc(var(--s6) + env(safe-area-inset-bottom, 0px)); }
 .ob-choice { width: 100%; min-height: 48px; }
+/* Invites: install-first screen, setup wizard (backlog #35) */
+.onboarding.ob-setup { z-index: 40; } /* below sheets (z 50): the account flow opens over it */
+.setup-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--s4) var(--s6) var(--s4); gap: var(--s2); }
+.setup-body .ob-art { margin-top: var(--s3); }
+.setup-body .acct-field, .setup-body .form-error, .setup-body .setup-note, .setup-sums { width: 100%; text-align: left; }
+.setup-count { margin: 0; font-size: 13px; color: var(--text-2); font-weight: 600; }
+.setup-code-input { text-align: center; font-size: 22px; letter-spacing: .1em; text-transform: uppercase; }
+.setup-steps { list-style: none; margin: var(--s3) 0 0; padding: 0; width: 100%; display: flex; flex-direction: column; gap: var(--s3); text-align: left; }
+.setup-step { display: flex; align-items: center; gap: var(--s3); background: var(--surface-2); border-radius: var(--r-md); padding: var(--s3) var(--s4); }
+.setup-step-art { flex: none; width: 44px; height: 44px; display: grid; place-items: center; font-size: 26px; background: var(--surface); border-radius: 12px; }
+.setup-step-text { display: flex; flex-direction: column; gap: 2px; font-size: 14px; color: var(--text-2); min-width: 0; }
+.setup-step-text strong { color: var(--text); font-size: 15px; }
+.setup-code-box { width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--s2); padding: var(--s4); border-radius: var(--r-md); background: var(--surface-2); border: 1px dashed var(--border); }
+.setup-code-label { font-size: 13px; color: var(--text-2); font-weight: 600; }
+.setup-code, .invite-code { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 34px; font-weight: 800; letter-spacing: .12em; user-select: all; -webkit-user-select: all; }
+.setup-hint { margin: 0; font-size: 13px; color: var(--text-2); max-width: 34ch; }
+.setup-note { margin: var(--s2) 0 0; font-size: 14px; color: var(--text-2); }
+.setup-note.ok { color: var(--success); }
+.setup-note.bad { color: var(--danger); }
+.setup-sums { list-style: none; margin: var(--s3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s3); }
+.setup-sum { display: flex; gap: var(--s3); align-items: flex-start; font-size: 15px; }
+.setup-sum-icon { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-3); color: var(--text-2); }
+.setup-sum-icon.ok { background: var(--success); color: #fff; }
+.setup-dots { display: flex; justify-content: center; padding: var(--s2) 0 0; }
+.setup-dots .ob-dot { display: inline-block; margin: 0 4px; }
+.invite-result { display: flex; flex-direction: column; gap: var(--s2); margin: var(--s3) 0; padding: var(--s3); border-radius: var(--r-md); background: var(--surface-2); border: 1px dashed var(--border); text-align: center; }
+.invite-result:empty { display: none; }
+.invite-code { font-size: 28px; }
+.invite-link { margin: 0; font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
 .ob-top { display: flex; align-items: center; justify-content: space-between; padding: var(--s3) var(--s3) 0 var(--s5); }
 .ob-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 760; }
 .ob-brand svg { width: 24px; height: 24px; padding: 4px; border-radius: 8px; background: var(--accent); color: var(--on-accent); }
