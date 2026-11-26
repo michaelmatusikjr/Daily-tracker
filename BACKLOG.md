@@ -4,68 +4,6 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 
 ## Open
 
-### 36. Count habits: past-day dots count one at a time
-- **What:** on the Habits tab (active habits), tapping a completion dot for a previous day of a count habit adds one completion per tap, as tapping today does, instead of marking the whole day done.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):** taps keep counting past the target (+1, +2… per #37). To undo a mistaken tap on a past day, long-press that dot for − / + / Done (as #38).
-
-### 37. Count habits: "+N" badge when going over the goal
-- **What:** at the goal, the dot is filled with a checkmark (as now). Above the goal, a small badge appears on the dot: **+1** at goal + 1, **+2** at goal + 2, and so on.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):** the badge shows on both Today's rows and the Habits tab dots.
-
-### 38. Long-press a counter for quick + / −
-- **What:** long-pressing a count habit's counter shows + and − buttons to add or remove completions quickly, plus a **Done** button to close them.
-- **Note:** a long-press on the row still opens the item menu; only a long-press on the counter itself opens + / −.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):** + / − on both Today's rows and the Habits tab dots (past days too, see #36).
-
-### 39. Swipe actions on tasks and habits (Today and Habits tabs)
-- **What:** swipe right on a task or habit row → view details; swipe left → mark as missed. These are defaults: Settings lets you pick the action for each direction.
-- **Note:** today, a horizontal swipe anywhere on Today changes the day. A swipe that starts on a row will do the row action instead; the day can still be changed by swiping elsewhere and with the week strip.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):**
-  - **Actions to choose from in Settings:** View details, Mark missed, Complete, Edit, Delete (with Undo), Off.
-  - **Swiping a habit on the Habits tab** acts on *today*.
-  - **Two actions per side, like iOS Mail:** swiping partway reveals two action buttons for that side; tap either one. Swiping all the way through commits the outermost action. Settings picks both actions (inner and outer) for each side.
-  - **Defaults (change if wanted):** right: outer View details, inner Complete; left: outer Mark missed, inner Edit.
-
-### 40. Count habits: complete-by times for all instances or each instance
-- **What:** for a count habit with a target (e.g. 3) and "by a certain time":
-  - By default the field reads **Complete all by** with one time.
-  - A checkbox **Complete each by a time** shows one "Complete by" field per instance (3 for a target of 3).
-  - The **Warn me before** setting is shared by all instances (no separate value per instance).
-- **On Today:** still one row per habit. It shows the earliest complete-by time that is still active. An instance's time stays active until that instance is completed or its time passes, then the row moves on to the next instance's time. Example: the 1st time passes with no completion and you tap once. That completion counts as the 1st instance, and the row shows the 2nd instance's time until the 2nd completion or until that time passes, and so on.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):** with per-instance times, the "Warn me before" reminder fires for each instance's own time, only while that instance isn't done yet. If the target goes down (e.g. 3 → 2), the extra times are dropped.
-
-### 41. Calendar tab → pull-down month calendar on Today; all-time stats → avatar menu
-- **What:**
-  - Remove the Calendar tab.
-  - On Today, pulling down on the week strip expands it into the full month calendar shown on the Calendar tab today: habit completion shading, task dots, mood, workout and starred days, plus the legend (screenshot, 2026-11-25). The rest of Today moves down.
-  - Scrolling, or tapping a date, shrinks it back to the week strip. After scrolling, the strip shows what it showed before; after a tap, it shows the week of the tapped day, with that day selected.
-  - The all-time stats move to the avatar menu.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):** "all-time stats" means the summary on today's Calendar tab; the avatar menu opens it as its own screen.
-
-### 42. Remove the progress card at the top of Today
-- **What:** remove the progress card from the top of the Today tab entirely.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):** the day's % ring disappears completely; it doesn't move anywhere else.
-
-### 43. The focused text box always stays above the on-screen keyboard
-- **What:** whenever the on-device keyboard opens, the text box being typed into must be pushed up / scrolled so it sits fully above the keyboard and anything attached to it (iOS accessory/autofill bar), everywhere in the app. Known failing place: entering an invitee's name (Settings › Account › Invite someone). Expected: more places.
-- **Added:** 2026-11-25
-
-### 44. Reminder text encrypted so only the phone can read it
-- **What:** closed-app reminder text (task/habit names, times) is no longer stored on the push server in plaintext: each device encrypts it with its own key and only that device can read the notification. Applies to everyone.
-- **Added:** 2026-11-25
-
-### 45. Swipe to delete revoked invites
-- **What:** in Settings › Account › Invite someone, a revoked invite can be swiped left to delete it for good (Undo for a few seconds). Only revoked invites.
-- **Added:** 2026-11-25
-- **Decided (2026-11-25):** invites of any status (unused, expired, used) can be revoked; Delete only once revoked. Revoking a used invite only marks the list entry ("Revoked · used by <username>"); the friend's account and devices are untouched.
-
 ### 46. Owner can see friends' activity and delete their accounts
 - **What:** in Settings › Account's invite list, each **used** invite shows the friend's username, last sync, and storage used. Accounts with no sync for **60 days** are marked "inactive". The owner can **delete any friend's account** with a "Delete account" button: it removes the account, its encrypted records, photos, sessions, passkeys, push devices and reminder rules from the server and cuts off access. The confirm lists exactly what goes; for an account that is still active it shows an extra warning ("<name> synced <n> days ago – they're still using it"). The owner's own account can never be deleted this way.
 - **Revoking a used invite** does not delete or lock the account (replaces the earlier "revoke locks the friend out" idea); deleting the account is the separate, explicit action.
@@ -487,3 +425,75 @@ Ideas waiting to be built. Newest at the bottom. Items move to "Done" once shipp
 - **QA:** server + security change → fresh QA review before release (done: ship after fixes; all 8 findings fixed – per-account cap of 5 notification devices, invited accounts never get the register key, purge hardening, wizard fixes).
 - **Added:** 2026-11-25
 - **Shipped:** v1.17.0 (2026-11-25). Server: D1 migration 0002 + invites table applied, Worker deployed with 25 accounts / 60 devices.
+
+### 36. Count habits: past-day dots count one at a time
+- **What:** on the Habits tab (active habits), tapping a completion dot for a previous day of a count habit adds one completion per tap, as tapping today does, instead of marking the whole day done.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** taps keep counting past the target (+1, +2… per #37). To undo a mistaken tap on a past day, long-press that dot for − / + / Done (as #38).
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 37. Count habits: "+N" badge when going over the goal
+- **What:** at the goal, the dot is filled with a checkmark (as now). Above the goal, a small badge appears on the dot: **+1** at goal + 1, **+2** at goal + 2, and so on.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** the badge shows on both Today's rows and the Habits tab dots.
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 38. Long-press a counter for quick + / −
+- **What:** long-pressing a count habit's counter shows + and − buttons to add or remove completions quickly, plus a **Done** button to close them.
+- **Note:** a long-press on the row still opens the item menu; only a long-press on the counter itself opens + / −.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** + / − on both Today's rows and the Habits tab dots (past days too, see #36).
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 39. Swipe actions on tasks and habits (Today and Habits tabs)
+- **What:** swipe right on a task or habit row → view details; swipe left → mark as missed. These are defaults: Settings lets you pick the action for each direction.
+- **Note:** today, a horizontal swipe anywhere on Today changes the day. A swipe that starts on a row will do the row action instead; the day can still be changed by swiping elsewhere and with the week strip.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):**
+  - **Actions to choose from in Settings:** View details, Mark missed, Complete, Edit, Delete (with Undo), Off.
+  - **Swiping a habit on the Habits tab** acts on *today*.
+  - **Two actions per side, like iOS Mail:** swiping partway reveals two action buttons for that side; tap either one. Swiping all the way through commits the outermost action. Settings picks both actions (inner and outer) for each side.
+  - **Defaults (change if wanted):** right: outer View details, inner Complete; left: outer Mark missed, inner Edit.
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 40. Count habits: complete-by times for all instances or each instance
+- **What:** for a count habit with a target (e.g. 3) and "by a certain time":
+  - By default the field reads **Complete all by** with one time.
+  - A checkbox **Complete each by a time** shows one "Complete by" field per instance (3 for a target of 3).
+  - The **Warn me before** setting is shared by all instances (no separate value per instance).
+- **On Today:** still one row per habit. It shows the earliest complete-by time that is still active. An instance's time stays active until that instance is completed or its time passes, then the row moves on to the next instance's time. Example: the 1st time passes with no completion and you tap once. That completion counts as the 1st instance, and the row shows the 2nd instance's time until the 2nd completion or until that time passes, and so on.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** with per-instance times, the "Warn me before" reminder fires for each instance's own time, only while that instance isn't done yet. If the target goes down (e.g. 3 → 2), the extra times are dropped.
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 41. Calendar tab → pull-down month calendar on Today; all-time stats → avatar menu
+- **What:**
+  - Remove the Calendar tab.
+  - On Today, pulling down on the week strip expands it into the full month calendar shown on the Calendar tab today: habit completion shading, task dots, mood, workout and starred days, plus the legend (screenshot, 2026-11-25). The rest of Today moves down.
+  - Scrolling, or tapping a date, shrinks it back to the week strip. After scrolling, the strip shows what it showed before; after a tap, it shows the week of the tapped day, with that day selected.
+  - The all-time stats move to the avatar menu.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** "all-time stats" means the summary on today's Calendar tab; the avatar menu opens it as its own screen.
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 42. Remove the progress card at the top of Today
+- **What:** remove the progress card from the top of the Today tab entirely.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** the day's % ring disappears completely; it doesn't move anywhere else.
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 43. The focused text box always stays above the on-screen keyboard
+- **What:** whenever the on-device keyboard opens, the text box being typed into must be pushed up / scrolled so it sits fully above the keyboard and anything attached to it (iOS accessory/autofill bar), everywhere in the app. Known failing place: entering an invitee's name (Settings › Account › Invite someone). Expected: more places.
+- **Added:** 2026-11-25
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 44. Reminder text encrypted so only the phone can read it
+- **What:** closed-app reminder text (task/habit names, times) is no longer stored on the push server in plaintext: each device encrypts it with its own key and only that device can read the notification. Applies to everyone.
+- **Added:** 2026-11-25
+- **Shipped:** v1.18.0 (2026-11-26)
+
+### 45. Swipe to delete revoked invites
+- **What:** in Settings › Account › Invite someone, a revoked invite can be swiped left to delete it for good (Undo for a few seconds). Only revoked invites.
+- **Added:** 2026-11-25
+- **Decided (2026-11-25):** invites of any status (unused, expired, used) can be revoked; Delete only once revoked. Revoking a used invite only marks the list entry ("Revoked · used by <username>"); the friend's account and devices are untouched.
+- **Shipped:** v1.18.0 (2026-11-26)
