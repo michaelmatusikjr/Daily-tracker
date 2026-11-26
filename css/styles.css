@@ -155,7 +155,7 @@ p { margin: 0; }
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
   height: calc(var(--nav-h) + var(--safe-b));
   padding: 0 var(--safe-r) var(--safe-b) var(--safe-l);
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   background: var(--nav-bg);
   -webkit-backdrop-filter: blur(18px) saturate(1.5);
   backdrop-filter: blur(18px) saturate(1.5);
