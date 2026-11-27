@@ -1703,6 +1703,8 @@ html.kb-open .ob-panel { max-height: var(--vv-h, 100dvh); min-height: 0; }
 
 /* Household sign-in (Sign in with Google, shared with ToozBudgeting) */
 .gsi-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 44px; }
+.gsi-error { color: var(--danger); font-size: 14px; font-weight: 600; margin: 0; }
+.gsi-error:empty { display: none; }
 .gsi-host { min-height: 40px; max-width: 100%; }
 .hh-signin { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
 .hh-or { display: flex; align-items: center; gap: 10px; margin: 2px 0; font-size: 13px; color: var(--text-3); }

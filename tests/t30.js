@@ -15,6 +15,7 @@ async function open(browser, data) {
     localStorage.setItem('dailyTracker:profiles', JSON.stringify({ version: 1, activeId: 'p', profiles: [{ id: 'p', name: 'Me', avatar: { type: 'emoji', emoji: '', color: '#6366f1' } }] }));
     localStorage.setItem('dailyTracker:data:p', d);
     localStorage.setItem('dailyTracker:tips', '{"settingsMoved":true,"itemMenu":true}');
+    localStorage.setItem('dailyTracker:householdConfig', '{"serverUrl":""}'); // no household (Google) sign-in: this suite runs without network
   }, JSON.stringify(data));
   const p = await ctx.newPage();
   await p.clock.install({ time: NOW });

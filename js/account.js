@@ -704,7 +704,7 @@ const firstNameOf = (me) => String(personName(me)).trim().split(/\s+/)[0].slice(
 function googleButton({ onSignedIn }) {
   if (!HH.householdAvailable()) return null;
   const host = h('div.gsi-host');
-  const err = h('p.form-error', { role: 'alert' });
+  const err = h('p.gsi-error', { role: 'alert' });
   const box = h('div.gsi-wrap', host, err);
   requestAnimationFrame(() => HH.renderGoogleButton(host, {
     onSignedIn: (me) => { err.textContent = ''; onSignedIn(me); },
