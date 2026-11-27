@@ -1216,6 +1216,7 @@ function startSession(r, username, { created = false } = {}) {
   patchState({
     accountId: r.accountId, username: r.username || username, token: r.token, sessionId: r.sessionId,
     serverUrl: serverUrl(), expired: false, locked: false, error: null, signingOut: false, paused: null,
+    via: null, // 'google' when this session came from the household (Google) sign-in
     invited: !!r.invited, // made with an invite code: never uploads nor applies the owner's register key
     // The same account again (e.g. after the session ended): carry on where it stopped.
     // A brand-new account is empty: nothing to download before profiles can be added.
@@ -1273,6 +1274,40 @@ export async function signIn({ username, password }) {
   await storeKeys(r.accountId, dk, r.wrappedPw);
   startSession(r, uname);
   return firstSync();
+}
+
+/**
+ * Household (Google) sign-in: the household server handed back this account's linked keys
+ * ({ username, authKey, kek } from C.linkKeys), so no password is typed. Same as signIn otherwise.
+ * Throws an Error whose `stale` is true when the account's password changed since it was linked.
+ */
+export async function signInWithLink({ username, authKey, kek }) {
+  const uname = C.normUsername(username);
+  const kekKey = await C.importKek(kek);
+  if (!uname || !kekKey || !/^[A-Za-z0-9_-]{43}$/.test(String(authKey || ''))) throw new Error('The household link looks damaged. An owner needs to link Daily Tracker again.');
+  let r;
+  try { r = await api('POST', '/api/account/login', { username: uname, authKey, deviceName: deviceName() }); } catch (e) {
+    if (e.status === 401) { const x = new Error('Daily Tracker’s password was changed since it was linked to your household. An owner needs to link it again (Settings › Account), or sign in with the username and password.'); x.stale = true; throw x; }
+    throw new Error(plainError(e));
+  }
+  const dk = await C.unwrap(kekKey, r.wrappedPw);
+  if (!dk) { const x = new Error('The household link can’t unlock your data any more (the password changed). An owner needs to link Daily Tracker again.'); x.stale = true; throw x; }
+  await resetForAccount(r.accountId);
+  await storeKeys(r.accountId, dk, r.wrappedPw);
+  startSession(r, uname);
+  patchState({ via: 'google' });
+  return firstSync();
+}
+
+/**
+ * Keys to link this account to the household (Settings › Account › Household sign-in): checks the password
+ * against this device's keys first (the same check as adding a passkey), then derives { username, authKey, kek }.
+ */
+export async function linkKeysFromPassword(password) {
+  const s = readState();
+  if (!s.username || !s.token) throw new Error('Sign in to your Daily Tracker account first.');
+  await dataKeyFromPassword(password);
+  return { username: s.username, ...(await C.linkKeys(s.username, password)) };
 }
 
 /** Recovery key + new password (signs every other device out). */

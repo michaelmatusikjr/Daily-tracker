@@ -82,6 +82,23 @@ export async function fromPassword(uname, password, iterations = PBKDF2_ITERATIO
   return out;
 }
 
+/**
+ * Household (Google) sign-in link: the same two halves as fromPassword, but the kek as raw bytes (b64url)
+ * so the household server can hand it to the household's other devices. Never the password itself.
+ */
+export async function linkKeys(uname, password, iterations = PBKDF2_ITERATIONS) {
+  const salt = await usernameSalt(uname);
+  const base = await subtle().importKey('raw', enc.encode(String(password)), 'PBKDF2', false, ['deriveBits']);
+  const bits = new Uint8Array(await subtle().deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, base, 512));
+  const out = { authKey: b64u(bits.slice(0, 32)), kek: b64u(bits.slice(32)) };
+  bits.fill(0);
+  return out;
+}
+/** A linked kek (b64url, 32 bytes) → CryptoKey; null when malformed. */
+export async function importKek(b64) {
+  try { const raw = unb64u(b64); if (raw.length !== 32) return null; const k = await aesKey(raw); raw.fill(0); return k; } catch { return null; }
+}
+
 /** Recovery key bytes → { recAuth (b64url), recKek (CryptoKey) }. */
 export async function fromRecovery(uname, recBytes) {
   const bits = await hkdfBits(recBytes, await usernameSalt(uname), INFO.recovery, 512);

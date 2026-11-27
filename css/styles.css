@@ -1700,3 +1700,17 @@ html.kb-open .ob-panel { max-height: var(--vv-h, 100dvh); min-height: 0; }
 .each-times { display: grid; gap: var(--s2); margin-top: var(--s2); }
 .each-times small { color: var(--text-3); font-weight: 500; }
 .invite-list li.swipe-row { position: relative; background: var(--surface); }
+
+/* Household sign-in (Sign in with Google, shared with ToozBudgeting) */
+.gsi-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-height: 44px; }
+.gsi-error { color: var(--danger); font-size: 14px; font-weight: 600; margin: 0; }
+.gsi-error:empty { display: none; }
+.gsi-host { min-height: 40px; max-width: 100%; }
+.hh-signin { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+.hh-or { display: flex; align-items: center; gap: 10px; margin: 2px 0; font-size: 13px; color: var(--text-3); }
+.hh-or::before, .hh-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.hh-who { display: flex; flex-direction: column; gap: 2px; }
+.hh-name { font-weight: 620; }
+.hh-body { display: flex; flex-direction: column; gap: 8px; }
+.hh-linked { display: flex; align-items: center; gap: 4px; color: var(--success); }
+.hh-linked svg { flex: none; }
