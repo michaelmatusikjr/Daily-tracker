@@ -4,7 +4,7 @@ import { icon } from './icons.js';
 import { update, getState, getActiveProfile, updateProfile, isFreshInstall } from './store.js';
 import { seedExamples } from './actions.js';
 import { accountsAvailable, hasAccount } from './sync.js';
-import { openFirstSignIn, cancelFirstSignIn, resumeFirstSignIn, offerSyncPicker } from './account.js';
+import { openFirstSignIn, cancelFirstSignIn, resumeFirstSignIn, offerSyncPicker, resumeGoogleRedirect } from './account.js';
 import { ctx } from './ctx.js';
 import { openSetupWizard, showInstallFirst, needsInstallFirst } from './setup.js';
 
@@ -12,8 +12,8 @@ import { openSetupWizard, showInstallFirst, needsInstallFirst } from './setup.js
  * App start with nothing onboarded: a brand-new install (only the untouched placeholder profile) first
  * asks whether to sign in to an account; everything else goes straight to the tour.
  */
-export function startFirstRun() {
-  if (!(isFreshInstall() && accountsAvailable())) { showOnboarding(); return; }
+export function startFirstRun({ google = null } = {}) {
+  if (!(isFreshInstall() && accountsAvailable())) { showOnboarding(); if (google) resumeGoogleRedirect(google); return; }
   if (document.querySelector('.onboarding')) return;
   const finish = ({ offerPicker }) => {
     document.querySelector('.ob-first')?.remove();
@@ -43,6 +43,8 @@ export function startFirstRun() {
   behind.forEach((el) => el.setAttribute('inert', ''));
   document.body.append(root);
   requestAnimationFrame(() => { root.classList.add('show'); signIn.focus(); });
+  // Came back from Google's redirect sign-in (installed iPhone app): carry on as if "Sign in" was used.
+  if (google) resumeGoogleRedirect(google, { onFirstDone: ({ offerPicker }) => { close(); finish({ offerPicker }); } });
 }
 
 /**

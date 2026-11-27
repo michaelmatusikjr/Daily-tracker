@@ -15,6 +15,8 @@ import { renderSettings } from './views/settings.js';
 import { openQuickAdd, openHabitForm } from './forms.js';
 import { showOnboarding, startFirstRun, startInviteFlow } from './onboarding.js';
 import { captureInviteFromUrl, clearPendingInvite } from './invites.js';
+import { captureSignInFromUrl, householdAvailable } from './household.js';
+import { resumeGoogleRedirect } from './account.js';
 import { registerSW, onInstallChange, safeReload } from './pwa.js';
 import { reschedule } from './notify.js';
 import { initPush, scheduleSync, onPushChange } from './push.js';
@@ -324,6 +326,8 @@ ctx.go = (route) => {
 function init() {
   initNoZoom();
   initKeyboard();
+  // The household (Google) redirect sign-in coming back: "#signin=CODE" is read and removed first, too.
+  const googleReturn = householdAvailable() ? captureSignInFromUrl() : null;
   const invite = captureInviteFromUrl(); // "#invite=CODE" is read and removed from the address before anything else
   load();
   applyTheme(getState().settings);
@@ -446,7 +450,8 @@ function init() {
     syncSig = sig;
     if (!isSheetOpen() && !document.activeElement?.matches?.('input, textarea')) render();
   });
-  if ((invite.present || invite.code) && accountsAvailable() && !hasAccount()) startInviteFlow({ code: invite.code });
+  if (googleReturn && accountsAvailable()) { if (!getState().settings.onboarded) startFirstRun({ google: googleReturn }); else resumeGoogleRedirect(googleReturn); }
+  else if ((invite.present || invite.code) && accountsAvailable() && !hasAccount()) startInviteFlow({ code: invite.code });
   else if (invite.present || invite.code) { clearPendingInvite(); if (!getState().settings.onboarded) startFirstRun(); }
   else if (!getState().settings.onboarded) startFirstRun();
   else if (getActiveProfile()?.introPending) setTimeout(() => openProfileEditor(getActiveProfile(), { intro: true, onDone: () => offerLegacyMerge() }), 400);

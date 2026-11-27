@@ -2,7 +2,9 @@
 // picker, devices, password, sign out and delete. All text goes through h() (never innerHTML).
 import { h, openSheet, toast, confirmDialog, choose } from './ui.js';
 import { icon } from './icons.js';
-import { getProfiles, getActiveProfile, updateProfile, readProfileForSync, removePlaceholderProfile, isFreshInstall } from './store.js';
+import { getProfiles, getActiveProfile, updateProfile, readProfileForSync, removePlaceholderProfile, isFreshInstall, switchProfile, addProfile } from './store.js';
+import * as HH from './household.js';
+import { linkKeys, normUsername } from './syncCrypto.js';
 import { pushConfig, pushConfigured, pushEnabled } from './push.js';
 import { isOwner, inviteRow } from './invites.js';
 import { fmtDateShort, toKey } from './dates.js';
@@ -68,6 +70,7 @@ function accountPanel({ onNavigate = null } = {}) {
 
 function signedOutView() {
   return [
+    householdSignedOutRow(),
     h('div.set-row.col.acct-block', h('span.set-label', 'Profiles'), profileList(() => ctx.rerender(), { signedIn: false })),
     h('div.set-row.col',
       h('div.set-text',
@@ -115,6 +118,8 @@ function signedInView(rerender) {
   }
   if (st?.kind === 'locked') { out.push(unlockForm(rerender)); return out; }
   out.push(profilesBlock(rerender));
+  const hh = householdBlock(rerender);
+  if (hh) out.push(hh);
   out.push(detailsBlock(rerender));
   if (pushConfigured() && !pushEnabled()) {
     out.push(h('div.set-row.col.acct-block',
@@ -248,7 +253,7 @@ function unlockForm(rerender) {
 }
 
 // ---------------- Flows ----------------
-function openCreate({ inviteCode = '', onCancel = null } = {}) {
+function openCreate({ inviteCode = '', onCancel = null, linkAfter = false } = {}) {
   const user = h('input.input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxlength: 40, 'aria-label': 'Username', autofocus: true });
   const pw = pwInput('Password', 'new-password'), pw2 = pwInput('Confirm password', 'new-password');
   // With an invite code the server's register key is not needed (and never shared).
@@ -263,6 +268,7 @@ function openCreate({ inviteCode = '', onCancel = null } = {}) {
     if (reg && !reg.value.trim()) { err.textContent = 'Enter the server’s register key.'; return; }
     const r = await busy(btn, 'Creating…', err, () => S.createAccount({ username: user.value, password: pw.value, registerKey: reg ? reg.value : '', inviteCode }));
     if (!r) return;
+    if (linkAfter) await linkWithPassword(user.value, pw.value);
     created = true;
     sheet.close();
     showRecovery(r.recovery);
@@ -333,7 +339,7 @@ export function offerSyncPicker() {
   if (candidates.length && S.canSyncProfiles()) openPicker(candidates, { preselect: false, onDone: () => ctx.rerender?.() });
 }
 
-function openSignIn({ username = '', first = false } = {}) {
+function openSignIn({ username = '', first = false, linkAfter = false } = {}) {
   const user = h('input.input', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: false, maxlength: 40, 'aria-label': 'Username', value: username, autofocus: !username });
   const pw = pwInput('Password');
   if (username) pw.setAttribute('autofocus', '');
@@ -343,13 +349,18 @@ function openSignIn({ username = '', first = false } = {}) {
     if (!user.value.trim() || !pw.value) { err.textContent = 'Enter your username and password.'; return; }
     const r = await busy(btn, 'Signing in…', err, () => S.signIn({ username: user.value, password: pw.value }));
     if (!r) return;
+    if (linkAfter) await linkWithPassword(user.value, pw.value);
     sheet.close();
     afterSignIn({ created: false, error: r.error });
   };
+  // Household (Google) sign-in first: no password needed once an owner has linked the account.
+  const google = linkAfter ? null : googleButton({ onSignedIn: (me) => { sheet.close(); continueWithGoogle(me); } });
   btn.onclick = submit;
   const sheet = openSheet({
     title: 'Sign in', cls: 'acct',
     content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      google ? h('div.hh-signin', google, h('p.hh-or', { 'aria-hidden': 'true' }, h('span', 'or use your Daily Tracker username'))) : null,
+      linkAfter ? h('p.set-desc', 'Sign in once with your Daily Tracker username and password. Then everyone in your household signs in with Google.') : null,
       field('Username', user), field('Password', pw), err,
       first && S.passkeysSupported() ? h('button.btn.secondary', { type: 'button', onclick: async (e) => {
         const r = await busy(e.currentTarget, 'Waiting for passkey…', err, () => S.passkeySignIn());
@@ -437,7 +448,7 @@ function afterSignIn({ created, error = null }) {
   const removed = first ? removePlaceholderProfile() : false;
   // A new account is offered a passkey in every flow (after the picker, before the first screen / wizard moves on).
   const passkey = async () => { if (created && S.passkeysSupported()) await offerPasskey(); };
-  if (first && !removed && getProfiles().length <= 1) { passkey().finally(() => first.onDone({ offerPicker: true })); return; } // empty account: tour first
+  if (first && !removed && getProfiles().length <= 1) { passkey().finally(() => { first.onDone({ offerPicker: true }); applyMyProfile(); }); return; } // empty account: tour first
   const candidates = getProfiles().filter((p) => !S.isSynced(p.id) && readProfileForSync(p.id));
   let advanced = false; // runs once, whether the picker was finished or dismissed
   const then = async () => {
@@ -446,6 +457,7 @@ function afterSignIn({ created, error = null }) {
     try { await passkey(); } catch { /* the offer is optional */ }
     if (first) first.onDone({ offerPicker: false });
     else { ctx.rerender?.(); hook?.(); }
+    applyMyProfile();
   };
   if (!candidates.length) { then(); return; }
   openPicker(candidates, { preselect: created, onDone: then });
@@ -604,6 +616,7 @@ function openChangePassword() {
     if (!r) return;
     sheet.close();
     toast('Password changed. Your other devices were signed out.', { force: true, duration: 6000 });
+    relinkAfterPasswordChange(next.value);
   };
   btn.onclick = submit;
   const sheet = openSheet({
@@ -646,6 +659,7 @@ async function openSignOut() {
     const photoNote = photos ? ` Their ${photos} photo${photos === 1 ? ' is' : 's are'} deleted from this device too (${photos === 1 ? 'it stays' : 'they stay'} in your account).` : '';
     if (!(await confirmDialog('Remove from this device?', `Everything in ${names} has been uploaded. ${synced.length === 1 ? 'It is' : 'They are'} removed from this device, stay in your account and come back when you sign in again.${photoNote}`, { ok: 'Remove', danger: true }))) return;
   }
+  const viaGoogle = S.syncState().via === 'google';
   let r = await S.signOut({ remove: c === 'remove' });
   if (!r.ok) {
     const again = await cantRemove(r.reason);
@@ -653,6 +667,7 @@ async function openSignOut() {
     c = 'keep';
     r = await S.signOut({ remove: false });
   }
+  if (viaGoogle) await HH.signOutHousehold();
   toast(c === 'remove' ? 'Signed out and removed from this device' : 'Signed out. Your profiles stay on this device.', { force: true });
   ctx.rerender?.();
 }
@@ -680,3 +695,251 @@ async function openDeleteAccount() {
   });
 }
 
+
+// ---------------- Household sign-in (Sign in with Google, shared with ToozBudgeting) ----------------
+const personName = (me) => me?.user?.displayName || me?.user?.name || me?.user?.email || 'you';
+const firstNameOf = (me) => String(personName(me)).trim().split(/\s+/)[0].slice(0, 40) || 'Me';
+
+/** The official Google button (rendered once it's on the page). null when household sign-in isn't set up. */
+function googleButton({ onSignedIn }) {
+  if (!HH.householdAvailable()) return null;
+  const host = h('div.gsi-host');
+  const err = h('p.form-error', { role: 'alert' });
+  const box = h('div.gsi-wrap', host, err);
+  requestAnimationFrame(() => HH.renderGoogleButton(host, {
+    onSignedIn: (me) => { err.textContent = ''; onSignedIn(me); },
+    onError: (m) => { err.textContent = m; },
+  }));
+  return box;
+}
+
+function householdSignedOutRow() {
+  if (!HH.householdAvailable()) return null;
+  return h('div.set-row.col.acct-block.hh-block',
+    h('div.set-text', h('span.set-label', 'Sign in with Google'),
+      h('span.set-desc', 'Use the Google account you use for ToozBudgeting. Everyone in your household signs in the same way, with no Daily Tracker password.')),
+    googleButton({ onSignedIn: (me) => continueWithGoogle(me) }));
+}
+
+/** Daily Tracker's own account, given the household's linked keys. One flow at a time. */
+let googleBusy = false;
+async function continueWithGoogle(me = HH.householdMe()) {
+  if (googleBusy) return;
+  googleBusy = true;
+  try {
+    let keys;
+    try { keys = await HH.appKeys(); } catch (e) {
+      if (e.data?.code === 'NOT_LINKED') { notLinked(me); return; }
+      throw e;
+    }
+    const s = S.syncState();
+    if (S.isSignedIn() && s.username === keys.username) {
+      toast(`Signed in with Google as ${personName(me)}`, { force: true });
+      ctx.rerender?.();
+      applyMyProfile();
+      return;
+    }
+    if (S.isSignedIn()) {
+      toast(`This device is signed in to the Daily Tracker account “${s.username}”, but your household uses “${keys.username}”. Sign out first to switch.`, { force: true, duration: 9000 });
+      ctx.rerender?.();
+      return;
+    }
+    toast('Signing in to your household’s Daily Tracker…', { force: true });
+    const r = await S.signInWithLink(keys);
+    afterSignIn({ created: false, error: r.error });
+  } catch (e) {
+    toast(e?.message || 'Google sign-in didn’t finish', { force: true, duration: 9000 });
+    ctx.rerender?.();
+  } finally { googleBusy = false; }
+}
+
+/** The household has no linked Daily Tracker account yet. Owners link it once; anyone else is told who can. */
+function notLinked(me) {
+  const hh = me?.household?.name || 'your household';
+  if (me?.role !== 'owner') {
+    choose('Not linked yet', `Signed in with Google as ${personName(me)}, but Daily Tracker isn’t linked to ${hh} yet. Ask an owner to open Daily Tracker › Settings › Account and link it once. Then you can sign in here with Google.`, [{ value: null, label: 'OK', style: 'primary' }]);
+    ctx.rerender?.();
+    return;
+  }
+  if (S.isSignedIn()) { openLinkWithPassword(); return; }
+  choose('Link Daily Tracker to your household', `Signed in with Google as ${personName(me)} (owner of ${hh}). Sign in to your Daily Tracker account once with its username and password (or create one) to link it. After that, you and everyone you invite in ToozBudgeting just sign in with Google.`, [
+    { value: 'signin', label: 'Sign in with password', style: 'primary' },
+    { value: 'create', label: 'Create a Daily Tracker account', style: 'secondary' },
+    { value: null, label: 'Not now', style: 'ghost' },
+  ]).then((c) => {
+    if (c === 'signin') openSignIn({ linkAfter: true });
+    else if (c === 'create') openCreate({ linkAfter: true });
+    else ctx.rerender?.();
+  });
+}
+
+/** Link the account that was just signed in to (or created) with this password. Errors become a toast. */
+async function linkWithPassword(username, password) {
+  try {
+    const uname = normUsername(username);
+    await HH.setLink({ username: uname, ...(await linkKeys(uname, password)) });
+    hhCache = null;
+    toast('Linked. Everyone in your household can now sign in with Google.', { force: true, duration: 6000 });
+    return true;
+  } catch (e) {
+    toast(`Signed in, but linking to your household didn’t work: ${e.message}`, { force: true, duration: 9000 });
+    return false;
+  }
+}
+
+/** Signed in already: link (or update the link of) this account with its password. */
+function openLinkWithPassword(rerender = () => ctx.rerender?.()) {
+  const pw = pwInput('Password');
+  pw.setAttribute('autofocus', '');
+  const err = h('p.form-error', { role: 'alert' });
+  const btn = h('button.btn.primary', { type: 'button' }, 'Link');
+  const hh = HH.householdMe()?.household?.name || 'your household';
+  const submit = async () => {
+    if (!pw.value) { err.textContent = 'Enter your password.'; return; }
+    const ok = await busy(btn, 'Linking…', err, async () => { await HH.setLink(await S.linkKeysFromPassword(pw.value)); return true; });
+    if (!ok) return;
+    hhCache = null;
+    sheet.close();
+    toast('Linked. Everyone in your household can now sign in with Google.', { force: true, duration: 6000 });
+    rerender();
+    applyMyProfile();
+  };
+  btn.onclick = submit;
+  const sheet = openSheet({
+    title: 'Link to your household', cls: 'acct',
+    content: h('form.form', { onsubmit: (e) => { e.preventDefault(); submit(); }, novalidate: true },
+      h('p.set-desc', `Enter the password of “${S.syncState().username}” once. Your password never leaves this device. The household server keeps sign-in keys made from it, encrypted, and gives them only to owners and members of ${hh} when they sign in with Google. View-only people never get them.`),
+      field('Password', pw), err, h('button', { type: 'submit', hidden: true })),
+    footer: [h('span'), btn],
+  });
+}
+
+/** After a password change on this device: an owner's link is updated so Google sign-in keeps working. */
+async function relinkAfterPasswordChange(password) {
+  if (!HH.isHouseholdSignedIn()) return;
+  try {
+    const st = await HH.appStatus();
+    const uname = S.syncState().username;
+    if (!st.linked || st.username !== uname) return;
+    if (!st.canManage) { toast('Ask a household owner to link Daily Tracker again, so Google sign-in works with the new password.', { force: true, duration: 8000 }); return; }
+    await HH.setLink({ username: uname, ...(await linkKeys(uname, password)) });
+    hhCache = null;
+    toast('Household link updated for the new password', { force: true });
+  } catch { toast('Couldn’t update the household link. Link it again in Settings › Account.', { force: true, duration: 8000 }); }
+}
+
+/**
+ * Who's who: a person's own profile opens whenever they sign in with Google (kept on the household server,
+ * per person). Asked once per person when it isn't known yet.
+ */
+let asking = false;
+async function applyMyProfile() {
+  if (asking || !HH.isHouseholdSignedIn() || !S.hasAccount() || !S.isSignedIn()) return;
+  asking = true;
+  try {
+    let prefs;
+    try { prefs = await HH.getPrefs(); } catch { return; }
+    const me = HH.householdMe();
+    const mine = prefs.profileId && getProfiles().find((p) => p.id === prefs.profileId);
+    if (mine) {
+      if (getActiveProfile()?.id !== mine.id && switchProfile(mine.id)) toast(`Opened ${mine.name}`, { force: true });
+      return;
+    }
+    const synced = getProfiles().filter((p) => S.isSynced(p.id));
+    const first = firstNameOf(me);
+    const options = synced.map((p) => ({ value: p.id, label: p.name, style: 'secondary' }));
+    if (S.canSyncProfiles() && !S.accountNameClash(first)) options.push({ value: '__new', label: `Add a profile for ${first}`, style: 'secondary' });
+    if (!options.length) return;
+    options.push({ value: null, label: 'Not now', style: 'ghost' });
+    const c = await choose('Which profile is yours?', `Signed in with Google as ${personName(me)}. Daily Tracker opens your profile whenever you sign in with Google, on any device.`, options);
+    if (!c) return;
+    let id = c;
+    if (c === '__new') {
+      id = addProfile({ name: first });
+      if (!id) { toast('Couldn’t add the profile – storage is full.', { force: true }); return; }
+      await S.syncProfiles([id]);
+    } else switchProfile(id);
+    try { await HH.setPrefs({ ...prefs, profileId: id }); } catch (e) { toast(`Couldn’t save which profile is yours: ${e.message}`, { force: true }); }
+    hhCache = null;
+    ctx.rerender?.();
+  } finally { asking = false; }
+}
+
+/** The redirect sign-in (installed iPhone app) came back: #signin=<code> or #signin-error=<message>. */
+export async function resumeGoogleRedirect(ret, { onFirstDone = null } = {}) {
+  if (!ret || !HH.householdAvailable()) return;
+  if (ret.error) { toast(`Google sign-in didn’t finish: ${ret.error}`, { force: true, duration: 9000 }); return; }
+  let me;
+  try { me = await HH.redeemCode(ret.code); } catch (e) { toast(`Google sign-in didn’t finish: ${e.message}`, { force: true, duration: 9000 }); return; }
+  if (onFirstDone) firstFlow = { onDone: onFirstDone };
+  continueWithGoogle(me);
+}
+
+// Settings › Account › Household sign-in (signed in). The server's answer is cached per account so
+// Settings re-renders don't flicker.
+let hhCache = null; // { key, status, prefs }
+function householdBlock(rerender) {
+  if (!HH.householdAvailable()) return null;
+  const box = h('div.set-row.col.acct-block.hh-block', h('span.set-label', 'Household sign-in'));
+  if (!HH.isHouseholdSignedIn()) {
+    const reason = HH.householdState()?.signedOutReason;
+    box.append(h('span.set-desc', `${reason ? reason + ' ' : ''}Sign in with the Google account you use for ToozBudgeting. Once this account is linked, everyone in your household opens Daily Tracker with Google, with no password.`),
+      googleButton({ onSignedIn: (me) => continueWithGoogle(me) }));
+    return box;
+  }
+  const me = HH.householdMe();
+  const uname = S.syncState().username;
+  box.append(h('div.hh-who', h('span.hh-name', personName(me)), h('span.set-desc', `${me?.user?.email || ''} · ${HH.ROLE_LABEL[me?.role] || me?.role} · ${me?.household?.name || 'Household'}`)));
+  const body = h('div.hh-body');
+  box.append(body);
+  const key = `${me?.user?.id}|${me?.household?.id}|${uname}`;
+  const fill = ({ status: st, prefs }) => {
+    const kids = [];
+    const actions = [];
+    if (!st.canUse) kids.push(h('p.set-desc', 'View-only people can’t open Daily Tracker with Google yet. An owner can make you a member in ToozBudgeting › Settings › Household.'));
+    if (st.linked && st.username === uname) {
+      kids.push(h('p.set-desc.hh-linked', icon('check', { size: 14 }), ` Linked: people in ${me?.household?.name || 'your household'} sign in to “${uname}” with Google.`));
+      if (st.canManage) {
+        actions.push(h('button.btn.secondary.small', { type: 'button', onclick: () => openLinkWithPassword(rerender) }, 'Update link'));
+        actions.push(h('button.btn.ghost.small', { type: 'button', onclick: async (e) => {
+          const b = e.currentTarget; // gone once the event has been handled
+          if (!(await confirmDialog('Unlink Daily Tracker?', 'People in your household won’t be able to sign in here with Google any more. Daily Tracker’s data and devices that are signed in now aren’t changed.', { ok: 'Unlink', danger: true }))) return;
+          const ok = await busy(b, 'Unlinking…', null, async () => { await HH.removeLink(); return true; });
+          if (ok) { hhCache = null; toast('Unlinked', { force: true }); rerender(); }
+        } }, 'Unlink'));
+      }
+    } else if (st.linked) {
+      kids.push(h('p.set-desc', `Your household is linked to the Daily Tracker account “${st.username}”, not this one (“${uname}”).`));
+      if (st.canManage) actions.push(h('button.btn.secondary.small', { type: 'button', onclick: () => openLinkWithPassword(rerender) }, 'Link this account instead'));
+    } else if (st.canManage) {
+      kids.push(h('p.set-desc', 'Not linked yet. Link this account so everyone in your household can sign in with Google.'));
+      actions.push(h('button.btn.primary.small', { type: 'button', id: 'hh-link', onclick: () => openLinkWithPassword(rerender) }, 'Link this account'));
+    } else kids.push(h('p.set-desc', 'An owner hasn’t linked Daily Tracker to your household yet.'));
+    // Which profile is mine.
+    const synced = getProfiles().filter((p) => S.isSynced(p.id));
+    if (synced.length) {
+      const sel = h('select.input.hh-mine', { 'aria-label': 'Your profile' },
+        h('option', { value: '' }, 'Not chosen'),
+        ...synced.map((p) => h('option', { value: p.id, selected: prefs.profileId === p.id }, p.name)));
+      sel.addEventListener('change', async () => {
+        try { const next = await HH.setPrefs({ ...prefs, profileId: sel.value || null }); hhCache = { key, status: st, prefs: next }; toast(sel.value ? 'Saved: this profile opens when you sign in with Google' : 'Saved', { force: true }); } catch (e) { toast(e.message, { force: true }); }
+      });
+      kids.push(field('Your profile', sel, 'Opens when you sign in with Google, on any device.'));
+    }
+    actions.push(h('button.btn.ghost.small', { type: 'button', onclick: async () => { await HH.signOutHousehold(); hhCache = null; toast('Signed out of Google here. Daily Tracker stays signed in.', { force: true }); rerender(); } }, 'Sign out of Google'));
+    body.replaceChildren(...kids, h('div.set-actions', ...actions));
+  };
+  const cached = hhCache && hhCache.key === key ? hhCache : null;
+  if (cached) fill(cached); else body.append(h('p.set-desc', 'Checking the household link…'));
+  Promise.all([HH.appStatus(), HH.getPrefs().catch(() => ({}))]).then(([status, prefs]) => {
+    const fresh = { key, status, prefs };
+    const same = cached && JSON.stringify([cached.status, cached.prefs]) === JSON.stringify([status, prefs]);
+    hhCache = fresh;
+    if (!same && body.isConnected) fill(fresh);
+  }).catch((e) => {
+    if (!body.isConnected) return;
+    if (!HH.isHouseholdSignedIn()) { rerender(); return; }
+    if (!cached) body.replaceChildren(h('p.set-desc', `Couldn’t reach the household server: ${e.message}`), h('div.set-actions', h('button.btn.ghost.small', { type: 'button', onclick: async () => { await HH.signOutHousehold(); rerender(); } }, 'Sign out of Google')));
+  });
+  return box;
+}
